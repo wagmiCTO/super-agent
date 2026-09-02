@@ -1,0 +1,7 @@
+.idea/
+*.env
+.env*
+bin/
+dist/
+*.key
+*.pem
