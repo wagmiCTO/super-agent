@@ -1,0 +1,166 @@
+// Command platform is the trading service the app talks to.
+//
+// It connects to the venue, installs the policy limits, reconciles open
+// positions against the exchange, and serves the HTTP API described in
+// api/openapi.yaml. Every order passes through the policy engine; there is no
+// route around it.
+//
+//	go run ./cmd/platform                 # 127.0.0.1:8080, testnet, default limits
+//	PLATFORM_ADDR=0.0.0.0:8080 go run ./cmd/platform
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/wagmiCTO/super-agent/services/internal/envfile"
+	"github.com/wagmiCTO/super-agent/services/internal/fixed"
+	"github.com/wagmiCTO/super-agent/services/internal/platform"
+	"github.com/wagmiCTO/super-agent/services/internal/policy"
+	"github.com/wagmiCTO/super-agent/services/internal/venue/perpl"
+)
+
+func main() {
+	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	if err := run(log); err != nil {
+		log.Error("platform exited", "err", err)
+		os.Exit(1)
+	}
+}
+
+func run(log *slog.Logger) error {
+	if err := envfile.LoadNearest(".env"); err != nil {
+		return err
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	cfg, err := perpl.ConfigFromEnv()
+	if err != nil {
+		return err
+	}
+	if !cfg.HasCredentials() {
+		return errors.New("PERPL_API_KEY and PERPL_API_KEY_SECRET are required: the platform places orders")
+	}
+	limits, err := limitsFromEnv()
+	if err != nil {
+		return err
+	}
+
+	adapter, err := perpl.New(ctx, cfg, log)
+	if err != nil {
+		return fmt.Errorf("connect venue: %w", err)
+	}
+	defer adapter.Close()
+
+	svc, err := platform.New(ctx, adapter, policy.New(), limits, log)
+	if err != nil {
+		return err
+	}
+
+	// Bind to loopback unless told otherwise: this API places orders and has
+	// no authentication yet.
+	addr := envOr("PLATFORM_ADDR", "127.0.0.1:8080")
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           platform.Handler(svc, log),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+	}
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- srv.ListenAndServe() }()
+	log.Info("platform listening", "addr", addr, "venue", adapter.Name(), "network", cfg.Network.Name,
+		"allowed", limits.AllowedSymbols, "max_notional", limits.MaxNotional, "daily_loss", limits.DailyLoss)
+
+	select {
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return srv.Shutdown(shutdownCtx)
+	case err := <-errCh:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	}
+}
+
+// limitsFromEnv reads the policy limits. The defaults are deliberately small
+// testnet numbers; a deployment sets its own.
+//
+//	PLATFORM_ALLOWED_SYMBOLS   comma-separated, default MON
+//	PLATFORM_MIN_NOTIONAL      default 5
+//	PLATFORM_MAX_NOTIONAL      default 50
+//	PLATFORM_MAX_LEVERAGE      default 3
+//	PLATFORM_MAX_EXPOSURE      default 100
+//	PLATFORM_MAX_POSITIONS     default 2
+//	PLATFORM_DAILY_LOSS        default 25
+//	PLATFORM_COOLDOWN_SECONDS  default 5
+func limitsFromEnv() (policy.Limits, error) {
+	var l policy.Limits
+	var err error
+
+	l.AllowedSymbols = splitList(envOr("PLATFORM_ALLOWED_SYMBOLS", "MON"))
+	if l.MinNotional, err = decimalEnv("PLATFORM_MIN_NOTIONAL", "5"); err != nil {
+		return l, err
+	}
+	if l.MaxNotional, err = decimalEnv("PLATFORM_MAX_NOTIONAL", "50"); err != nil {
+		return l, err
+	}
+	if l.MaxLeverage, err = decimalEnv("PLATFORM_MAX_LEVERAGE", "3"); err != nil {
+		return l, err
+	}
+	if l.MaxTotalExposure, err = decimalEnv("PLATFORM_MAX_EXPOSURE", "100"); err != nil {
+		return l, err
+	}
+	if l.DailyLoss, err = decimalEnv("PLATFORM_DAILY_LOSS", "25"); err != nil {
+		return l, err
+	}
+	positions, err := strconv.Atoi(envOr("PLATFORM_MAX_POSITIONS", "2"))
+	if err != nil {
+		return l, fmt.Errorf("PLATFORM_MAX_POSITIONS: %w", err)
+	}
+	l.MaxOpenPositions = positions
+	cooldown, err := strconv.ParseFloat(envOr("PLATFORM_COOLDOWN_SECONDS", "5"), 64)
+	if err != nil {
+		return l, fmt.Errorf("PLATFORM_COOLDOWN_SECONDS: %w", err)
+	}
+	l.Cooldown = time.Duration(cooldown * float64(time.Second))
+	return l, l.Validate()
+}
+
+func decimalEnv(key, def string) (fixed.D, error) {
+	d, err := fixed.Parse(envOr(key, def))
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", key, err)
+	}
+	return d, nil
+}
+
+func envOr(key, def string) string {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		return v
+	}
+	return def
+}
+
+func splitList(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if p := strings.ToUpper(strings.TrimSpace(part)); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}

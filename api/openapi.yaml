@@ -1,0 +1,312 @@
+openapi: 3.1.0
+info:
+  title: Platform API
+  version: 0.1.0
+  description: |
+    The contract between the app and the trading service (`services/cmd/platform`).
+
+    Every amount is a **decimal string**, never a JSON number: numbers are floats
+    on the receiving side and money is not. Parse with a decimal type.
+
+    Every order passes through the policy engine before it reaches the venue.
+    A refusal is a `403` carrying a stable machine-readable `error` code, the
+    limit that was hit and the value that hit it, so the app can say
+    "you asked for 200, the limit is 100" rather than "something went wrong".
+
+servers:
+  - url: http://127.0.0.1:8080
+    description: local development
+
+paths:
+  /v1/health:
+    get:
+      summary: Liveness
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { status: { type: string, const: ok } }
+
+  /v1/markets:
+    get:
+      summary: Tradable markets with the fee schedule that applies to this account
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Market" }
+
+  /v1/state:
+    get:
+      summary: Account balance, open positions, limits in force and how much of them is used
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/State" }
+
+  /v1/orders/open:
+    post:
+      summary: Open a position
+      description: |
+        Sized by notional in collateral units; the service derives the size
+        from the venue's mark price. Returns once the venue accepted or refused
+        the order — fills may still be in flight for a resting order, but a
+        market order is filled on return.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OpenRequest" }
+      responses:
+        "200":
+          description: Accepted by the venue. Check `status`; a venue-side failure arrives here with `status: failed` and a `rejection`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "403": { $ref: "#/components/responses/Denied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/VenueRejected" }
+
+  /v1/orders/close:
+    post:
+      summary: Close the open position in a market
+      description: |
+        The service sizes the close from the venue's own position, never from
+        the caller. Closing is never refused by the policy engine.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CloseRequest" }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/VenueRejected" }
+
+  /v1/kill:
+    post:
+      summary: Engage the kill switch — stops all opening, closing stays allowed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties: { reason: { type: string } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  killed: { type: boolean, const: true }
+                  reason: { type: string }
+
+  /v1/revive:
+    post:
+      summary: Release the kill switch
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { killed: { type: boolean, const: false } }
+
+components:
+  schemas:
+    Decimal:
+      type: string
+      description: Decimal number as a string, e.g. "20.5". Never a JSON number.
+      pattern: '^-?[0-9]+(\.[0-9]+)?$'
+
+    Side:
+      type: string
+      enum: [long, short]
+
+    OrderStatus:
+      type: string
+      enum: [unknown, pending, open, partially-filled, filled, canceled, expired, failed]
+
+    Market:
+      type: object
+      required: [symbol, max_leverage, price_tick, size_step, order_ttl_seconds, fees]
+      properties:
+        symbol: { type: string, example: MON }
+        max_leverage: { $ref: "#/components/schemas/Decimal" }
+        liquidation_leverage: { $ref: "#/components/schemas/Decimal" }
+        price_tick: { $ref: "#/components/schemas/Decimal" }
+        size_step: { $ref: "#/components/schemas/Decimal" }
+        order_ttl_seconds:
+          type: number
+          description: How long an order may live on this venue. 0 means unlimited.
+        fees: { $ref: "#/components/schemas/Fees" }
+
+    Fees:
+      type: object
+      description: Rates are fractions of notional ("0.00069" is 6.9 bps).
+      properties:
+        maker_rate: { $ref: "#/components/schemas/Decimal" }
+        taker_rate: { $ref: "#/components/schemas/Decimal" }
+        builder_rate: { $ref: "#/components/schemas/Decimal" }
+        charged_on:
+          type: string
+          enum: [open-only, every-fill]
+          description: Whether the venue charges only the opening fill or every fill.
+        posting_fee:
+          $ref: "#/components/schemas/Decimal"
+          description: Flat charge per resting order, in collateral units.
+        round_trip_taker:
+          $ref: "#/components/schemas/Decimal"
+          description: Total fee fraction for open + close as taker. Use this, never taker_rate × 2.
+        round_trip_taker_bps: { $ref: "#/components/schemas/Decimal" }
+        break_even_move_taker:
+          $ref: "#/components/schemas/Decimal"
+          description: Price move fraction needed to cover the round trip. Independent of leverage.
+
+    Account:
+      type: object
+      properties:
+        id: { type: string }
+        balance: { $ref: "#/components/schemas/Decimal" }
+        locked: { $ref: "#/components/schemas/Decimal" }
+        can_trade:
+          type: boolean
+          description: False until the venue-side permission to trade through the API is granted.
+        frozen: { type: boolean }
+        fee_tier: { type: integer }
+
+    Position:
+      type: object
+      properties:
+        id: { type: string }
+        symbol: { type: string }
+        side: { $ref: "#/components/schemas/Side" }
+        size: { $ref: "#/components/schemas/Decimal" }
+        entry_price: { $ref: "#/components/schemas/Decimal" }
+        notional: { $ref: "#/components/schemas/Decimal" }
+        collateral: { $ref: "#/components/schemas/Decimal" }
+        leverage: { $ref: "#/components/schemas/Decimal" }
+        unrealized_pnl: { $ref: "#/components/schemas/Decimal" }
+        fees_paid: { $ref: "#/components/schemas/Decimal" }
+        opened_at: { type: string, format: date-time }
+
+    Limits:
+      type: object
+      properties:
+        allowed_symbols: { type: array, items: { type: string } }
+        min_notional: { $ref: "#/components/schemas/Decimal" }
+        max_notional: { $ref: "#/components/schemas/Decimal" }
+        max_leverage: { $ref: "#/components/schemas/Decimal" }
+        max_total_exposure: { $ref: "#/components/schemas/Decimal" }
+        max_open_positions: { type: integer }
+        daily_loss: { $ref: "#/components/schemas/Decimal" }
+        cooldown_seconds: { type: number }
+
+    Risk:
+      type: object
+      description: How much of the limits is currently used.
+      properties:
+        open_positions: { type: integer }
+        exposure: { $ref: "#/components/schemas/Decimal" }
+        daily_loss: { $ref: "#/components/schemas/Decimal" }
+        last_open: { type: string, format: date-time }
+
+    State:
+      type: object
+      properties:
+        venue: { type: string, example: perpl }
+        account: { $ref: "#/components/schemas/Account" }
+        positions: { type: array, items: { $ref: "#/components/schemas/Position" } }
+        limits: { $ref: "#/components/schemas/Limits" }
+        risk: { $ref: "#/components/schemas/Risk" }
+        killed: { type: boolean }
+        kill_note: { type: string }
+
+    OpenRequest:
+      type: object
+      required: [symbol, side, notional]
+      properties:
+        symbol: { type: string, example: MON }
+        side: { $ref: "#/components/schemas/Side" }
+        notional:
+          $ref: "#/components/schemas/Decimal"
+          description: Position value in collateral units.
+        leverage:
+          $ref: "#/components/schemas/Decimal"
+          description: Defaults to 1.
+
+    CloseRequest:
+      type: object
+      required: [symbol]
+      properties:
+        symbol: { type: string }
+
+    Order:
+      type: object
+      properties:
+        client_id: { type: string, description: The idempotency key the service generated. }
+        venue_id: { type: string }
+        symbol: { type: string }
+        side: { $ref: "#/components/schemas/Side" }
+        status: { $ref: "#/components/schemas/OrderStatus" }
+        size: { $ref: "#/components/schemas/Decimal" }
+        filled_size: { $ref: "#/components/schemas/Decimal" }
+        avg_price: { $ref: "#/components/schemas/Decimal" }
+        fee:
+          $ref: "#/components/schemas/Decimal"
+          description: Gross fee charged, protocol plus builder.
+        builder_fee: { $ref: "#/components/schemas/Decimal" }
+        rejection:
+          type: object
+          nullable: true
+          properties:
+            code: { type: string }
+            detail: { type: string }
+        updated_at: { type: string, format: date-time }
+
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: |
+            Stable machine code. Policy denials use the engine's reasons:
+            kill_switch, symbol_not_allowed, notional_too_large, notional_too_small,
+            leverage_too_high, daily_loss_limit_reached, cooldown,
+            too_many_open_positions, total_exposure_too_large, malformed_request.
+            Others: invalid_request, venue_rejected, unknown_market, no_position,
+            no_credentials, internal.
+        message: { type: string, description: For a person. }
+        limit: { $ref: "#/components/schemas/Decimal" }
+        actual: { $ref: "#/components/schemas/Decimal" }
+        retry_after_seconds:
+          type: number
+          description: Set when the refusal is temporary, e.g. a cooldown.
+
+  responses:
+    Invalid:
+      description: Malformed request
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Denied:
+      description: Refused by the policy engine
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    NotFound:
+      description: Unknown market or no open position
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    VenueRejected:
+      description: The venue refused the order
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
