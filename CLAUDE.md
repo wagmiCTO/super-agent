@@ -17,16 +17,21 @@ The Signer is the trust boundary. The platform is an untrusted client of it. Kee
 - LLM: Anthropic Claude via the official SDK. Load the `claude-api` skill before writing LLM code — do not answer model/pricing questions from memory.
 - TEE target: TBD (candidates: AWS Nitro Enclaves, Intel TDX/SGX via Gramine, Phala/dstack). MPC: TBD (candidates: threshold ECDSA — GG20/CGGMP, or a library like tss-lib). Do not hard-commit to one in code until decided; keep the signer behind an interface.
 
-## Repo layout (target — create as needed)
+## Repo layout
 ```
-cmd/            entrypoints (signer, platform, cli)
-internal/
-  hyperliquid/  API client, types, signing (EIP-712), WS feeds
-  signer/       key management, policy engine, MPC/TEE adapters
-  platform/     prompt → strategy, execution loop, risk, portfolio
-  llm/          Anthropic client wrappers, prompt templates, tool defs
-docs/           design notes, threat model, ADRs
+apps/mobile/    React Native app — the product surface
+services/       Go module: every backend binary and the packages they share
+  cmd/          one directory per binary (perplcheck, breakeven, platform, signer)
+  internal/     fixed (decimals), venue (adapter interface), venue/perpl,
+                and the reserved homes: strategy, policy, signer, llm
+contracts/      Foundry: on-chain leaderboard and policy engine
+api/            the app <-> services contract (OpenAPI), owned by neither side
+docs/           technical docs, English; docs/adr/ for decisions
+design/         visual prototypes
 ```
+The repository root is **not** a Go module — `go` commands run from `services/`.
+Import paths are `github.com/wagmiCTO/super-agent/services/internal/...`.
+Rationale and the rules for adding a new deliverable: `docs/adr/0002-repository-layout.md`.
 
 ## Engineering rules
 - Security first: this system controls real money. No secrets in code, logs, or LLM prompts. Never log private keys, seeds, signatures, or full auth headers.

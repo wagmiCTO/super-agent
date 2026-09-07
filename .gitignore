@@ -1,7 +1,28 @@
-.idea/
+# Secrets — never commit an API key, a seed or a wallet key
 *.env
 .env*
-bin/
-dist/
 *.key
 *.pem
+
+# Build output
+bin/
+dist/
+out/
+cache/
+
+# Editors
+.idea/
+.vscode/
+.DS_Store
+
+# JavaScript
+node_modules/
+.expo/
+
+# Go
+*.test
+coverage.out
+
+# Templates are committed; real values never are
+!*.env.example
+!.env.example
