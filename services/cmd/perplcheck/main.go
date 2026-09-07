@@ -24,6 +24,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/wagmiCTO/super-agent/services/internal/envfile"
 	"github.com/wagmiCTO/super-agent/services/internal/fixed"
 	"github.com/wagmiCTO/super-agent/services/internal/venue"
 	"github.com/wagmiCTO/super-agent/services/internal/venue/perpl"
@@ -56,6 +57,11 @@ func main() {
 }
 
 func run(ctx context.Context, log *slog.Logger, symbol string, notional float64, leverage int, doTrade, doStream bool) error {
+	// Credentials normally live in services/.env; anything already exported
+	// takes precedence.
+	if err := envfile.LoadNearest(".env"); err != nil {
+		return err
+	}
 	cfg, err := perpl.ConfigFromEnv()
 	if err != nil {
 		return err

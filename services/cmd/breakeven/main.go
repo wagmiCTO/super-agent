@@ -20,6 +20,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/wagmiCTO/super-agent/services/internal/envfile"
 	"github.com/wagmiCTO/super-agent/services/internal/fixed"
 	"github.com/wagmiCTO/super-agent/services/internal/venue"
 	"github.com/wagmiCTO/super-agent/services/internal/venue/perpl"
@@ -60,6 +61,9 @@ func main() {
 }
 
 func run(ctx context.Context, hours int, notional float64) error {
+	if err := envfile.LoadNearest(".env"); err != nil {
+		return err
+	}
 	cfg, err := perpl.ConfigFromEnv()
 	if err != nil {
 		return err

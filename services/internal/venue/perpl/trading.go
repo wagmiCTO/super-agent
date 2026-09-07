@@ -45,6 +45,9 @@ type tradingClient struct {
 	mu        sync.Mutex
 	conn      *websocket.Conn
 	connected bool
+	// closing marks a deliberate shutdown, so the read error it causes is
+	// not reported as a session failure.
+	closing   bool
 	account   accountState
 	seq       int64  // outbound frame counter, never zero
 	nextReqID uint64 // idempotency key, strictly increasing
@@ -93,8 +96,12 @@ func (t *tradingClient) run(ctx context.Context) {
 	attempt := 0
 	for ctx.Err() == nil {
 		err := t.session(ctx)
-		if err != nil && ctx.Err() == nil {
+		if err != nil && ctx.Err() == nil && !t.isClosing() {
 			t.log.Warn("perpl trading session ended", "err", err, "attempt", attempt)
+		}
+		if t.isClosing() {
+			t.failInFlight()
+			return
 		}
 		t.failInFlight()
 		if ctx.Err() != nil {
@@ -471,8 +478,15 @@ func (t *tradingClient) nextRequestID() uint64 {
 	return id
 }
 
+func (t *tradingClient) isClosing() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.closing
+}
+
 func (t *tradingClient) close() {
 	t.mu.Lock()
+	t.closing = true
 	conn := t.conn
 	t.mu.Unlock()
 	if conn != nil {

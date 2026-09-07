@@ -64,6 +64,7 @@ type mdClient struct {
 	bySID    map[int64]string
 	conn     *websocket.Conn
 	ready    bool
+	closing  bool
 
 	head    int64
 	started bool
@@ -114,10 +115,10 @@ func (c *mdClient) latestHead() int64 {
 func (c *mdClient) run(ctx context.Context) {
 	attempt := 0
 	for ctx.Err() == nil {
-		if err := c.session(ctx); err != nil && ctx.Err() == nil {
+		if err := c.session(ctx); err != nil && ctx.Err() == nil && !c.isClosing() {
 			c.log.Warn("perpl market-data session ended", "err", err, "attempt", attempt)
 		}
-		if ctx.Err() != nil {
+		if ctx.Err() != nil || c.isClosing() {
 			return
 		}
 		select {
@@ -261,8 +262,15 @@ func (c *mdClient) dispatch(raw []byte) {
 	}
 }
 
+func (c *mdClient) isClosing() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closing
+}
+
 func (c *mdClient) close() {
 	c.mu.Lock()
+	c.closing = true
 	conn := c.conn
 	c.mu.Unlock()
 	if conn != nil {
