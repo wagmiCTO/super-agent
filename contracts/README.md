@@ -13,4 +13,6 @@ What is meant to live here, and nothing more:
   cooldown and a kill switch — which is what turns "non-custodial" from a claim
   into something checkable.
 
-Explicitly not here: a fork of a perp DEX.
+Explicitly not here: a fork of a perp DEX. Forking one would produce work that
+does not port to the venue we actually build for, and a leaderboard is the part
+that genuinely needs a fast chain.

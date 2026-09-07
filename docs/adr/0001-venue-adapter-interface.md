@@ -2,7 +2,7 @@
 
 - Status: accepted
 - Date: 2026-09-08
-- Context: the strategy engine and its five pluggable parts
+- Context: the strategy engine and its five pluggable parts (signal source, position rules, interface, leaderboard metric, venue adapter)
 
 ## Context
 
@@ -93,7 +93,9 @@ means the backtest/simulation path never holds keys.
 
 ## Consequences
 
-- A second strategy costs no venue work. That is the acceptance test for this interface.
+- A second strategy costs no venue work. That is the acceptance test for
+  this interface: if adding one is expensive, the abstraction is wrong and
+  fixing it comes before any new feature.
 - The Hyperliquid adapter is a package, not a refactor.
 - The engine cannot express a venue-specific order type. Perpl's trigger orders
   (`tp`/`tpc`) and linked triggers (`tr`/`lp`) are attractive for stop-loss but

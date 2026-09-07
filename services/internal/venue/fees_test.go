@@ -118,8 +118,8 @@ func TestRoundTripCostIncludesPostingFee(t *testing.T) {
 }
 
 // Leverage cancels out of the break-even move. This is the law from
-// docs/fee-model.md, pinned so a future refactor cannot
-// quietly reintroduce leverage into the calculation.
+// docs/fee-model.md, pinned so a future refactor cannot quietly reintroduce
+// leverage into the calculation.
 func TestBreakEvenMoveIsLeverageIndependent(t *testing.T) {
 	sched := perplBase
 	move := sched.BreakEvenMove(false, false)

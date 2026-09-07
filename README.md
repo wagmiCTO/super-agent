@@ -7,8 +7,8 @@ Two coupled products around perpetual futures trading:
 2. **A signer** — a signing and custody layer with a policy engine, so an agent
    or an app never holds a raw private key.
 
-Technical decisions
-live in `docs/adr/`.
+Technical decisions live in `docs/adr/`. The economics that drive the design are
+in `docs/fee-model.md`, measured in `docs/perpl-economics.md`.
 
 ## Layout
 

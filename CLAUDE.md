@@ -1,8 +1,5 @@
 # super-agent
 
-## Communication
-- Be concise. No filler, no restating the question.
-
 ## What this project is
 Two coupled products around Hyperliquid perps trading for AI agents:
 
@@ -26,7 +23,7 @@ services/       Go module: every backend binary and the packages they share
                 and the reserved homes: strategy, policy, signer, llm
 contracts/      Foundry: on-chain leaderboard and policy engine
 api/            the app <-> services contract (OpenAPI), owned by neither side
-docs/           technical docs, English; docs/adr/ for decisions
+docs/           technical docs and architecture decision records
 design/         visual prototypes
 ```
 The repository root is **not** a Go module — `go` commands run from `services/`.
@@ -42,7 +39,7 @@ Rationale and the rules for adding a new deliverable: `docs/adr/0002-repository-
 - Standard Go: `gofmt`, `go vet`, table-driven tests, errors wrapped with context, contexts on all I/O.
 - Small commits, English messages, no attribution lines.
 
-## Working with Claude Code here
+## Working on this repository
 - When a design decision is open (LLM tool schema, order model, wallet provider), write a short ADR in `docs/adr/` rather than deciding silently in code.
 - Ask before: touching anything mainnet-related, adding a new external dependency for crypto/signing, or changing the signer↔platform API contract.
 - Do not spawn subagents / workflows unless explicitly asked.

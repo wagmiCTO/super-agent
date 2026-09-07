@@ -9,8 +9,8 @@ This repository holds more than one kind of artifact and will hold more:
 
 - **Backend services in Go.** Today one strategy engine; soon a signer that must
   run in a different trust domain, and likely an indexer and a public API.
-- **A mobile app.** The product surface, and the thing the Agora bounty is
-  judged on. Written in TypeScript against React Native.
+- **A mobile app.** The product surface. Written in TypeScript against React
+  Native.
 - **Smart contracts in Solidity.** The on-chain leaderboard and, later, the
   on-chain policy engine.
 - **Planning and design material** that is not code and must not be mixed with it.
@@ -31,7 +31,7 @@ services/          Go module: every backend binary and the packages they share
   internal/        shared packages, not importable from outside the module
 contracts/         Foundry project: Solidity, tests, deploy scripts
 api/               the app <-> services contract, language-neutral
-docs/              technical documentation, English
+docs/              technical documentation
   adr/             architecture decision records
 design/            visual prototypes and design canvases
 ```
@@ -90,8 +90,8 @@ in a repository with three, and leaves `cmd/` and `internal/` sitting next to
 `apps/` and `contracts/` at the same level, which reads as if they were peers.
 
 **A repository per deliverable.** The app, the engine and the contracts change
-together during the hackathon — an on-chain leaderboard change touches all
-three. Three repositories would mean three pull requests for one feature.
+together — an on-chain leaderboard change touches all three. Three repositories
+would mean three pull requests for one feature.
 
 **`backend/` instead of `services/`.** Names one thing where there will be
 several, and invites a single monolithic binary.

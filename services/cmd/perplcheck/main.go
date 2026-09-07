@@ -2,9 +2,9 @@
 // finds: markets and their real fee schedules, candle history, live market
 // data, and — only when asked — one round trip through the exchange.
 //
-// It is the integration gate: a trade goes through on
-// Perpl testnet from a script". Run it without -trade first; it needs no
-// credentials for anything but the last stage.
+// It is the integration gate: a trade goes through on Perpl testnet from a
+// script. Run it without -trade first; it needs no credentials for anything but
+// the last stage.
 //
 //	go run ./cmd/perplcheck
 //	go run ./cmd/perplcheck -symbol ETH -candles
