@@ -61,8 +61,9 @@ type tradingClient struct {
 	fillSubs     []chan fill
 	positionSubs []chan position
 
-	ready     chan struct{} // closed once snapshots have arrived
+	ready     chan struct{} // closed once snapshots have arrived, or on a fatal error
 	readyOnce sync.Once
+	startErr  error // set before ready is closed when the session cannot be established
 }
 
 func newTradingClient(baseURL string, s *signer, wantAccount uint64, log *slog.Logger) *tradingClient {
@@ -86,7 +87,9 @@ func (t *tradingClient) start(ctx context.Context) error {
 	go t.run(ctx)
 	select {
 	case <-t.ready:
-		return nil
+		t.mu.Lock()
+		defer t.mu.Unlock()
+		return t.startErr
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -99,12 +102,18 @@ func (t *tradingClient) run(ctx context.Context) {
 		if err != nil && ctx.Err() == nil && !t.isClosing() {
 			t.log.Warn("perpl trading session ended", "err", err, "attempt", attempt)
 		}
-		if t.isClosing() {
-			t.failInFlight()
+		t.failInFlight()
+		if t.isClosing() || ctx.Err() != nil {
 			return
 		}
-		t.failInFlight()
-		if ctx.Err() != nil {
+		// A rejected sign-in will not fix itself by retrying: the key is
+		// wrong, revoked, or belongs to the other network. Surface it and
+		// stop, so a caller blocked in start() gets an answer.
+		if isAuthFailure(err) {
+			t.mu.Lock()
+			t.startErr = fmt.Errorf("perpl: trading sign-in rejected (3401): check PERPL_API_KEY, its scope, and that it belongs to %s: %w", t.url, err)
+			t.mu.Unlock()
+			t.readyOnce.Do(func() { close(t.ready) })
 			return
 		}
 		select {
@@ -493,6 +502,15 @@ func (t *tradingClient) close() {
 		_ = conn.Close(websocket.StatusNormalClosure, "")
 	}
 }
+
+// isAuthFailure reports whether a session ended because the server rejected
+// the sign-in frame (close code 3401).
+func isAuthFailure(err error) bool {
+	return websocket.CloseStatus(err) == closeUnauthorized
+}
+
+// closeUnauthorized is the server's close code for a rejected sign-in.
+const closeUnauthorized websocket.StatusCode = 3401
 
 // Rejection is the venue's refusal of an order, with the stage it happened at.
 type Rejection struct {

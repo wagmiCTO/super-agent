@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -46,17 +47,27 @@ func (e *httpError) Retryable() bool {
 
 // get performs an unauthenticated GET.
 func (c *restClient) get(ctx context.Context, target string, out any) error {
-	return c.do(ctx, http.MethodGet, target, nil, false, out)
+	return c.do(ctx, http.MethodGet, target, nil, nil, false, out)
 }
 
 // getSigned performs a GET signed with the API key.
 func (c *restClient) getSigned(ctx context.Context, target string, out any) error {
-	return c.do(ctx, http.MethodGet, target, nil, true, out)
+	return c.do(ctx, http.MethodGet, target, nil, nil, true, out)
+}
+
+// post performs an unauthenticated JSON POST with extra headers, which the
+// enrollment endpoints need for the Origin header.
+func (c *restClient) post(ctx context.Context, target string, body any, headers map[string]string, out any) error {
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("perpl: encode %s: %w", target, err)
+	}
+	return c.do(ctx, http.MethodPost, target, raw, headers, false, out)
 }
 
 // do issues one request, retrying on 429 and 5xx with exponential backoff. Each
 // attempt is signed afresh: a nonce is single-use and a timestamp goes stale.
-func (c *restClient) do(ctx context.Context, method, target string, body []byte, sign bool, out any) error {
+func (c *restClient) do(ctx context.Context, method, target string, body []byte, headers map[string]string, sign bool, out any) error {
 	const maxAttempts = 4
 	var lastErr error
 	for attempt := range maxAttempts {
@@ -68,7 +79,7 @@ func (c *restClient) do(ctx context.Context, method, target string, body []byte,
 			case <-time.After(delay):
 			}
 		}
-		err := c.attempt(ctx, method, target, body, sign, out)
+		err := c.attempt(ctx, method, target, body, headers, sign, out)
 		if err == nil {
 			return nil
 		}
@@ -81,13 +92,16 @@ func (c *restClient) do(ctx context.Context, method, target string, body []byte,
 	return fmt.Errorf("perpl: %s: giving up after %d attempts: %w", target, maxAttempts, lastErr)
 }
 
-func (c *restClient) attempt(ctx context.Context, method, target string, body []byte, sign bool, out any) error {
+func (c *restClient) attempt(ctx context.Context, method, target string, body []byte, headers map[string]string, sign bool, out any) error {
 	req, err := http.NewRequestWithContext(ctx, method, c.base+target, bodyReader(body))
 	if err != nil {
 		return fmt.Errorf("perpl: build request %s: %w", target, err)
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 	if sign {
 		if c.signer == nil {
@@ -109,7 +123,7 @@ func (c *restClient) attempt(ctx context.Context, method, target string, body []
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
-		return &httpError{Status: resp.StatusCode, Target: target, Body: string(b)}
+		return &httpError{Status: resp.StatusCode, Target: target, Body: strings.TrimSpace(string(b))}
 	}
 	if out == nil {
 		_, _ = io.Copy(io.Discard, resp.Body)

@@ -66,10 +66,16 @@ type Config struct {
 	// AccountID is the on-chain exchange account. Zero means "discover it
 	// from the wallet snapshot on connect", which is the normal case.
 	AccountID uint64
+	// BuilderID is our registered builder code (1..255). It is bound to an
+	// API key at enrollment and frozen there; orders never carry it.
+	BuilderID int
 	// BuilderFeePer100K is the fee charged per order, in hundred-thousandths
 	// (1 = 0.1 bps), capped at 100 by the protocol. It is only accepted on a
 	// builder-bound key.
 	BuilderFeePer100K int
+	// EnrollOrigin is the HTTP Origin sent when enrolling API keys. Perpl
+	// whitelists it per integration; an unlisted origin is rejected.
+	EnrollOrigin string
 	// HTTPTimeout bounds a single REST call.
 	HTTPTimeout time.Duration
 }
@@ -85,7 +91,9 @@ var ErrMainnetNotEnabled = errors.New("perpl: mainnet requires PERPL_ALLOW_MAINN
 //	PERPL_API_KEY          X-API-Key token
 //	PERPL_API_KEY_SECRET   hex Ed25519 private key
 //	PERPL_ACCOUNT_ID       optional, discovered when unset
+//	PERPL_BUILDER_ID       optional, our registered builder code
 //	PERPL_BUILDER_FEE_PER_100K  optional, requires a builder-bound key
+//	PERPL_ENROLL_ORIGIN    Origin header for key enrollment, whitelisted by Perpl
 //	PERPL_ALLOW_MAINNET    must be 1 to select mainnet
 func ConfigFromEnv() (Config, error) {
 	cfg := Config{
@@ -111,6 +119,17 @@ func ConfigFromEnv() (Config, error) {
 		}
 		cfg.AccountID = id
 	}
+	if v := os.Getenv("PERPL_BUILDER_ID"); v != "" {
+		var id int
+		if _, err := fmt.Sscan(v, &id); err != nil {
+			return Config{}, fmt.Errorf("perpl: bad PERPL_BUILDER_ID %q: %w", v, err)
+		}
+		if id < 1 || id > maxBuilderID {
+			return Config{}, fmt.Errorf("perpl: builder id %d out of range 1..%d", id, maxBuilderID)
+		}
+		cfg.BuilderID = id
+	}
+	cfg.EnrollOrigin = strings.TrimSpace(os.Getenv("PERPL_ENROLL_ORIGIN"))
 	if v := os.Getenv("PERPL_BUILDER_FEE_PER_100K"); v != "" {
 		var bf int
 		if _, err := fmt.Sscan(v, &bf); err != nil {
@@ -127,4 +146,7 @@ func ConfigFromEnv() (Config, error) {
 // HasCredentials reports whether the config can authenticate.
 func (c Config) HasCredentials() bool { return c.APIKey != "" && c.APIKeySecret != "" }
 
-const maxBuilderFeePer100K = 100 // protocol ceiling: 0.1%
+const (
+	maxBuilderFeePer100K = 100 // protocol ceiling: 0.1%
+	maxBuilderID         = 255 // uint8 on-chain
+)

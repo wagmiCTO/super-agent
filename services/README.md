@@ -17,6 +17,7 @@ One Go module, one binary per directory under `cmd/`, shared packages under
 | `cmd/perplcheck` | Walks the Perpl integration end to end, optionally placing one round trip. |
 | `cmd/breakeven` | Recomputes the fee threshold from live fee schedules and price history. |
 | `cmd/platform` | The HTTP service the app talks to. Contract: `../api/openapi.yaml`. |
+| `cmd/perplenroll` | Exercises API-key enrollment; `-check` verifies the builder code without creating a key. |
 
 Packages that do not exist yet but have a reserved home: `internal/strategy`
 (the engine), `internal/signer` (the trust boundary — see ADR-0002),
