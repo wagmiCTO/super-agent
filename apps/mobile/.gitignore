@@ -45,3 +45,6 @@ example
 # Playwright
 test-results/
 playwright-report/
+
+# local config
+.env

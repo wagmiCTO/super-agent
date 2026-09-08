@@ -45,11 +45,39 @@ asserts only what the screen shows the player; the server log is never read.
 | `src/api/client.ts` | Typed client for the platform API; errors carry the policy limit that was hit. |
 | `src/api/schema.d.ts` | Generated from the contract. Do not edit; run `npm run gen:api`. |
 | `src/config.ts` | API URL, polling interval, notional presets. |
+| `src/account/` | Passkey ceremonies (web and native variants), key derivation, storage, the `useAccount` hook. |
+| `well-known/` | Templates a relying-party domain must serve for native passkeys. |
 | `e2e/` | Playwright: open on Up, read the one number, close; a policy refusal in words. |
+
+## Account layer: passkeys via mera
+
+`src/account/` derives the wallet from a passkey with
+[mera](https://github.com/category-labs/mera): the passkey's PRF output is the
+BIP-39 entropy, the wallet is EVM account 0 (what MetaMask would derive from the
+same phrase), and a signing session lives in memory only. Nothing derived from
+the passkey is ever persisted; the app remembers the credential id and the
+address so it can render before any prompt.
+
+One passkey, many keys: `deriveStrategyKey(seed, n)` gives an Ed25519 key per
+strategy, to be enrolled as that strategy's exchange API key under its own fee
+ceiling and policy limits. The wallet never leaves the device; an API key can
+never withdraw.
+
+**Web build** works today: the page's host is the relying party and
+`localhost` is a secure context. The e2e test runs the ceremony with a virtual
+authenticator that supports PRF.
+
+**Native build** needs three things that are not code:
+
+1. A domain you control, served over HTTPS, for `EXPO_PUBLIC_RP_ID`, hosting the
+   two files in `well-known/`.
+2. An Apple Developer team id for the iOS file and Associated Domains.
+3. A development build, not Expo Go: `npx expo prebuild && npx expo run:ios --device`
+   (iOS 18+; Android 9+ with a PRF-capable passkey provider).
+
+Passkey provider caveat: on desktop Chrome only passkeys saved to Google
+Password Manager carry PRF; iCloud Keychain (macOS 15+/iOS 18+) and 1Password do.
 
 ## Decided
 
-- **Account layer is mera** (passkey, no seed, no extension). Not wired yet; it
-  needs a development build rather than Expo Go because passkeys are a native
-  module.
 - **Every amount is a string.** The app formats; it never does money arithmetic.

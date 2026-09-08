@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAccount } from '@/account/useAccount';
 import { api, ApiError, describeError, type Market, type Position, type State } from '@/api/client';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -22,6 +23,7 @@ type Notional = (typeof NOTIONAL_PRESETS)[number];
 
 export default function DirectionScreen() {
   const theme = useTheme();
+  const account = useAccount();
   const [state, setState] = useState<State | null>(null);
   const [market, setMarket] = useState<Market | null>(null);
   const [notional, setNotional] = useState<Notional>('20');
@@ -103,6 +105,8 @@ export default function DirectionScreen() {
             </ThemedText>
           </View>
 
+          <AccountRow account={account} />
+
           <PositionCard position={position} market={market} notional={notional} />
 
           {position ? (
@@ -163,6 +167,61 @@ export default function DirectionScreen() {
         </ScrollView>
       </SafeAreaView>
     </ThemedView>
+  );
+}
+
+/**
+ * The account layer, in one row: a passkey creates or unlocks the wallet, and
+ * the address is the proof. No seed phrase, no extension, nothing custodial.
+ */
+function AccountRow({ account }: { account: ReturnType<typeof useAccount> }) {
+  const theme = useTheme();
+  const { state, busy, error } = account;
+  const address = state.status === 'unlocked' || state.status === 'remembered' ? state.stored.address : null;
+  return (
+    <View style={[styles.accountRow, { backgroundColor: theme.backgroundElement }]}>
+      <View style={{ flex: 1, gap: 2 }}>
+        <ThemedText type="small" themeColor="textSecondary">
+          {state.status === 'unlocked' ? 'Signed in with passkey' : state.status === 'remembered' ? 'Locked · passkey to unlock' : 'No account'}
+        </ThemedText>
+        {address ? (
+          <ThemedText type="code" testID="account-address" selectable>
+            {address}
+          </ThemedText>
+        ) : (
+          <ThemedText type="small">Create one with a passkey — no seed phrase</ThemedText>
+        )}
+        {error ? (
+          <ThemedText type="small" style={{ color: '#991b1b' }} testID="account-error">
+            {error}
+          </ThemedText>
+        ) : null}
+      </View>
+      <View style={{ gap: Spacing.one }}>
+        {state.status === 'none' || state.status === 'loading' ? (
+          <SmallButton label="Create account" onPress={() => void account.create()} busy={busy} />
+        ) : null}
+        {state.status !== 'unlocked' ? (
+          <SmallButton label="Sign in" onPress={() => void account.signIn()} busy={busy} />
+        ) : (
+          <SmallButton label="Sign out" onPress={() => void account.signOut()} busy={busy} />
+        )}
+      </View>
+    </View>
+  );
+}
+
+function SmallButton({ label, onPress, busy }: { label: string; onPress: () => void; busy: boolean }) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      disabled={busy}
+      style={({ pressed }) => [styles.smallButton, { backgroundColor: theme.backgroundSelected, opacity: pressed || busy ? 0.6 : 1 }]}>
+      <ThemedText type="smallBold">{label}</ThemedText>
+    </Pressable>
   );
 }
 
@@ -233,6 +292,8 @@ const styles = StyleSheet.create({
   safe: { flex: 1 },
   content: { padding: Spacing.three, gap: Spacing.three, maxWidth: 520, width: '100%', alignSelf: 'center' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  accountRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, borderRadius: 12, padding: Spacing.two },
+  smallButton: { paddingVertical: Spacing.one, paddingHorizontal: Spacing.two, borderRadius: 8, alignItems: 'center' },
   card: { borderRadius: 16, padding: Spacing.four, gap: Spacing.one, alignItems: 'center' },
   presets: { flexDirection: 'row', gap: Spacing.two },
   preset: { flex: 1, paddingVertical: Spacing.two, borderRadius: 10, alignItems: 'center' },
