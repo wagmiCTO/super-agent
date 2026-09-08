@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run web:export",
+  "outputDirectory": "dist",
+  "installCommand": "npm install --legacy-peer-deps",
+  "headers": [
+    {
+      "source": "/.well-known/apple-app-site-association",
+      "headers": [{ "key": "Content-Type", "value": "application/json" }]
+    },
+    {
+      "source": "/.well-known/assetlinks.json",
+      "headers": [{ "key": "Content-Type", "value": "application/json" }]
+    }
+  ],
+  "rewrites": [{ "source": "/((?!_expo|assets|\\.well-known).*)", "destination": "/index.html" }]
+}

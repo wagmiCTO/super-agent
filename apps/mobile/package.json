@@ -49,7 +49,7 @@
     "lint": "expo lint",
     "gen:api": "openapi-typescript ../../api/openapi.yaml -o src/api/schema.d.ts",
     "typecheck": "tsc --noEmit",
-    "web:export": "expo export --platform web --output-dir dist",
+    "web:export": "expo export --platform web --output-dir dist && mkdir -p dist/.well-known && cp well-known/apple-app-site-association well-known/assetlinks.json dist/.well-known/",
     "e2e": "playwright test"
   },
   "private": true

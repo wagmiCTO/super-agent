@@ -10,4 +10,4 @@ with no redirect:
   with each Android signing certificate's fingerprint. For a local debug build:
   `keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android`
 
-`<rpId>` is the value of `EXPO_PUBLIC_RP_ID`, a host name without scheme or path.
+`<rpId>` is the value of `EXPO_PUBLIC_RP_ID` — `inflight.work`, the apex, so the web app on any subdomain and the native app share passkeys.
