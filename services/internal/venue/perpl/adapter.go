@@ -49,6 +49,12 @@ type Adapter struct {
 	marketByClient  map[string]int
 
 	positions map[uint64]position
+
+	// marks is the live mark price per market from the market-state stream.
+	// Unrealized PnL is valued against it; the context's snapshot is only a
+	// fallback until the first frame arrives.
+	marks    map[int]fixed.D
+	markFeed sync.Once
 }
 
 // New builds an adapter. Without credentials the trading methods return
@@ -77,6 +83,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*Adapter, error) {
 		orderIDByClient: make(map[string]uint64),
 		marketByClient:  make(map[string]int),
 		positions:       make(map[uint64]position),
+		marks:           make(map[int]fixed.D),
 	}
 
 	var sgn *signer
@@ -101,8 +108,64 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*Adapter, error) {
 		if err := a.trade.start(ctx); err != nil {
 			return nil, err
 		}
+		// A trading adapter values positions continuously; start the mark
+		// feed now rather than on the first Positions call.
+		a.startMarkFeed(ctx)
 	}
 	return a, nil
+}
+
+// startMarkFeed subscribes to the venue's market-state stream once and keeps
+// the latest mark per market. Frames arrive every block, so a position's
+// unrealized PnL moves at the venue's own cadence instead of freezing on the
+// mark the context happened to carry when it was last fetched.
+func (a *Adapter) startMarkFeed(ctx context.Context) {
+	a.markFeed.Do(func() {
+		stream := fmt.Sprintf("market-state@%d", a.cfg.Network.ChainID)
+		err := a.md.subscribe(ctx, stream, func(mt int, raw []byte) {
+			if mt != msgMarketState {
+				return
+			}
+			var msg marketStateUpdate
+			if err := jsonUnmarshal(raw, &msg); err != nil {
+				return
+			}
+			a.mu.Lock()
+			defer a.mu.Unlock()
+			for idStr, st := range msg.Data {
+				id, err := strconv.Atoi(idStr)
+				if err != nil {
+					continue
+				}
+				m, ok := a.byID[id]
+				if !ok || st.Mark <= 0 {
+					continue
+				}
+				if mark, err := fixed.FromScaled(st.Mark, m.Config.PriceDecimals); err == nil {
+					a.marks[id] = mark
+				}
+			}
+		})
+		if err != nil {
+			a.log.Warn("perpl: mark feed not started; PnL will use the context snapshot", "err", err)
+		}
+	})
+}
+
+// markFor returns the live mark for a market, falling back to the context
+// snapshot. ok is false when neither is usable.
+func (a *Adapter) markFor(m market) (fixed.D, bool) {
+	a.mu.Lock()
+	live, ok := a.marks[m.ID]
+	a.mu.Unlock()
+	if ok && live.IsPos() {
+		return live, true
+	}
+	mark, err := fixed.FromScaled(m.State.Mark, m.Config.PriceDecimals)
+	if err != nil || !mark.IsPos() {
+		return 0, false
+	}
+	return mark, true
 }
 
 // Name identifies the venue.
@@ -553,6 +616,7 @@ func (a *Adapter) Positions(ctx context.Context) ([]venue.Position, error) {
 	if a.trade == nil {
 		return nil, venue.ErrNoCredentials
 	}
+	a.startMarkFeed(ctx)
 	a.mu.Lock()
 	raw := make([]position, 0, len(a.positions))
 	for _, p := range a.positions {

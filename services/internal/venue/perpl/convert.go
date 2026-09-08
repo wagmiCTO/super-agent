@@ -264,7 +264,7 @@ func (a *Adapter) toVenuePosition(p position) (venue.Position, error) {
 		RealizedFunding: funding,
 		OpenedAt:        msTime(p.OpenedAt.Time),
 	}
-	if mark, err := fixed.FromScaled(m.State.Mark, m.Config.PriceDecimals); err == nil && mark.IsPos() {
+	if mark, ok := a.markFor(m); ok {
 		move := mark.Sub(entry)
 		if side == venue.Short {
 			move = move.Neg()

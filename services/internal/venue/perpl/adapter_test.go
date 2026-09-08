@@ -34,6 +34,7 @@ func adapterWith(t *testing.T, res *contextResponse) *Adapter {
 		byID:            make(map[int]market),
 		orderIDByClient: make(map[string]uint64),
 		clientByReq:     make(map[uint64]string),
+		marks:           make(map[int]fixed.D),
 	}
 	for _, m := range res.Markets {
 		a.markets[m.ticker()] = m
@@ -278,5 +279,44 @@ func TestSizeStepRounding(t *testing.T) {
 				t.Errorf("rounded size = %s, want %s", got, want)
 			}
 		})
+	}
+}
+
+// Unrealized PnL must follow the live mark from the market-state stream. The
+// context snapshot is only the fallback before the first frame arrives; valuing
+// against it indefinitely is how the number on screen freezes.
+func TestUnrealizedPnLFollowsLiveMark(t *testing.T) {
+	a := adapterWith(t, loadContext(t))
+	mon := a.markets["MON"]
+	pos := position{Market: mon.ID, PositionID: 1, Status: positionStatusOpen, Side: positionLong,
+		Size: 800, EntryPrice: 2500, Leverage: 200, Collateral: "10000000", Fee: "13800", Funding: "0"}
+
+	// No live mark yet: fall back to the snapshot (0.02542 in the fixture).
+	before, err := a.toVenuePosition(pos)
+	if err != nil {
+		t.Fatalf("toVenuePosition: %v", err)
+	}
+	snapshotMark := fixed.MustFromScaled(mon.State.Mark, mon.Config.PriceDecimals)
+	if want := snapshotMark.Sub(fixed.MustParse("0.025")).Mul(fixed.FromInt(800)); before.UnrealizedPnL != want {
+		t.Errorf("fallback PnL = %s, want %s", before.UnrealizedPnL, want)
+	}
+
+	// A live mark arrives: PnL moves with it.
+	a.mu.Lock()
+	a.marks[mon.ID] = fixed.MustParse("0.026")
+	a.mu.Unlock()
+	after, err := a.toVenuePosition(pos)
+	if err != nil {
+		t.Fatalf("toVenuePosition: %v", err)
+	}
+	if want := fixed.MustParse("0.8"); after.UnrealizedPnL != want { // (0.026-0.025)*800
+		t.Errorf("live PnL = %s, want %s", after.UnrealizedPnL, want)
+	}
+
+	// A short is valued the other way round.
+	pos.Side = positionShort
+	short, _ := a.toVenuePosition(pos)
+	if want := fixed.MustParse("-0.8"); short.UnrealizedPnL != want {
+		t.Errorf("short PnL = %s, want %s", short.UnrealizedPnL, want)
 	}
 }
