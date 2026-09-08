@@ -3,6 +3,8 @@ package platform
 import (
 	"context"
 	"errors"
+	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -274,3 +276,6 @@ func TestRealizedPnL(t *testing.T) {
 		})
 	}
 }
+
+func stringsReader(s string) io.Reader { return strings.NewReader(s) }
+func trimNL(s string) string           { return strings.TrimRight(s, "\n") }

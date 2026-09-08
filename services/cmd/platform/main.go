@@ -70,9 +70,12 @@ func run(log *slog.Logger) error {
 	// Bind to loopback unless told otherwise: this API places orders and has
 	// no authentication yet.
 	addr := envOr("PLATFORM_ADDR", "127.0.0.1:8080")
+	// Only the web build of the app needs CORS; the defaults cover Expo's
+	// dev server. The native app talks to the API directly.
+	corsOrigins := splitList(envOr("PLATFORM_CORS_ORIGINS", "http://localhost:8081,http://localhost:19006"))
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           platform.Handler(svc, log),
+		Handler:           platform.Handler(svc, log, platform.WithCORS(corsOrigins)),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -111,7 +114,9 @@ func limitsFromEnv() (policy.Limits, error) {
 	var l policy.Limits
 	var err error
 
-	l.AllowedSymbols = splitList(envOr("PLATFORM_ALLOWED_SYMBOLS", "MON"))
+	for _, sym := range splitList(envOr("PLATFORM_ALLOWED_SYMBOLS", "MON")) {
+		l.AllowedSymbols = append(l.AllowedSymbols, strings.ToUpper(sym))
+	}
 	if l.MinNotional, err = decimalEnv("PLATFORM_MIN_NOTIONAL", "5"); err != nil {
 		return l, err
 	}
@@ -158,7 +163,7 @@ func envOr(key, def string) string {
 func splitList(s string) []string {
 	var out []string
 	for _, part := range strings.Split(s, ",") {
-		if p := strings.ToUpper(strings.TrimSpace(part)); p != "" {
+		if p := strings.TrimSpace(part); p != "" {
 			out = append(out, p)
 		}
 	}

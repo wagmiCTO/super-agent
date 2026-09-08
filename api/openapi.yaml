@@ -64,7 +64,9 @@ paths:
             schema: { $ref: "#/components/schemas/OpenRequest" }
       responses:
         "200":
-          description: Accepted by the venue. Check `status`; a venue-side failure arrives here with `status: failed` and a `rejection`.
+          description: >-
+            Accepted by the venue. Check `status`: a venue-side failure arrives
+            here with status `failed` and a `rejection`.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Order" }
@@ -156,6 +158,7 @@ components:
 
     Fees:
       type: object
+      required: [maker_rate, taker_rate, builder_rate, charged_on, posting_fee, round_trip_taker, round_trip_taker_bps, break_even_move_taker]
       description: Rates are fractions of notional ("0.00069" is 6.9 bps).
       properties:
         maker_rate: { $ref: "#/components/schemas/Decimal" }
@@ -178,6 +181,7 @@ components:
 
     Account:
       type: object
+      required: [id, balance, locked, can_trade, frozen, fee_tier]
       properties:
         id: { type: string }
         balance: { $ref: "#/components/schemas/Decimal" }
@@ -190,6 +194,7 @@ components:
 
     Position:
       type: object
+      required: [id, symbol, side, size, entry_price, notional, collateral, leverage, unrealized_pnl, fees_paid]
       properties:
         id: { type: string }
         symbol: { type: string }
@@ -205,6 +210,7 @@ components:
 
     Limits:
       type: object
+      required: [allowed_symbols, min_notional, max_notional, max_leverage, max_total_exposure, max_open_positions, daily_loss, cooldown_seconds]
       properties:
         allowed_symbols: { type: array, items: { type: string } }
         min_notional: { $ref: "#/components/schemas/Decimal" }
@@ -217,6 +223,7 @@ components:
 
     Risk:
       type: object
+      required: [open_positions, exposure, daily_loss]
       description: How much of the limits is currently used.
       properties:
         open_positions: { type: integer }
@@ -226,6 +233,7 @@ components:
 
     State:
       type: object
+      required: [venue, account, positions, limits, risk, killed]
       properties:
         venue: { type: string, example: perpl }
         account: { $ref: "#/components/schemas/Account" }
@@ -256,6 +264,7 @@ components:
 
     Order:
       type: object
+      required: [client_id, venue_id, symbol, side, status, size, filled_size, avg_price, fee, builder_fee]
       properties:
         client_id: { type: string, description: The idempotency key the service generated. }
         venue_id: { type: string }
@@ -270,8 +279,7 @@ components:
           description: Gross fee charged, protocol plus builder.
         builder_fee: { $ref: "#/components/schemas/Decimal" }
         rejection:
-          type: object
-          nullable: true
+          type: [object, "null"]
           properties:
             code: { type: string }
             detail: { type: string }

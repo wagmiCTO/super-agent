@@ -19,9 +19,13 @@ import (
 //
 // The contract is api/openapi.yaml; this file is the implementation of it and
 // must not drift from it.
-func Handler(s *Service, log *slog.Logger) http.Handler {
+func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	if log == nil {
 		log = slog.Default()
+	}
+	var o options
+	for _, opt := range opts {
+		opt(&o)
 	}
 	h := &handler{svc: s, log: log}
 	mux := http.NewServeMux()
@@ -32,7 +36,49 @@ func Handler(s *Service, log *slog.Logger) http.Handler {
 	mux.HandleFunc("POST /v1/orders/close", h.close)
 	mux.HandleFunc("POST /v1/kill", h.kill)
 	mux.HandleFunc("POST /v1/revive", h.revive)
-	return logRequests(mux, log)
+	var out http.Handler = mux
+	if len(o.corsOrigins) > 0 {
+		out = cors(out, o.corsOrigins)
+	}
+	return logRequests(out, log)
+}
+
+// Option configures the handler.
+type Option func(*options)
+
+type options struct {
+	corsOrigins []string
+}
+
+// WithCORS allows browser pages served from the given origins to call the API.
+// The native app never needs this; the web build of the same app does, because
+// a browser will not let a page on one origin read a response from another.
+// Origins are matched exactly, so a stray "*" cannot slip in.
+func WithCORS(origins []string) Option {
+	return func(o *options) { o.corsOrigins = origins }
+}
+
+func cors(next http.Handler, allowed []string) http.Handler {
+	allow := make(map[string]bool, len(allowed))
+	for _, a := range allowed {
+		allow[strings.TrimRight(strings.TrimSpace(a), "/")] = true
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if origin != "" && allow[origin] {
+			h := w.Header()
+			h.Set("Access-Control-Allow-Origin", origin)
+			h.Set("Vary", "Origin")
+			h.Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			h.Set("Access-Control-Allow-Headers", "Content-Type")
+			h.Set("Access-Control-Max-Age", "600")
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 type handler struct {
