@@ -27,6 +27,16 @@ On a physical phone set the laptop's LAN address:
 Static web build for a demo link: `npx expo export --platform web --output-dir dist`
 and serve `dist/` from any static host; add that origin to `PLATFORM_CORS_ORIGINS`.
 
+## End-to-end tests
+
+```bash
+npm run web:export        # static build into dist/
+npm run e2e               # Playwright against dist/ and a platform on :8080
+```
+
+They place real orders on testnet, so they are not part of `npm test`. A test
+asserts only what the screen shows the player; the server log is never read.
+
 ## Layout
 
 | Path | What |
@@ -35,6 +45,7 @@ and serve `dist/` from any static host; add that origin to `PLATFORM_CORS_ORIGIN
 | `src/api/client.ts` | Typed client for the platform API; errors carry the policy limit that was hit. |
 | `src/api/schema.d.ts` | Generated from the contract. Do not edit; run `npm run gen:api`. |
 | `src/config.ts` | API URL, polling interval, notional presets. |
+| `e2e/` | Playwright: open on Up, read the one number, close; a policy refusal in words. |
 
 ## Decided
 

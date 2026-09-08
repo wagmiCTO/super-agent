@@ -29,7 +29,15 @@ func delayFor(attempt int) time.Duration {
 }
 
 func dial(ctx context.Context, url string) (*websocket.Conn, error) {
-	conn, _, err := websocket.Dial(ctx, url, nil)
+	conn, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{
+		// Diagnostic: the server pings every 5s and closes the socket when
+		// pongs stop. The library answers pongs only while a Read is active,
+		// so a visible gap here means the read loop is stuck somewhere.
+		OnPingReceived: func(context.Context, []byte) bool {
+			slog.Debug("ws ping", "url", url)
+			return true
+		},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("perpl: dial %s: %w", url, err)
 	}

@@ -107,6 +107,8 @@ export default function DirectionScreen() {
 
           {position ? (
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close position"
               onPress={close}
               disabled={busy !== null}
               style={({ pressed }) => [styles.closeButton, { opacity: pressed || busy ? 0.6 : 1 }]}>
@@ -122,6 +124,9 @@ export default function DirectionScreen() {
                 {NOTIONAL_PRESETS.map((n) => (
                   <Pressable
                     key={n}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Amount ${n}`}
+                    accessibilityState={{ selected: n === notional }}
                     onPress={() => setNotional(n)}
                     style={[
                       styles.preset,
@@ -139,7 +144,9 @@ export default function DirectionScreen() {
           )}
 
           {notice ? (
-            <View style={[styles.notice, { backgroundColor: notice.kind === 'error' ? '#fee2e2' : theme.backgroundElement }]}>
+            <View
+              testID="notice"
+              style={[styles.notice, { backgroundColor: notice.kind === 'error' ? '#fee2e2' : theme.backgroundElement }]}>
               <ThemedText type="small" style={notice.kind === 'error' ? { color: '#991b1b' } : undefined}>
                 {notice.text}
               </ThemedText>
@@ -170,7 +177,7 @@ function PositionCard({ position, market, notional }: { position: Position | nul
         <ThemedText type="small" themeColor="textSecondary">
           {position.side === 'long' ? 'Up' : 'Down'} · {trim(position.size)} {position.symbol} @ {trim(position.entry_price)} · {position.leverage}x
         </ThemedText>
-        <ThemedText type="title" style={{ color }}>
+        <ThemedText type="title" style={{ color }} testID="big-number">
           {pnl > 0 ? '+' : ''}
           {trim(position.unrealized_pnl)}
         </ThemedText>
@@ -187,7 +194,9 @@ function PositionCard({ position, market, notional }: { position: Position | nul
       <ThemedText type="small" themeColor="textSecondary">
         No position
       </ThemedText>
-      <ThemedText type="title">{notional}</ThemedText>
+      <ThemedText type="title" testID="big-number">
+        {notional}
+      </ThemedText>
       <ThemedText type="small" themeColor="textSecondary">
         {fee !== null ? `round trip costs ${fee} (${bps} bps) · ${DEFAULT_LEVERAGE}x` : `${DEFAULT_LEVERAGE}x`}
       </ThemedText>
@@ -198,6 +207,8 @@ function PositionCard({ position, market, notional }: { position: Position | nul
 function DirectionButton({ label, color, busy, disabled, onPress }: { label: string; color: string; busy: boolean; disabled: boolean; onPress: () => void }) {
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
       onPress={onPress}
       disabled={disabled}
       style={({ pressed }) => [styles.direction, { backgroundColor: color, opacity: pressed || disabled ? 0.6 : 1 }]}>

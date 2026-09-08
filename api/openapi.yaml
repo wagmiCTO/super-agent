@@ -296,7 +296,8 @@ components:
             kill_switch, symbol_not_allowed, notional_too_large, notional_too_small,
             leverage_too_high, daily_loss_limit_reached, cooldown,
             too_many_open_positions, total_exposure_too_large, malformed_request.
-            Others: invalid_request, venue_rejected, unknown_market, no_position,
+            Others: invalid_request, venue_rejected, venue_disconnected (503: outcome
+            unknown, re-read state and retry), unknown_market, no_position,
             no_credentials, internal.
         message: { type: string, description: For a person. }
         limit: { $ref: "#/components/schemas/Decimal" }

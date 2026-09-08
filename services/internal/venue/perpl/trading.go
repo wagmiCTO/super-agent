@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/wagmiCTO/super-agent/services/internal/venue"
 )
 
 var (
@@ -17,7 +18,7 @@ var (
 	// errDisconnected fails every request in flight when the socket drops. A
 	// close carries no per-request status, so the outcome is unknown and the
 	// caller must reconcile rather than assume the order was dropped.
-	errDisconnected = errors.New("perpl: trading connection closed with requests in flight")
+	errDisconnected = fmt.Errorf("perpl: trading connection closed with requests in flight: %w", venue.ErrDisconnected)
 )
 
 // accountState is what the trading socket tells us about our own account. It is
@@ -166,10 +167,19 @@ func (t *tradingClient) session(ctx context.Context) error {
 	}
 }
 
-// keepAlive pings every 30 seconds. At two requests a minute this is negligible
-// against the trading budget of 60/min on testnet.
+// keepAliveInterval is how often the client pings the trading socket.
+//
+// The docs suggest 30 seconds; measured on 2026-09-09 that gets the session
+// closed with 1008 "ping timeout" about every two minutes, and any order in
+// flight at that moment fails. The server's idle window is 5s on mainnet and
+// 10s on testnet, so the ping has to sit inside the smaller one. At 3s that is
+// 20 requests a minute against a budget of 60 (testnet) / 120 (mainnet).
+const keepAliveInterval = 3 * time.Second
+
+// keepAlive sends application-level pings so the server never sees the
+// connection as idle.
 func (t *tradingClient) keepAlive(ctx context.Context, conn *websocket.Conn) {
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(keepAliveInterval)
 	defer ticker.Stop()
 	for {
 		select {

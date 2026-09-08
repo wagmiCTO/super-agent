@@ -312,6 +312,10 @@ func (h *handler) fail(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusNotFound, errorDTO{Error: "no_position", Message: err.Error()})
 	case errors.Is(err, ErrInvalid):
 		writeJSON(w, http.StatusBadRequest, errorDTO{Error: "invalid_request", Message: err.Error()})
+	case errors.Is(err, venue.ErrDisconnected):
+		// Not a refusal: the venue link dropped mid-request and the outcome is
+		// unknown. The app re-reads state on its next poll; the player retries.
+		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "venue_disconnected", Message: "lost the exchange connection while placing the order — check the position and retry"})
 	case errors.Is(err, venue.ErrNoCredentials):
 		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "no_credentials", Message: "the service has no venue credentials"})
 	default:

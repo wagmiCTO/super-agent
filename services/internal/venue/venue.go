@@ -26,6 +26,10 @@ var (
 	ErrRejected = errors.New("venue: order rejected")
 	// ErrNotSupported is returned for a capability this venue lacks.
 	ErrNotSupported = errors.New("venue: not supported")
+	// ErrDisconnected is returned when the venue connection dropped while a
+	// request was in flight. The outcome is unknown: the caller must re-read
+	// positions rather than assume the order was not placed.
+	ErrDisconnected = errors.New("venue: connection dropped with request in flight")
 )
 
 // Side is the direction of a position or an order.
