@@ -24,6 +24,7 @@ import (
 
 	"github.com/wagmiCTO/super-agent/services/internal/envfile"
 	"github.com/wagmiCTO/super-agent/services/internal/fixed"
+	"github.com/wagmiCTO/super-agent/services/internal/keys"
 	"github.com/wagmiCTO/super-agent/services/internal/platform"
 	"github.com/wagmiCTO/super-agent/services/internal/policy"
 	"github.com/wagmiCTO/super-agent/services/internal/venue/perpl"
@@ -67,6 +68,20 @@ func run(log *slog.Logger) error {
 		return err
 	}
 
+	// Enrollment of user wallets needs our builder code; without one the
+	// endpoints answer 503 and the platform trades with its own key only.
+	handlerOpts := []platform.Option{}
+	if cfg.BuilderID > 0 {
+		enrollment, err := platform.NewEnrollment(adapter, keys.New(), cfg.BuilderID, cfg.BuilderFeePer100K, log)
+		if err != nil {
+			return err
+		}
+		handlerOpts = append(handlerOpts, platform.WithEnrollment(enrollment))
+		log.Info("enrollment enabled", "builder_id", cfg.BuilderID, "max_fee_per_100k", cfg.BuilderFeePer100K)
+	} else {
+		log.Warn("enrollment disabled: PERPL_BUILDER_ID is not set")
+	}
+
 	// Bind to loopback unless told otherwise: this API places orders and has
 	// no authentication yet.
 	addr := envOr("PLATFORM_ADDR", "127.0.0.1:8080")
@@ -75,7 +90,7 @@ func run(log *slog.Logger) error {
 	corsOrigins := splitList(envOr("PLATFORM_CORS_ORIGINS", "http://localhost:8081,http://localhost:19006"))
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           platform.Handler(svc, log, platform.WithCORS(corsOrigins)),
+		Handler:           platform.Handler(svc, log, append(handlerOpts, platform.WithCORS(corsOrigins))...),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,

@@ -1,0 +1,171 @@
+package platform
+
+import (
+	"context"
+	"crypto/ed25519"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"os"
+	"strconv"
+	"strings"
+	"testing"
+
+	"github.com/wagmiCTO/super-agent/services/internal/eip712"
+	"github.com/wagmiCTO/super-agent/services/internal/keys"
+	"github.com/wagmiCTO/super-agent/services/internal/venue/perpl"
+)
+
+// fakeEnroller plays the venue: it hands back a real payload (the fixture the
+// EIP-712 tests use) and, on enroll, verifies the proof-of-possession the way
+// the venue would — Ed25519 over the EIP-712 digest, by the enrolled key.
+type fakeEnroller struct {
+	t         *testing.T
+	typedData []byte
+	builderID int
+	maxFee    int
+	// captured
+	payloadReq perpl.EnrollmentRequest
+	enrolled   *perpl.APIKeyInfo
+	popOK      bool
+	failEnroll error
+}
+
+func (f *fakeEnroller) EnrollmentPayload(_ context.Context, req perpl.EnrollmentRequest) (perpl.EnrollmentPayload, error) {
+	f.payloadReq = req
+	// Rewrite the fixture's builder terms to whatever this fake advertises.
+	var doc map[string]any
+	if err := json.Unmarshal(f.typedData, &doc); err != nil {
+		f.t.Fatal(err)
+	}
+	msg := doc["message"].(map[string]any)
+	// The venue types these as strings, not numbers.
+	msg["builderId"] = itoa(f.builderID)
+	msg["maxBuilderFeePer100K"] = itoa(f.maxFee)
+	raw, _ := json.Marshal(doc)
+	return perpl.EnrollmentPayload{TypedData: raw, MAC: "mac-1"}, nil
+}
+
+func (f *fakeEnroller) Enroll(_ context.Context, address string, payload perpl.EnrollmentPayload, walletSig, popSig string) (perpl.APIKeyInfo, error) {
+	if f.failEnroll != nil {
+		return perpl.APIKeyInfo{}, f.failEnroll
+	}
+	td, err := eip712.Parse(payload.TypedData)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	digest, err := eip712.Digest(td, eip712.Keccak256)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	sig, err := hex.DecodeString(strings.TrimPrefix(popSig, "0x"))
+	if err != nil {
+		f.t.Fatalf("pop is not hex: %v", err)
+	}
+	f.popOK = ed25519.Verify(f.payloadReq.PublicKey, digest[:], sig)
+	info := perpl.APIKeyInfo{
+		APIKey:               "pk_enrolled",
+		Address:              address,
+		ScopeMask:            3,
+		Label:                f.payloadReq.Label,
+		BuilderID:            f.builderID,
+		MaxBuilderFeePer100K: f.maxFee,
+		MaxBuilderFeePct:     "0.050%",
+	}
+	f.enrolled = &info
+	return info, nil
+}
+
+func itoa(n int) string { return strconv.Itoa(n) }
+
+func fixtureTypedData(t *testing.T) []byte {
+	t.Helper()
+	raw, err := os.ReadFile("../eip712/testdata/perpl-enroll.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f struct {
+		TypedData json.RawMessage `json:"typed_data"`
+	}
+	if err := json.Unmarshal(raw, &f); err != nil {
+		t.Fatal(err)
+	}
+	return f.TypedData
+}
+
+const walletSig = "0x" + "11" + "2222222222222222222222222222222222222222222222222222222222222222" + "3333333333333333333333333333333333333333333333333333333333333333" // 65 bytes, shape only
+
+func TestEnrollmentRoundTrip(t *testing.T) {
+	fake := &fakeEnroller{t: t, typedData: fixtureTypedData(t), builderID: 18, maxFee: 50}
+	store := keys.New()
+	e, err := NewEnrollment(fake, store, 18, 50, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := "0x000000000000000000000000000000000000dEaD"
+
+	res, err := e.Payload(context.Background(), addr, "phone")
+	if err != nil {
+		t.Fatalf("Payload: %v", err)
+	}
+	if res.Handle == "" || len(res.TypedData) == 0 {
+		t.Fatalf("payload result incomplete: %+v", res)
+	}
+	if fake.payloadReq.BuilderID != 18 || fake.payloadReq.MaxBuilderFeePer100K != 50 || fake.payloadReq.ScopeMask != 3 {
+		t.Errorf("venue asked with %+v", fake.payloadReq)
+	}
+	if !strings.Contains(res.Statement, "builder code 18") {
+		t.Errorf("statement = %q", res.Statement)
+	}
+
+	k, err := e.Enroll(context.Background(), res.Handle, walletSig)
+	if err != nil {
+		t.Fatalf("Enroll: %v", err)
+	}
+	if !fake.popOK {
+		t.Error("proof-of-possession did not verify over the EIP-712 digest")
+	}
+	if k.APIKey != "pk_enrolled" || k.BuilderID != 18 || k.MaxBuilderFeePer100K != 50 {
+		t.Errorf("stored key = %+v", k)
+	}
+	got, err := store.Get(addr)
+	if err != nil || got.APIKey != "pk_enrolled" {
+		t.Errorf("store.Get = %+v, %v", got, err)
+	}
+	// A handle is single-use.
+	if _, err := e.Enroll(context.Background(), res.Handle, walletSig); !errors.Is(err, ErrInvalid) {
+		t.Errorf("second enroll with the same handle: %v", err)
+	}
+}
+
+// If the venue hands back a document with different builder terms than we
+// asked for, the wallet must not be asked to sign it.
+func TestPayloadRefusesForeignBuilderTerms(t *testing.T) {
+	fake := &fakeEnroller{t: t, typedData: fixtureTypedData(t), builderID: 7, maxFee: 50}
+	e, _ := NewEnrollment(fake, keys.New(), 18, 50, nil)
+	if _, err := e.Payload(context.Background(), "0x000000000000000000000000000000000000dEaD", ""); err == nil {
+		t.Error("payload with builder 7 was accepted for builder 18")
+	}
+}
+
+func TestEnrollValidation(t *testing.T) {
+	fake := &fakeEnroller{t: t, typedData: fixtureTypedData(t), builderID: 18, maxFee: 50}
+	e, _ := NewEnrollment(fake, keys.New(), 18, 50, nil)
+
+	if _, err := e.Payload(context.Background(), "not-an-address", ""); !errors.Is(err, ErrInvalid) {
+		t.Errorf("bad address: %v", err)
+	}
+	if _, err := e.Enroll(context.Background(), "nope", walletSig); !errors.Is(err, ErrInvalid) {
+		t.Errorf("unknown handle: %v", err)
+	}
+	res, _ := e.Payload(context.Background(), "0x000000000000000000000000000000000000dEaD", "")
+	if _, err := e.Enroll(context.Background(), res.Handle, "0xdeadbeef"); !errors.Is(err, ErrInvalid) {
+		t.Errorf("malformed signature: %v", err)
+	}
+	if _, err := NewEnrollment(fake, keys.New(), 0, 50, nil); err == nil {
+		t.Error("builder id 0 accepted")
+	}
+	if _, err := NewEnrollment(fake, keys.New(), 18, 101, nil); err == nil {
+		t.Error("fee above the protocol ceiling accepted")
+	}
+}

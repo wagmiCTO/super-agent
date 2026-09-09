@@ -95,6 +95,81 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/VenueRejected" }
 
+  /v1/exchange/enroll/payload:
+    post:
+      summary: Start enrolling an exchange API key for a wallet
+      description: |
+        The platform generates an Ed25519 key pair and asks the venue for the
+        EIP-712 document that binds that key to the wallet and to our builder
+        terms. The wallet signs `typed_data`; `statement` is the prose the
+        user reads in the prompt. The private key waits on the server for
+        `expires_at`.
+
+        When signing with viem, pass `domain.chainId` as a **bigint**: given a
+        string, viem drops chainId from the domain type and the venue rejects
+        the signature.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [address]
+              properties:
+                address: { type: string, description: The wallet the key is for, 0x-hex. }
+                label: { type: string, description: Shown on the venue's key page. }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnrollPayload" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "422": { $ref: "#/components/responses/VenueRejected" }
+        "503":
+          description: No builder code configured; enrollment is unavailable.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /v1/exchange/enroll:
+    post:
+      summary: Finish enrolling with the wallet's signature
+      description: |
+        The platform computes the EIP-712 digest, signs it with the pending
+        Ed25519 key as proof of possession, and submits both to the venue. On
+        success the key is stored and the platform can trade for this wallet.
+        A handle is single-use.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [handle, signature]
+              properties:
+                handle: { type: string }
+                signature: { type: string, description: The wallet's EIP-712 signature, 0x-hex, 65 bytes. }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnrolledKey" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "422": { $ref: "#/components/responses/VenueRejected" }
+
+  /v1/exchange/key:
+    get:
+      summary: The enrolled key for a wallet, without secrets
+      parameters:
+        - in: query
+          name: address
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnrolledKey" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /v1/kill:
     post:
       summary: Engage the kill switch — stops all opening, closing stays allowed
@@ -285,6 +360,30 @@ components:
             detail: { type: string }
         updated_at: { type: string, format: date-time }
 
+    EnrollPayload:
+      type: object
+      required: [handle, typed_data, statement, builder_id, max_builder_fee_per_100k, expires_at]
+      properties:
+        handle: { type: string, description: Single-use; identifies the pending key. }
+        typed_data:
+          type: object
+          description: EIP-712 document (types, primaryType, domain, message). Sign it exactly as given.
+        statement: { type: string, description: The prose the user reads in the wallet prompt. }
+        builder_id: { type: integer }
+        max_builder_fee_per_100k: { type: integer, description: 1 = 0.1 bps; the ceiling the user consents to. }
+        expires_at: { type: string, format: date-time }
+
+    EnrolledKey:
+      type: object
+      required: [address, label, builder_id, max_builder_fee_per_100k, enrolled_at]
+      properties:
+        address: { type: string }
+        label: { type: string }
+        builder_id: { type: integer }
+        max_builder_fee_per_100k: { type: integer }
+        max_builder_fee_pct: { type: string, example: "0.050%" }
+        enrolled_at: { type: string, format: date-time }
+
     Error:
       type: object
       required: [error, message]
@@ -297,6 +396,7 @@ components:
             leverage_too_high, daily_loss_limit_reached, cooldown,
             too_many_open_positions, total_exposure_too_large, malformed_request.
             Others: invalid_request, venue_rejected, venue_disconnected (503: outcome
+            unknown), enrollment_unavailable, no_key,
             unknown, re-read state and retry), unknown_market, no_position,
             no_credentials, internal.
         message: { type: string, description: For a person. }

@@ -27,8 +27,11 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	for _, opt := range opts {
 		opt(&o)
 	}
-	h := &handler{svc: s, log: log}
+	h := &handler{svc: s, log: log, enroll: o.enrollment}
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v1/exchange/enroll/payload", h.enrollPayload)
+	mux.HandleFunc("POST /v1/exchange/enroll", h.enrollFinish)
+	mux.HandleFunc("GET /v1/exchange/key", h.enrolledKey)
 	mux.HandleFunc("GET /v1/health", h.health)
 	mux.HandleFunc("GET /v1/markets", h.markets)
 	mux.HandleFunc("GET /v1/state", h.state)
@@ -48,6 +51,14 @@ type Option func(*options)
 
 type options struct {
 	corsOrigins []string
+	enrollment  *Enrollment
+}
+
+// WithEnrollment exposes the API-key enrollment endpoints. Without it they
+// answer 503: the platform can trade with its own key but cannot take on
+// user wallets, which is the state before a builder code is configured.
+func WithEnrollment(e *Enrollment) Option {
+	return func(o *options) { o.enrollment = e }
 }
 
 // WithCORS allows browser pages served from the given origins to call the API.
@@ -82,8 +93,9 @@ func cors(next http.Handler, allowed []string) http.Handler {
 }
 
 type handler struct {
-	svc *Service
-	log *slog.Logger
+	svc    *Service
+	log    *slog.Logger
+	enroll *Enrollment
 }
 
 // --- wire types ---
@@ -306,6 +318,8 @@ func (h *handler) fail(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusUnprocessableEntity, errorDTO{Error: "venue_rejected", Message: rejection.Error()})
 	case errors.Is(err, venue.ErrRejected):
 		writeJSON(w, http.StatusUnprocessableEntity, errorDTO{Error: "venue_rejected", Message: err.Error()})
+	case isVenueHTTPError(err):
+		writeJSON(w, http.StatusUnprocessableEntity, errorDTO{Error: "venue_rejected", Message: err.Error()})
 	case errors.Is(err, venue.ErrUnknownMarket):
 		writeJSON(w, http.StatusNotFound, errorDTO{Error: "unknown_market", Message: err.Error()})
 	case errors.Is(err, ErrNoPosition):
@@ -440,6 +454,99 @@ func toOrderDTO(o venue.Order) orderDTO {
 	return out
 }
 
+// --- enrollment ---
+
+type enrollPayloadReqDTO struct {
+	Address string `json:"address"`
+	Label   string `json:"label"`
+}
+
+type enrollPayloadDTO struct {
+	Handle    string          `json:"handle"`
+	TypedData json.RawMessage `json:"typed_data"`
+	Statement string          `json:"statement"`
+	BuilderID int             `json:"builder_id"`
+	MaxFee    int             `json:"max_builder_fee_per_100k"`
+	ExpiresAt string          `json:"expires_at"`
+}
+
+type enrollReqDTO struct {
+	Handle    string `json:"handle"`
+	Signature string `json:"signature"`
+}
+
+type enrolledKeyDTO struct {
+	Address    string `json:"address"`
+	Label      string `json:"label"`
+	BuilderID  int    `json:"builder_id"`
+	MaxFee     int    `json:"max_builder_fee_per_100k"`
+	MaxFeePct  string `json:"max_builder_fee_pct"`
+	EnrolledAt string `json:"enrolled_at"`
+}
+
+func (h *handler) enrollPayload(w http.ResponseWriter, r *http.Request) {
+	if h.enroll == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "enrollment_unavailable", Message: "no builder code is configured"})
+		return
+	}
+	var in enrollPayloadReqDTO
+	if err := decode(r, &in); err != nil {
+		h.fail(w, err)
+		return
+	}
+	res, err := h.enroll.Payload(r.Context(), in.Address, in.Label)
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, enrollPayloadDTO{
+		Handle:    res.Handle,
+		TypedData: res.TypedData,
+		Statement: res.Statement,
+		BuilderID: res.BuilderID,
+		MaxFee:    res.MaxFee,
+		ExpiresAt: timeOrEmpty(res.ExpiresAt),
+	})
+}
+
+func (h *handler) enrollFinish(w http.ResponseWriter, r *http.Request) {
+	if h.enroll == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "enrollment_unavailable", Message: "no builder code is configured"})
+		return
+	}
+	var in enrollReqDTO
+	if err := decode(r, &in); err != nil {
+		h.fail(w, err)
+		return
+	}
+	k, err := h.enroll.Enroll(r.Context(), in.Handle, in.Signature)
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, enrolledKeyDTO{
+		Address: k.Address, Label: k.Label, BuilderID: k.BuilderID,
+		MaxFee: k.MaxBuilderFeePer100K, MaxFeePct: k.MaxBuilderFeePct, EnrolledAt: timeOrEmpty(k.EnrolledAt),
+	})
+}
+
+func (h *handler) enrolledKey(w http.ResponseWriter, r *http.Request) {
+	if h.enroll == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "enrollment_unavailable", Message: "no builder code is configured"})
+		return
+	}
+	address := r.URL.Query().Get("address")
+	k, err := h.enroll.Key(address)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, errorDTO{Error: "no_key", Message: "no exchange key is enrolled for this address"})
+		return
+	}
+	writeJSON(w, http.StatusOK, enrolledKeyDTO{
+		Address: k.Address, Label: k.Label, BuilderID: k.BuilderID,
+		MaxFee: k.MaxBuilderFeePer100K, MaxFeePct: k.MaxBuilderFeePct, EnrolledAt: timeOrEmpty(k.EnrolledAt),
+	})
+}
+
 // --- plumbing ---
 
 const maxBody = 64 << 10
@@ -457,6 +564,12 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// isVenueHTTPError recognises a REST refusal from the venue, which the perpl
+// package reports with the status and body in the message.
+func isVenueHTTPError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), ": HTTP 4")
 }
 
 func zeroToEmpty(d fixed.D) string {

@@ -208,6 +208,161 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/exchange/enroll/payload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start enrolling an exchange API key for a wallet
+         * @description The platform generates an Ed25519 key pair and asks the venue for the
+         *     EIP-712 document that binds that key to the wallet and to our builder
+         *     terms. The wallet signs `typed_data`; `statement` is the prose the
+         *     user reads in the prompt. The private key waits on the server for
+         *     `expires_at`.
+         *
+         *     When signing with viem, pass `domain.chainId` as a **bigint**: given a
+         *     string, viem drops chainId from the domain type and the venue rejects
+         *     the signature.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description The wallet the key is for */
+                        address: string;
+                        /** @description Shown on the venue's key page. */
+                        label?: string;
+                    };
+                };
+            };
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EnrollPayload"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                422: components["responses"]["VenueRejected"];
+                /** @description No builder code configured; enrollment is unavailable. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/exchange/enroll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finish enrolling with the wallet's signature
+         * @description The platform computes the EIP-712 digest, signs it with the pending
+         *     Ed25519 key as proof of possession, and submits both to the venue. On
+         *     success the key is stored and the platform can trade for this wallet.
+         *     A handle is single-use.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        handle: string;
+                        /** @description The wallet's EIP-712 signature */
+                        signature: string;
+                    };
+                };
+            };
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EnrolledKey"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                422: components["responses"]["VenueRejected"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/exchange/key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The enrolled key for a wallet, without secrets */
+        get: {
+            parameters: {
+                query: {
+                    address: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EnrolledKey"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/kill": {
         parameters: {
             query?: never;
@@ -413,13 +568,38 @@ export interface components {
             /** Format: date-time */
             updated_at?: string;
         };
+        EnrollPayload: {
+            /** @description Single-use; identifies the pending key. */
+            handle: string;
+            /** @description EIP-712 document (types, primaryType, domain, message). Sign it exactly as given. */
+            typed_data: Record<string, never>;
+            /** @description The prose the user reads in the wallet prompt. */
+            statement: string;
+            builder_id: number;
+            /** @description 1 = 0.1 bps; the ceiling the user consents to. */
+            max_builder_fee_per_100k: number;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        EnrolledKey: {
+            address: string;
+            label: string;
+            builder_id: number;
+            max_builder_fee_per_100k: number;
+            /** @example 0.050% */
+            max_builder_fee_pct?: string;
+            /** Format: date-time */
+            enrolled_at: string;
+        };
         Error: {
             /**
              * @description Stable machine code. Policy denials use the engine's reasons:
              *     kill_switch, symbol_not_allowed, notional_too_large, notional_too_small,
              *     leverage_too_high, daily_loss_limit_reached, cooldown,
              *     too_many_open_positions, total_exposure_too_large, malformed_request.
-             *     Others: invalid_request, venue_rejected, unknown_market, no_position,
+             *     Others: invalid_request, venue_rejected, venue_disconnected (503: outcome
+             *     unknown), enrollment_unavailable, no_key,
+             *     unknown, re-read state and retry), unknown_market, no_position,
              *     no_credentials, internal.
              */
             error: string;
