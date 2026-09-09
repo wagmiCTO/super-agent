@@ -22,6 +22,7 @@
     "expo-symbols": "~57.0.2",
     "expo-system-ui": "~57.0.3",
     "expo-web-browser": "~57.0.2",
+    "lightweight-charts": "^5.2.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
@@ -32,6 +33,7 @@
     "react-native-screens": "~4.26.0",
     "react-native-svg": "15.15.4",
     "react-native-web": "~0.21.0",
+    "react-native-webview": "13.16.1",
     "react-native-worklets": "0.10.1",
     "viem": "^2.56.3"
   },
@@ -51,8 +53,10 @@
     "lint": "expo lint",
     "gen:api": "openapi-typescript ../../api/openapi.yaml -o src/api/schema.d.ts",
     "typecheck": "tsc --noEmit",
-    "web:export": "expo export --platform web --output-dir dist && mkdir -p dist/.well-known && cp well-known/apple-app-site-association well-known/assetlinks.json dist/.well-known/",
-    "e2e": "playwright test"
+    "web:export": "npm run gen:chart && expo export --platform web --output-dir dist && mkdir -p dist/.well-known && cp well-known/apple-app-site-association well-known/assetlinks.json dist/.well-known/",
+    "e2e": "playwright test",
+    "gen:chart": "node scripts/embed-chart.mjs",
+    "postinstall": "node scripts/embed-chart.mjs"
   },
   "private": true
 }

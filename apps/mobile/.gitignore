@@ -52,3 +52,6 @@ playwright-report/
 # Vercel
 .vercel/
 .vercel
+
+# Embedded chart library, produced by scripts/embed-chart.mjs
+src/chart/vendor.generated.ts

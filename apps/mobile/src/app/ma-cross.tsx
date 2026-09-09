@@ -9,13 +9,15 @@
  */
 import { Link } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { ScrollView, useColorScheme, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Polyline } from 'react-native-svg';
 
 import { useAccount } from '@/account/useAccount';
 import { api, type MACrossSignal } from '@/api/client';
+import type { ChartPayload } from '@/chart/script';
+import { chartTheme } from '@/chart/theme';
 import { AccountSection } from '@/components/account';
+import { SignalChart } from '@/components/SignalChart';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import {
@@ -34,6 +36,8 @@ import { useTheme } from '@/hooks/use-theme';
 import { useTrading } from '@/trading/useTrading';
 
 type Notional = (typeof NOTIONAL_PRESETS)[number];
+const CHART_MODES = ['Candles', 'Line'] as const;
+type ChartMode = (typeof CHART_MODES)[number];
 
 const UP = '#16a34a';
 const DOWN = '#dc2626';
@@ -44,6 +48,7 @@ export default function MACrossScreen() {
   const signal = useSignal(DEFAULT_SYMBOL);
   const [notional, setNotional] = useState<Notional>('20');
   const [horizon, setHorizon] = useState<Horizon>('15m');
+  const [mode, setMode] = useState<ChartMode>('Candles');
   const window = signal?.window ?? null;
   const windowLeft = useCountdown(window?.expires_at ?? null);
 
@@ -55,7 +60,7 @@ export default function MACrossScreen() {
 
           <AccountSection account={account} state={t.state} onChange={t.refresh} />
 
-          <SignalCard signal={signal} windowLeft={windowLeft} />
+          <SignalCard signal={signal} windowLeft={windowLeft} mode={mode} onMode={setMode} />
 
           <PositionCard position={t.position} market={t.market} notional={notional} />
 
@@ -121,10 +126,29 @@ function useSignal(symbol: string): MACrossSignal | null {
  * average as the one line that matters, the whole card tinted by the trend
  * and lit while a window is open.
  */
-function SignalCard({ signal, windowLeft }: { signal: MACrossSignal | null; windowLeft: string | null }) {
+function SignalCard({
+  signal,
+  windowLeft,
+  mode,
+  onMode,
+}: {
+  signal: MACrossSignal | null;
+  windowLeft: string | null;
+  mode: ChartMode;
+  onMode: (m: ChartMode) => void;
+}) {
   const theme = useTheme();
+  const dark = useColorScheme() === 'dark';
   const trendColor = signal?.trend === 'up' ? UP : signal?.trend === 'down' ? DOWN : theme.textSecondary;
   const lit = Boolean(signal?.window);
+  const payload: ChartPayload | null = signal
+    ? {
+        mode: mode === 'Line' ? 'line' : 'candles',
+        points: signal.points,
+        trend: signal.trend,
+        cross: signal.last_cross ? { side: signal.last_cross.side, at: signal.last_cross.at } : null,
+      }
+    : null;
   return (
     <View
       testID="signal-card"
@@ -146,34 +170,9 @@ function SignalCard({ signal, windowLeft }: { signal: MACrossSignal | null; wind
           </ThemedText>
         ) : null}
       </View>
-      {signal ? <Chart signal={signal} color={trendColor} priceColor={theme.textSecondary} /> : null}
+      <SignalChart payload={payload} theme={chartTheme(theme.backgroundElement, theme.textSecondary, dark)} height={240} />
+      <PresetRow label="Chart" options={CHART_MODES} value={mode} onChange={onMode} />
     </View>
-  );
-}
-
-const CHART_W = 320;
-const CHART_H = 120;
-
-/** Last hour of closes, and the slow average where it exists. */
-function Chart({ signal, color, priceColor }: { signal: MACrossSignal; color: string; priceColor: string }) {
-  const points = signal.points.slice(-60);
-  const values = points.flatMap((p) => [Number(p.close), ...(p.slow ? [Number(p.slow)] : [])]);
-  if (values.length < 2) return null;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const span = max - min || max * 0.001 || 1;
-  const x = (i: number) => (i / Math.max(1, points.length - 1)) * CHART_W;
-  const y = (v: number) => CHART_H - ((v - min) / span) * (CHART_H - 8) - 4;
-  const price = points.map((p, i) => `${x(i)},${y(Number(p.close))}`).join(' ');
-  const slow = points
-    .map((p, i) => (p.slow ? `${x(i)},${y(Number(p.slow))}` : null))
-    .filter((s): s is string => s !== null)
-    .join(' ');
-  return (
-    <Svg width="100%" height={CHART_H} viewBox={`0 0 ${CHART_W} ${CHART_H}`} preserveAspectRatio="none" testID="signal-chart">
-      <Polyline points={price} fill="none" stroke={priceColor} strokeWidth={1} />
-      {slow ? <Polyline points={slow} fill="none" stroke={color} strokeWidth={2.5} /> : null}
-    </Svg>
   );
 }
 

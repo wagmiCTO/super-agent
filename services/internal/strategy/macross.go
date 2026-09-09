@@ -82,10 +82,11 @@ const (
 // Point is one bar's close with the averages as of that bar; the averages
 // are zero while there is not enough history.
 type Point struct {
-	At    time.Time
-	Close fixed.D
-	Fast  fixed.D
-	Slow  fixed.D
+	At              time.Time
+	Open, High, Low fixed.D
+	Close           fixed.D
+	Fast            fixed.D
+	Slow            fixed.D
 }
 
 // Window is an open invitation to enter.
@@ -244,7 +245,7 @@ func (m *MACross) State(now time.Time) MACrossState {
 	}
 	st.Points = make([]Point, 0, len(m.bars)+1)
 	for i, b := range m.bars {
-		p := Point{At: b.Open, Close: b.C}
+		p := Point{At: b.Open, Open: b.O, High: b.H, Low: b.L, Close: b.C}
 		if i+1 >= m.cfg.Fast {
 			p.Fast = m.averageAt(i, m.cfg.Fast)
 		}
@@ -254,7 +255,8 @@ func (m *MACross) State(now time.Time) MACrossState {
 		st.Points = append(st.Points, p)
 	}
 	if m.forming != nil {
-		st.Points = append(st.Points, Point{At: m.forming.Open, Close: m.forming.C})
+		f := m.forming
+		st.Points = append(st.Points, Point{At: f.Open, Open: f.O, High: f.H, Low: f.L, Close: f.C})
 		st.Forming = true
 	}
 	if n := len(m.bars); n > 0 {

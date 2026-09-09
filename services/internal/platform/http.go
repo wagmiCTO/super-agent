@@ -712,6 +712,9 @@ func (h *handler) exchangeNetwork(w http.ResponseWriter, r *http.Request) {
 
 type signalPointDTO struct {
 	At    string `json:"at"`
+	Open  string `json:"open"`
+	High  string `json:"high"`
+	Low   string `json:"low"`
 	Close string `json:"close"`
 	Fast  string `json:"fast,omitempty"`
 	Slow  string `json:"slow,omitempty"`
@@ -760,7 +763,7 @@ func (h *handler) maCross(w http.ResponseWriter, r *http.Request) {
 		Ready: st.Ready, Trend: string(st.Trend), Forming: st.Forming, Points: make([]signalPointDTO, 0, len(st.Points)),
 	}
 	for _, p := range st.Points {
-		d := signalPointDTO{At: p.At.UTC().Format(time.RFC3339), Close: p.Close.String()}
+		d := signalPointDTO{At: p.At.UTC().Format(time.RFC3339), Open: p.Open.String(), High: p.High.String(), Low: p.Low.String(), Close: p.Close.String()}
 		if !p.Fast.IsZero() {
 			d.Fast = p.Fast.String()
 		}

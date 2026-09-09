@@ -699,6 +699,9 @@ export interface components {
             points: {
                 /** Format: date-time */
                 at: string;
+                open: components["schemas"]["Decimal"];
+                high: components["schemas"]["Decimal"];
+                low: components["schemas"]["Decimal"];
                 close: components["schemas"]["Decimal"];
                 fast?: components["schemas"]["Decimal"];
                 slow?: components["schemas"]["Decimal"];
