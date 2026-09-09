@@ -25,6 +25,8 @@ var (
 // re-read from every account update: the fee tier and the order-forwarding flag
 // both change out from under us.
 type accountState struct {
+	// Address is the wallet that owns the account, from the wallet snapshot.
+	Address    string
 	ID         uint64
 	Frozen     bool
 	Forwarding bool
@@ -281,6 +283,7 @@ func (t *tradingClient) applyWallet(w wallet) {
 			continue
 		}
 		t.setAccountLocked(a)
+		t.account.Address = w.Address
 		break
 	}
 	t.mu.Unlock()
@@ -299,7 +302,9 @@ func (t *tradingClient) applyAccount(a account) {
 }
 
 func (t *tradingClient) setAccountLocked(a account) {
+	addr := t.account.Address
 	t.account = accountState{
+		Address:    addr,
 		ID:         a.ID,
 		Frozen:     a.Frozen,
 		Forwarding: a.Forwarding,

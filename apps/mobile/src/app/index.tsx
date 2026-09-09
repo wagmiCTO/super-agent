@@ -12,6 +12,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'reac
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAccount } from '@/account/useAccount';
+import { useExchange } from '@/exchange/useExchange';
 import { api, ApiError, describeError, type Market, type Position, type State } from '@/api/client';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -178,6 +179,7 @@ function AccountRow({ account }: { account: ReturnType<typeof useAccount> }) {
   const theme = useTheme();
   const { state, busy, error } = account;
   const address = state.status === 'unlocked' || state.status === 'remembered' ? state.stored.address : null;
+  const exchange = useExchange(state.status === 'unlocked' ? state.wallet : null);
   return (
     <View style={[styles.accountRow, { backgroundColor: theme.backgroundElement }]}>
       <View style={{ flex: 1, gap: 2 }}>
@@ -196,6 +198,16 @@ function AccountRow({ account }: { account: ReturnType<typeof useAccount> }) {
             {error}
           </ThemedText>
         ) : null}
+        {state.status === 'unlocked' && exchange.state.status === 'connected' ? (
+          <ThemedText type="small" themeColor="textSecondary" testID="exchange-status">
+            Exchange connected · builder {exchange.state.key.builder_id} · fee up to {exchange.state.key.max_builder_fee_pct}
+          </ThemedText>
+        ) : null}
+        {exchange.error ? (
+          <ThemedText type="small" style={{ color: '#991b1b' }} testID="exchange-error">
+            {exchange.error}
+          </ThemedText>
+        ) : null}
       </View>
       <View style={{ gap: Spacing.one }}>
         {state.status === 'none' || state.status === 'loading' ? (
@@ -204,7 +216,12 @@ function AccountRow({ account }: { account: ReturnType<typeof useAccount> }) {
         {state.status !== 'unlocked' ? (
           <SmallButton label="Sign in" onPress={() => void account.signIn()} busy={busy} />
         ) : (
-          <SmallButton label="Sign out" onPress={() => void account.signOut()} busy={busy} />
+          <>
+            {exchange.state.status === 'not-connected' ? (
+              <SmallButton label="Connect exchange" onPress={() => void exchange.connect()} busy={exchange.busy} />
+            ) : null}
+            <SmallButton label="Sign out" onPress={() => void account.signOut()} busy={busy} />
+          </>
         )}
       </View>
     </View>

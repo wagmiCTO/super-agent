@@ -171,6 +171,15 @@ func (a *Adapter) markFor(m market) (fixed.D, bool) {
 // Name identifies the venue.
 func (a *Adapter) Name() string { return "perpl" }
 
+// WalletAddress is the wallet that owns the trading account, or "" without
+// credentials.
+func (a *Adapter) WalletAddress() string {
+	if a.trade == nil {
+		return ""
+	}
+	return a.trade.currentAccount().Address
+}
+
 // Close releases both sockets.
 func (a *Adapter) Close() error {
 	a.md.close()

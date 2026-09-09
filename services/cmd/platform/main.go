@@ -57,7 +57,13 @@ func run(log *slog.Logger) error {
 		return err
 	}
 
-	adapter, err := perpl.New(ctx, cfg, log)
+	// The platform's own key was created at the venue's web UI and is not
+	// bound to our builder code, so it must not send a builder fee: the venue
+	// refuses every such order. The fee applies to keys enrolled through the
+	// platform, whose adapters are built with it.
+	ownCfg := cfg
+	ownCfg.BuilderFeePer100K = 0
+	adapter, err := perpl.New(ctx, ownCfg, log)
 	if err != nil {
 		return fmt.Errorf("connect venue: %w", err)
 	}
@@ -98,7 +104,7 @@ func run(log *slog.Logger) error {
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.ListenAndServe() }()
-	log.Info("platform listening", "addr", addr, "venue", adapter.Name(), "network", cfg.Network.Name,
+	log.Info("platform listening", "addr", addr, "venue", adapter.Name(), "network", cfg.Network.Name, "wallet", adapter.WalletAddress(),
 		"allowed", limits.AllowedSymbols, "max_notional", limits.MaxNotional, "daily_loss", limits.DailyLoss)
 
 	select {

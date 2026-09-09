@@ -36,6 +36,8 @@ export type ErrorCode =
   | 'venue_rejected'
   | 'unknown_market'
   | 'no_position'
+  | 'enrollment_unavailable'
+  | 'no_key'
   | 'no_credentials'
   | 'internal'
   | 'network';
@@ -65,7 +67,7 @@ export class ApiError extends Error {
 
 type Paths = paths;
 
-async function request<T>(path: keyof Paths | string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: keyof Paths | string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${API_URL}${path}`, {
@@ -127,6 +129,8 @@ export function describeError(e: unknown): string {
       return 'This market is not enabled';
     case 'no_position':
       return 'Nothing to close';
+    case 'enrollment_unavailable':
+      return 'The platform has no builder code configured';
     case 'venue_rejected':
       return `The exchange refused the order: ${e.message}`;
     case 'network':
