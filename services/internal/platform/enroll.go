@@ -22,6 +22,7 @@ type Enroller interface {
 	WalletAuthConnect(ctx context.Context, address string, payload perpl.AuthPayload, signature, refCode string) (perpl.AuthSession, error)
 	EnrollmentPayload(ctx context.Context, req perpl.EnrollmentRequest) (perpl.EnrollmentPayload, error)
 	Enroll(ctx context.Context, address string, payload perpl.EnrollmentPayload, walletSignature, popSignature string) (perpl.APIKeyInfo, error)
+	Activation(ctx context.Context) (perpl.Activation, error)
 }
 
 // Enrollment creates exchange API keys for user wallets, bound to our builder
@@ -45,6 +46,13 @@ type Enrollment struct {
 	builderID int
 	maxFee    int
 	log       *slog.Logger
+}
+
+// Activation tells the app where and how a wallet opens its exchange account
+// on-chain. The platform only relays the venue's configuration; the
+// transactions are the wallet's own.
+func (e *Enrollment) Activation(ctx context.Context) (perpl.Activation, error) {
+	return e.venue.Activation(ctx)
 }
 
 // NewEnrollment wires enrollment for one builder code. maxFeePer100K is the
@@ -193,7 +201,11 @@ func (e *Enrollment) Enroll(ctx context.Context, handle, signInSignature, wallet
 		MaxBuilderFeePct:     info.MaxBuilderFeePct,
 		EnrolledAt:           time.Now(),
 	}
-	e.store.Put(k)
+	if err := e.store.Put(k); err != nil {
+		// The key is live at the venue and usable in memory; losing the
+		// mirror is worth a loud log, not a failed enrollment.
+		e.log.Error("enrolled key not persisted", "address", k.Address, "err", err)
+	}
 	e.log.Info("api key enrolled", "address", k.Address, "label", k.Label, "builder", k.BuilderID, "max_fee_per_100k", k.MaxBuilderFeePer100K)
 	return k, nil
 }

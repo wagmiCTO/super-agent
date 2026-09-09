@@ -1,11 +1,13 @@
 package platform
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/wagmiCTO/super-agent/services/internal/keys"
 	"github.com/wagmiCTO/super-agent/services/internal/policy"
 	"github.com/wagmiCTO/super-agent/services/internal/venue"
 )
@@ -122,5 +124,27 @@ func TestCORSAllowsAccountHeader(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	if got := rec.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(strings.ToLower(got), strings.ToLower(AccountHeader)) {
 		t.Fatalf("Allow-Headers = %q, must include %s", got, AccountHeader)
+	}
+}
+
+func TestExchangeNetwork(t *testing.T) {
+	svc, _ := newService(t, &fakeVenue{})
+	fe := &fakeEnroller{t: t, builderID: 18, maxFee: 50}
+	enr, err := NewEnrollment(fe, keys.New(), 18, 50, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := Handler(svc, nil, WithEnrollment(enr))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/exchange/network", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	var out exchangeNetworkDTO
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.ChainID != 10143 || out.MinAccountOpenAmount != "100" || out.MinAccountOpenRaw != "100000000" || out.CollateralDecimals != 6 {
+		t.Errorf("network = %+v", out)
 	}
 }

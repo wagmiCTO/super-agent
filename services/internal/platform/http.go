@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +33,7 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	mux.HandleFunc("POST /v1/exchange/enroll/payload", h.enrollPayload)
 	mux.HandleFunc("POST /v1/exchange/enroll", h.enrollFinish)
 	mux.HandleFunc("GET /v1/exchange/key", h.enrolledKey)
+	mux.HandleFunc("GET /v1/exchange/network", h.exchangeNetwork)
 	mux.HandleFunc("GET /v1/health", h.health)
 	mux.HandleFunc("GET /v1/markets", h.markets)
 	mux.HandleFunc("GET /v1/state", h.state)
@@ -401,6 +403,8 @@ func (h *handler) fail(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusConflict, errorDTO{Error: "no_exchange_account", Message: "this wallet has no exchange account yet — fund it and activate trading first"})
 	case errors.Is(err, venue.ErrForwardingDisabled):
 		writeJSON(w, http.StatusConflict, errorDTO{Error: "forwarding_disabled", Message: "the exchange account has not authorized API trading yet"})
+	case errors.Is(err, venue.ErrUnconfirmed):
+		writeJSON(w, http.StatusGatewayTimeout, errorDTO{Error: "venue_unconfirmed", Message: "the exchange accepted the order but reported no outcome in time — check the position, then retry"})
 	case errors.Is(err, venue.ErrDisconnected):
 		// Not a refusal: the venue link dropped mid-request and the outcome is
 		// unknown. The app re-reads state on its next poll; the player retries.
@@ -606,6 +610,49 @@ func (h *handler) enrollFinish(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, enrolledKeyDTO{
 		Address: k.Address, Label: k.Label, BuilderID: k.BuilderID,
 		MaxFee: k.MaxBuilderFeePer100K, MaxFeePct: k.MaxBuilderFeePct, EnrolledAt: timeOrEmpty(k.EnrolledAt),
+	})
+}
+
+type exchangeNetworkDTO struct {
+	Network              string `json:"network"`
+	ChainID              int64  `json:"chain_id"`
+	RPCURL               string `json:"rpc_url"`
+	Explorer             string `json:"explorer"`
+	ExchangeAddress      string `json:"exchange_address"`
+	CollateralToken      string `json:"collateral_token"`
+	CollateralSymbol     string `json:"collateral_symbol"`
+	CollateralDecimals   int    `json:"collateral_decimals"`
+	MinAccountOpenAmount string `json:"min_account_open_amount"`
+	MinAccountOpenRaw    string `json:"min_account_open_raw"`
+}
+
+// exchangeNetwork serves the on-chain coordinates for activating a wallet's
+// exchange account. Public: nothing here is per-wallet.
+func (h *handler) exchangeNetwork(w http.ResponseWriter, r *http.Request) {
+	if h.enroll == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "enrollment_unavailable", Message: "no builder code is configured"})
+		return
+	}
+	act, err := h.enroll.Activation(r.Context())
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	raw, err := strconv.ParseInt(act.MinAccountOpenAmount, 10, 64)
+	if err != nil {
+		h.fail(w, fmt.Errorf("min_account_open_amount %q: %w", act.MinAccountOpenAmount, err))
+		return
+	}
+	minOpen, err := fixed.FromScaled(raw, act.CollateralDecimals)
+	if err != nil {
+		h.fail(w, fmt.Errorf("min_account_open_amount %q: %w", act.MinAccountOpenAmount, err))
+		return
+	}
+	writeJSON(w, http.StatusOK, exchangeNetworkDTO{
+		Network: act.Network, ChainID: act.ChainID, RPCURL: act.RPCURL, Explorer: act.Explorer,
+		ExchangeAddress: act.ExchangeAddress, CollateralToken: act.CollateralToken,
+		CollateralSymbol: act.CollateralSymbol, CollateralDecimals: act.CollateralDecimals,
+		MinAccountOpenAmount: minOpen.String(), MinAccountOpenRaw: act.MinAccountOpenAmount,
 	})
 }
 

@@ -370,6 +370,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/exchange/network": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where a wallet opens its exchange account on-chain
+         * @description An enrolled key only authorizes API access. To trade, the wallet itself must create an exchange account with collateral and allow order forwarding: approve(exchange_address, amount) on collateral_token, then createAccount(amount) and allowOrderForwarding(true) on exchange_address, with amount ≥ min_account_open_raw. The platform never holds a key that could send these.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ExchangeNetwork"];
+                    };
+                };
+                /** @description No builder code configured; enrollment is unavailable. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/kill": {
         parameters: {
             query?: never;
@@ -580,6 +627,25 @@ export interface components {
             } | null;
             /** Format: date-time */
             updated_at?: string;
+        };
+        ExchangeNetwork: {
+            /** @enum {string} */
+            network: "testnet" | "mainnet";
+            /** Format: int64 */
+            chain_id: number;
+            /** Format: uri */
+            rpc_url: string;
+            /** Format: uri */
+            explorer: string;
+            /** @description Exchange contract */
+            exchange_address: string;
+            /** @description ERC-20 collateral token */
+            collateral_token: string;
+            collateral_symbol: string;
+            collateral_decimals: number;
+            min_account_open_amount: components["schemas"]["Decimal"];
+            /** @description The same minimum as the raw on-chain integer to pass to createAccount. */
+            min_account_open_raw: string;
         };
         EnrollPayload: {
             /** @description Single-use; identifies the pending key. */

@@ -11,7 +11,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import type { Wallet } from '@/account/derive';
 import { useAccount } from '@/account/useAccount';
+import { formatCollateral, formatNative, STEP_LABEL } from '@/exchange/activate';
+import { useActivation, type PendingStatus } from '@/exchange/useActivation';
 import { useExchange } from '@/exchange/useExchange';
 import { api, ApiError, describeError, type Market, type Position, type State } from '@/api/client';
 import { ThemedText } from '@/components/themed-text';
@@ -120,6 +123,9 @@ export default function DirectionScreen() {
             <ThemedText type="small" themeColor="textSecondary" testID="account-status">
               {ACCOUNT_STATUS_HINT[state.account.status]}
             </ThemedText>
+          ) : null}
+          {state && account.state.status === 'unlocked' && isPending(state.account.status) ? (
+            <ActivationCard wallet={account.state.wallet} status={state.account.status} onActivated={refresh} />
           ) : null}
 
           <PositionCard position={position} market={market} notional={notional} />
@@ -253,6 +259,77 @@ function AccountRow({
   );
 }
 
+const isPending = (s: State['account']['status']): s is PendingStatus =>
+  s === 'no_exchange_account' || s === 'forwarding_disabled';
+
+/**
+ * Funding and activation of the wallet's exchange account. Reads balances
+ * from the chain, says what is still missing, and runs the transactions once
+ * the wallet holds enough.
+ */
+function ActivationCard({
+  wallet,
+  status,
+  onActivated,
+}: {
+  wallet: Wallet;
+  status: PendingStatus;
+  onActivated: () => void;
+}) {
+  const theme = useTheme();
+  const a = useActivation(wallet, status);
+  const net = a.network;
+  const run = async () => {
+    await a.activate();
+    onActivated();
+  };
+  return (
+    <View style={[styles.activation, { backgroundColor: theme.backgroundElement }]} testID="activation">
+      <ThemedText type="smallBold">{status === 'forwarding_disabled' ? 'Enable API trading' : 'Activate trading'}</ThemedText>
+      {net && a.funding ? (
+        <ThemedText type="small" themeColor="textSecondary" testID="activation-funding">
+          {status === 'no_exchange_account'
+            ? `${net.collateral_symbol} ${formatCollateral(net, a.funding.collateral)} of ${net.min_account_open_amount} · `
+            : ''}
+          MON {formatNative(a.funding.native)} for gas{a.shortfall && a.shortfall.native > 0n ? ' (need 0.1)' : ''}
+        </ThemedText>
+      ) : (
+        <ThemedText type="small" themeColor="textSecondary">
+          {a.error ? '' : 'Reading balances…'}
+        </ThemedText>
+      )}
+      {!a.funded && net ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          Send {status === 'no_exchange_account' ? `${net.min_account_open_amount} ${net.collateral_symbol} and ` : ''}
+          some MON to the address above ({net.network})
+        </ThemedText>
+      ) : null}
+      {a.progress ? (
+        <ThemedText type="small" themeColor="textSecondary" testID="activation-progress">
+          {STEP_LABEL[a.progress.step]}
+          {a.progress.hash ? '…' : ''}
+        </ThemedText>
+      ) : null}
+      {a.error ? (
+        <ThemedText type="small" style={{ color: '#991b1b' }} testID="activation-error">
+          {a.error}
+        </ThemedText>
+      ) : null}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Activate"
+        onPress={() => void run()}
+        disabled={!a.funded || a.busy}
+        style={({ pressed }) => [
+          styles.smallButton,
+          { backgroundColor: theme.backgroundSelected, opacity: !a.funded || a.busy || pressed ? 0.5 : 1 },
+        ]}>
+        {a.busy ? <ActivityIndicator /> : <ThemedText type="smallBold">Activate</ThemedText>}
+      </Pressable>
+    </View>
+  );
+}
+
 function SmallButton({ label, onPress, busy }: { label: string; onPress: () => void; busy: boolean }) {
   const theme = useTheme();
   return (
@@ -335,6 +412,7 @@ const styles = StyleSheet.create({
   content: { padding: Spacing.three, gap: Spacing.three, maxWidth: 520, width: '100%', alignSelf: 'center' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   accountRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, borderRadius: 12, padding: Spacing.two },
+  activation: { borderRadius: 12, padding: Spacing.two, gap: Spacing.one },
   smallButton: { paddingVertical: Spacing.one, paddingHorizontal: Spacing.two, borderRadius: 8, alignItems: 'center' },
   card: { borderRadius: 16, padding: Spacing.four, gap: Spacing.one, alignItems: 'center' },
   presets: { flexDirection: 'row', gap: Spacing.two },

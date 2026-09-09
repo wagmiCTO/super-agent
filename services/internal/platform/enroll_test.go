@@ -56,6 +56,14 @@ func (f *fakeEnroller) EnrollmentPayload(_ context.Context, req perpl.Enrollment
 	return perpl.EnrollmentPayload{TypedData: raw, MAC: "mac-1"}, nil
 }
 
+func (f *fakeEnroller) Activation(context.Context) (perpl.Activation, error) {
+	return perpl.Activation{
+		Network: "testnet", ChainID: 10143, RPCURL: "https://testnet-rpc.monad.xyz", Explorer: "https://testnet.monadscan.com/",
+		ExchangeAddress: "0x1964c32f0be608e7d29302aff5e61268e72080cc", CollateralToken: "0xa9012a055bd4e0edff8ce09f960291c09d5322dc",
+		CollateralSymbol: "AUSD", CollateralDecimals: 6, MinAccountOpenAmount: "100000000",
+	}, nil
+}
+
 func (f *fakeEnroller) Enroll(_ context.Context, address string, payload perpl.EnrollmentPayload, walletSig, popSig string) (perpl.APIKeyInfo, error) {
 	if f.failEnroll != nil {
 		return perpl.APIKeyInfo{}, f.failEnroll
