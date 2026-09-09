@@ -8,7 +8,7 @@ import { expect, test } from '@playwright/test';
  */
 test('MA Cross screen shows the live signal and offers only the cross side', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('link', { name: 'MA Cross →' }).click();
+  await page.getByRole('link', { name: 'Play MA Cross', exact: true }).click();
   await expect(page.getByText(/^MA CROSS · MON$/)).toBeVisible();
   // The stack keeps Direction mounted underneath; the balance line on top is this screen's.
   await expect(page.getByText(/^Balance /).last()).toBeVisible();
@@ -31,6 +31,6 @@ test('MA Cross screen shows the live signal and offers only the cross side', asy
     await expect(page.getByRole('button', { name: 'Down', exact: true })).toHaveCount(0);
   }
 
-  await page.getByRole('link', { name: '← Direction' }).click();
-  await expect(page.getByText(/^DIRECTION · MON$/).last()).toBeVisible();
+  await page.getByRole('link', { name: '← Lobby' }).click();
+  await expect(page.getByText(/^STRATEGIES · THIS WEEK$/).last()).toBeVisible();
 });

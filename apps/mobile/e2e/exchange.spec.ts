@@ -25,7 +25,7 @@ test('a passkey wallet enrolls an exchange key bound to the builder code', async
     },
   });
 
-  await page.goto('/');
+  await page.goto('/direction');
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
   await expect(page.getByText('Signed in with passkey')).toBeVisible();
   const address = await page.getByTestId('account-address').textContent();

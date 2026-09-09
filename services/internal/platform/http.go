@@ -29,13 +29,17 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	for _, opt := range opts {
 		opt(&o)
 	}
-	h := &handler{svc: s, log: log, enroll: o.enrollment, registry: o.registry, signals: o.signals}
+	h := &handler{svc: s, log: log, enroll: o.enrollment, registry: o.registry, signals: o.signals, ledger: o.ledger}
+	if o.ledger != nil {
+		s.UseLedger(o.ledger)
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/exchange/enroll/payload", h.enrollPayload)
 	mux.HandleFunc("POST /v1/exchange/enroll", h.enrollFinish)
 	mux.HandleFunc("GET /v1/exchange/key", h.enrolledKey)
 	mux.HandleFunc("GET /v1/exchange/network", h.exchangeNetwork)
 	mux.HandleFunc("GET /v1/signals/ma-cross", h.maCross)
+	mux.HandleFunc("GET /v1/leaderboard", h.leaderboard)
 	mux.HandleFunc("GET /v1/health", h.health)
 	mux.HandleFunc("GET /v1/markets", h.markets)
 	mux.HandleFunc("GET /v1/state", h.state)
@@ -58,6 +62,7 @@ type options struct {
 	enrollment  *Enrollment
 	registry    *Registry
 	signals     *Signals
+	ledger      *Ledger
 }
 
 // WithRegistry routes requests carrying X-Account-Address to that wallet's
@@ -69,6 +74,11 @@ func WithRegistry(r *Registry) Option {
 // WithSignals serves the strategies' signals.
 func WithSignals(s *Signals) Option {
 	return func(o *options) { o.signals = s }
+}
+
+// WithLedger serves the leaderboard.
+func WithLedger(l *Ledger) Option {
+	return func(o *options) { o.ledger = l }
 }
 
 // WithEnrollment exposes the API-key enrollment endpoints. Without it they
@@ -117,6 +127,7 @@ type handler struct {
 	enroll   *Enrollment
 	registry *Registry
 	signals  *Signals
+	ledger   *Ledger
 }
 
 // AccountHeader names the wallet a request acts for. It is not authentication
@@ -250,6 +261,8 @@ type openReqDTO struct {
 	// HorizonSeconds closes the position after this long; 0 or absent
 	// leaves it to the user.
 	HorizonSeconds int `json:"horizon_seconds"`
+	// Strategy tags the round trip for the leaderboard.
+	Strategy string `json:"strategy"`
 }
 
 type lastCloseDTO struct {
@@ -469,7 +482,7 @@ func parseOpen(in openReqDTO) (OpenRequest, error) {
 		return OpenRequest{}, fmt.Errorf("%w: horizon_seconds must not be negative", ErrInvalid)
 	}
 	rules := strategy.Rules{Horizon: time.Duration(in.HorizonSeconds) * time.Second}
-	return OpenRequest{Symbol: in.Symbol, Side: side, Notional: notional, Leverage: leverage, Rules: rules}, nil
+	return OpenRequest{Symbol: in.Symbol, Side: side, Notional: notional, Leverage: leverage, Rules: rules, Strategy: strings.TrimSpace(in.Strategy)}, nil
 }
 
 func toMarketDTO(m venue.Market) marketDTO {
@@ -761,6 +774,52 @@ func (h *handler) maCross(w http.ResponseWriter, r *http.Request) {
 	}
 	if st.LastCross != nil {
 		out.LastCross = &signalCrossDTO{Side: st.LastCross.Side.String(), At: timeOrEmpty(st.LastCross.At)}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// --- leaderboard ---
+
+type standingDTO struct {
+	Wallet string `json:"wallet"`
+	PnL    string `json:"pnl"`
+	Trades int    `json:"trades"`
+}
+
+type boardDTO struct {
+	ID        string        `json:"id"`
+	Name      string        `json:"name"`
+	Tagline   string        `json:"tagline"`
+	Rhythm    string        `json:"rhythm"`
+	PnL       string        `json:"pnl"`
+	Players   int           `json:"players"`
+	Trades    int           `json:"trades"`
+	ActiveNow int           `json:"active_now"`
+	Top       []standingDTO `json:"top"`
+}
+
+type leaderboardDTO struct {
+	WeekStart string     `json:"week_start"`
+	Boards    []boardDTO `json:"boards"`
+}
+
+// leaderboard serves the week's boards: one per strategy, in lobby order.
+func (h *handler) leaderboard(w http.ResponseWriter, r *http.Request) {
+	if h.ledger == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "leaderboard_unavailable", Message: "no ledger is running"})
+		return
+	}
+	lb := h.ledger.Leaderboard()
+	out := leaderboardDTO{WeekStart: timeOrEmpty(lb.WeekStart), Boards: make([]boardDTO, 0, len(lb.Boards))}
+	for _, b := range lb.Boards {
+		d := boardDTO{
+			ID: b.Strategy.ID, Name: b.Strategy.Name, Tagline: b.Strategy.Tagline, Rhythm: b.Strategy.Rhythm,
+			PnL: b.PnL.String(), Players: b.Players, Trades: b.Trades, ActiveNow: b.ActiveNow, Top: make([]standingDTO, 0, len(b.Top)),
+		}
+		for _, s := range b.Top {
+			d.Top = append(d.Top, standingDTO{Wallet: s.Wallet, PnL: s.PnL.String(), Trades: s.Trades})
+		}
+		out.Boards = append(out.Boards, d)
 	}
 	writeJSON(w, http.StatusOK, out)
 }

@@ -26,7 +26,7 @@ async function ensureFlat(page: Page) {
 
 test.describe('Direction screen', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/direction');
     // The balance line only appears once /v1/state has answered.
     await expect(page.getByText(/^Balance /)).toBeVisible();
   });
@@ -96,6 +96,9 @@ test.describe('Direction screen', () => {
       if (status === 403) {
         const body = (await res.json()) as { retry_after_seconds?: number };
         await page.waitForTimeout(((body.retry_after_seconds ?? 5) + 1) * 1000);
+      } else if (status === 503) {
+        // The venue connection is being re-established; give it a moment.
+        await page.waitForTimeout(5000);
       }
     }
     expect(status).toBe(200);

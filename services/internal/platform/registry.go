@@ -37,14 +37,15 @@ type Registry struct {
 	limits  policy.Limits
 	policy  *policy.Engine
 	log     *slog.Logger
+	ledger  *Ledger
 	mu      sync.Mutex
 	byAddr  map[string]*Service
 	pending map[string]chan struct{}
 }
 
 // NewRegistry wires a registry. limits apply to every wallet until per-wallet
-// limits exist.
-func NewRegistry(store *keys.Store, build VenueFactory, limits policy.Limits, log *slog.Logger) *Registry {
+// limits exist; ledger, when given, records every wallet's round trips.
+func NewRegistry(store *keys.Store, build VenueFactory, limits policy.Limits, ledger *Ledger, log *slog.Logger) *Registry {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -55,6 +56,7 @@ func NewRegistry(store *keys.Store, build VenueFactory, limits policy.Limits, lo
 		store:   store,
 		build:   build,
 		limits:  limits,
+		ledger:  ledger,
 		policy:  policy.New(),
 		log:     log,
 		byAddr:  make(map[string]*Service),
@@ -117,6 +119,9 @@ func (r *Registry) connect(ctx context.Context, addr string) (*Service, error) {
 	if err != nil {
 		_ = v.Close()
 		return nil, err
+	}
+	if r.ledger != nil {
+		svc.UseLedger(r.ledger)
 	}
 	r.log.Info("wallet connected to venue", "wallet", addr, "builder", k.BuilderID, "fee_per_100k", k.MaxBuilderFeePer100K)
 	return svc, nil

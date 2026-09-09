@@ -38,6 +38,9 @@ type OpenRequest struct {
 	Notional fixed.D
 	Leverage fixed.D
 	Rules    strategy.Rules
+	// Strategy tags the round trip for the leaderboard; empty means the
+	// default strategy.
+	Strategy string
 }
 
 // CloseReason says who closed a position.
@@ -73,6 +76,8 @@ type Service struct {
 	log     *slog.Logger
 	timers  *strategy.Timers
 	now     func() time.Time
+	// ledger is shared across wallets; nil keeps no leaderboard.
+	ledger *Ledger
 
 	mu        sync.Mutex
 	lastClose *CloseEvent
@@ -105,6 +110,9 @@ func New(ctx context.Context, v venue.Adapter, p *policy.Engine, accountKey stri
 	}
 	return s, nil
 }
+
+// UseLedger records this service's round trips on a shared ledger.
+func (s *Service) UseLedger(l *Ledger) { s.ledger = l }
 
 // Shutdown releases the service's timers. Positions stay as they are on
 // the venue; a horizon pending at shutdown is lost — see the strategy ADR.
@@ -197,6 +205,12 @@ func (s *Service) Open(ctx context.Context, req OpenRequest) (venue.Order, error
 	if err := req.Rules.Validate(); err != nil {
 		return venue.Order{}, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
+	if req.Strategy == "" {
+		req.Strategy = strategy.DefaultStrategy
+	}
+	if !strategy.Known(req.Strategy) {
+		return venue.Order{}, fmt.Errorf("%w: unknown strategy %q", ErrInvalid, req.Strategy)
+	}
 
 	order := venue.OrderRequest{
 		ClientID: newClientID("open"),
@@ -224,6 +238,9 @@ func (s *Service) Open(ctx context.Context, req OpenRequest) (venue.Order, error
 		opened = placed.AvgPrice.Mul(placed.FilledSize)
 	}
 	s.policy.RecordOpen(s.account, opened)
+	if s.ledger != nil {
+		s.ledger.Opened(s.account, req.Strategy, req.Symbol)
+	}
 	if req.Rules.Horizon > 0 {
 		// The exit is armed the moment the entry is confirmed. It fires on
 		// its own goroutine and goes through the same Close as a tap would.
@@ -231,7 +248,7 @@ func (s *Service) Open(ctx context.Context, req OpenRequest) (venue.Order, error
 		s.timers.Schedule(symbol, s.now().Add(req.Rules.Horizon), func() { s.closeOnHorizon(symbol) })
 	}
 	s.log.Info("opened", "symbol", req.Symbol, "side", req.Side, "notional", req.Notional,
-		"leverage", req.Leverage, "horizon", req.Rules.Horizon, "order", placed.VenueID, "status", placed.Status, "fee", placed.Fee)
+		"leverage", req.Leverage, "horizon", req.Rules.Horizon, "strategy", req.Strategy, "order", placed.VenueID, "status", placed.Status, "fee", placed.Fee)
 	return placed, nil
 }
 
@@ -318,6 +335,9 @@ func (s *Service) close(ctx context.Context, symbol string, reason CloseReason) 
 	notional := pos.EntryPrice.Mul(pos.Size)
 	pnl := realizedPnL(*pos, placed)
 	s.policy.RecordClose(s.account, notional, pnl)
+	if s.ledger != nil {
+		s.ledger.Closed(s.account, symbol, pnl)
+	}
 	s.mu.Lock()
 	s.lastClose = &CloseEvent{Symbol: symbol, Side: pos.Side, Reason: reason, Price: placed.AvgPrice, PnL: pnl, At: s.now()}
 	s.mu.Unlock()

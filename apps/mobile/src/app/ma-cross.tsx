@@ -40,7 +40,7 @@ const DOWN = '#dc2626';
 
 export default function MACrossScreen() {
   const account = useAccount();
-  const t = useTrading(DEFAULT_SYMBOL);
+  const t = useTrading(DEFAULT_SYMBOL, 'ma-cross');
   const signal = useSignal(DEFAULT_SYMBOL);
   const [notional, setNotional] = useState<Notional>('20');
   const [horizon, setHorizon] = useState<Horizon>('15m');
@@ -87,7 +87,7 @@ export default function MACrossScreen() {
 
           <Link href="/" style={styles.link} accessibilityRole="link">
             <ThemedText type="smallBold" themeColor="textSecondary">
-              ← Direction
+              ← Lobby
             </ThemedText>
           </Link>
         </ScrollView>

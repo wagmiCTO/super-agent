@@ -148,3 +148,41 @@ func TestExchangeNetwork(t *testing.T) {
 		t.Errorf("network = %+v", out)
 	}
 }
+
+// A round trip through the API lands on the leaderboard under its strategy.
+func TestLeaderboardCountsRoundTrips(t *testing.T) {
+	svc, _ := newService(t, &fakeVenue{})
+	ledger := NewLedger()
+	h := Handler(svc, nil, WithLedger(ledger))
+	post := func(path, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, path, stringsReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+	if rec := post("/v1/orders/open", `{"symbol":"MON","side":"long","notional":"10","leverage":"1","strategy":"ma-cross"}`); rec.Code != http.StatusOK {
+		t.Fatalf("open: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := post("/v1/orders/open", `{"symbol":"MON","side":"long","notional":"10","leverage":"1","strategy":"nope"}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("unknown strategy: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := post("/v1/orders/close", `{"symbol":"MON"}`); rec.Code != http.StatusOK {
+		t.Fatalf("close: %d %s", rec.Code, rec.Body.String())
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/leaderboard", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("leaderboard: %d", rec.Code)
+	}
+	var out leaderboardDTO
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Boards) != 2 || out.Boards[1].ID != "ma-cross" || out.Boards[1].Trades != 1 || out.Boards[1].Players != 1 {
+		t.Errorf("boards = %+v", out.Boards)
+	}
+	if out.Boards[0].Trades != 0 {
+		t.Errorf("direction board counted the ma-cross trade: %+v", out.Boards[0])
+	}
+}

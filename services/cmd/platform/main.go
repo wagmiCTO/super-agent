@@ -77,6 +77,8 @@ func run(log *slog.Logger) error {
 	if ownKey == "" {
 		ownKey = "platform"
 	}
+	// One ledger for everyone: the leaderboard is a single table.
+	ledger := platform.NewLedger()
 	svc, err := platform.New(ctx, adapter, policy.New(), ownKey, limits, log)
 	if err != nil {
 		return err
@@ -100,7 +102,7 @@ func run(log *slog.Logger) error {
 		if err != nil {
 			return err
 		}
-		registry := platform.NewRegistry(store, platform.PerplFactory(cfg, log), limits, log)
+		registry := platform.NewRegistry(store, platform.PerplFactory(cfg, log), limits, ledger, log)
 		defer registry.Close()
 		handlerOpts = append(handlerOpts, platform.WithEnrollment(enrollment), platform.WithRegistry(registry))
 		log.Info("enrollment enabled", "builder_id", cfg.BuilderID, "max_fee_per_100k", cfg.BuilderFeePer100K)
@@ -112,7 +114,7 @@ func run(log *slog.Logger) error {
 	// connection, one per allowed market, shared by every wallet.
 	signals := platform.NewSignals(adapter, log)
 	go signals.Run(ctx, limits.AllowedSymbols)
-	handlerOpts = append(handlerOpts, platform.WithSignals(signals))
+	handlerOpts = append(handlerOpts, platform.WithSignals(signals), platform.WithLedger(ledger))
 
 	// Bind to loopback unless told otherwise: this API places orders and has
 	// no authentication yet.

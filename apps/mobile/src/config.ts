@@ -17,6 +17,9 @@ export const STATE_POLL_MS = 2000;
 /** How often a strategy screen re-reads its signal, in milliseconds. */
 export const SIGNAL_POLL_MS = 5000;
 
+/** How often the lobby re-reads the leaderboard, in milliseconds. */
+export const LEADERBOARD_POLL_MS = 10_000;
+
 /** Notional presets the player can pick, in collateral units. */
 export const NOTIONAL_PRESETS = ['5', '10', '20', '50'] as const;
 

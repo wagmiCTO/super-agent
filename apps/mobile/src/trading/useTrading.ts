@@ -17,7 +17,7 @@ import { trim } from '@/components/format';
 export type Notice = { text: string; kind: 'error' | 'info' };
 export type Busy = 'up' | 'down' | 'close' | null;
 
-export function useTrading(symbol: string) {
+export function useTrading(symbol: string, strategy: string) {
   const [state, setState] = useState<State | null>(null);
   const [market, setMarket] = useState<Market | null>(null);
   const [busy, setBusy] = useState<Busy>(null);
@@ -71,7 +71,7 @@ export function useTrading(symbol: string) {
       setBusy(side === 'long' ? 'up' : 'down');
       setNotice(null);
       try {
-        const order = await api.open({ symbol, side, notional, leverage: DEFAULT_LEVERAGE, horizon_seconds: horizonSeconds });
+        const order = await api.open({ symbol, side, notional, leverage: DEFAULT_LEVERAGE, horizon_seconds: horizonSeconds, strategy });
         if (order.status === 'failed') {
           setNotice({ text: `The exchange refused: ${order.rejection?.code ?? 'unknown'}`, kind: 'error' });
         } else {
@@ -84,7 +84,7 @@ export function useTrading(symbol: string) {
         setBusy(null);
       }
     },
-    [refresh, symbol],
+    [refresh, symbol, strategy],
   );
 
   const close = useCallback(async () => {

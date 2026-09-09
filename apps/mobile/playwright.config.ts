@@ -15,7 +15,7 @@ export default defineConfig({
   workers: 1,
   reporter: [['list']],
   use: {
-    baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:8082',
+    baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:8092',
     // iPhone viewport and touch, on Chromium: only Chromium is installed here.
     ...devices['iPhone 15'],
     browserName: 'chromium',
@@ -23,8 +23,8 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   webServer: {
-    command: 'python3 -m http.server 8082 --directory dist',
-    url: 'http://localhost:8082',
+    command: 'PORT=8092 node e2e/serve.mjs',
+    url: 'http://localhost:8092',
     reuseExistingServer: true,
     timeout: 20_000,
   },

@@ -218,6 +218,19 @@ paths:
           description: No signals are running.
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
+  /v1/leaderboard:
+    get:
+      summary: This week's board for every strategy
+      description: >-
+        One board per strategy, in lobby order: what the strategy made for
+        everyone this week, how many played, how many hold a position right
+        now, and the top wallets. Weeks start Monday 00:00 UTC.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Leaderboard" }
+
   /v1/kill:
     post:
       summary: Engage the kill switch — stops all opening, closing stays allowed
@@ -324,6 +337,39 @@ components:
             create its exchange account on-chain; forwarding_disabled — the account
             exists but has not allowed API order forwarding; frozen — the venue froze
             the account; active — ready to trade.
+
+    Leaderboard:
+      type: object
+      required: [week_start, boards]
+      properties:
+        week_start: { type: string, format: date-time }
+        boards:
+          type: array
+          items: { $ref: "#/components/schemas/Board" }
+
+    Board:
+      type: object
+      required: [id, name, tagline, rhythm, pnl, players, trades, active_now, top]
+      properties:
+        id: { type: string, example: ma-cross }
+        name: { type: string }
+        tagline: { type: string, description: What the strategy is, in one line. }
+        rhythm: { type: string, description: How often it asks for a decision. }
+        pnl:
+          $ref: "#/components/schemas/Decimal"
+          description: What the strategy made for all its players this week, fees included.
+        players: { type: integer }
+        trades: { type: integer }
+        active_now: { type: integer, description: Wallets holding a position under this strategy. }
+        top:
+          type: array
+          items:
+            type: object
+            required: [wallet, pnl, trades]
+            properties:
+              wallet: { type: string }
+              pnl: { $ref: "#/components/schemas/Decimal" }
+              trades: { type: integer }
 
     MACrossSignal:
       type: object
@@ -449,6 +495,11 @@ components:
         leverage:
           $ref: "#/components/schemas/Decimal"
           description: Defaults to 1.
+        strategy:
+          type: string
+          description: >-
+            Which strategy this entry belongs to, for the leaderboard:
+            direction (default) or ma-cross.
         horizon_seconds:
           type: integer
           minimum: 0

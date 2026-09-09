@@ -467,6 +467,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/leaderboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * This week's board for every strategy
+         * @description One board per strategy, in lobby order: what the strategy made for everyone this week, how many played, how many hold a position right now, and the top wallets. Weeks start Monday 00:00 UTC.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Leaderboard"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/kill": {
         parameters: {
             query?: never;
@@ -604,6 +642,31 @@ export interface components {
              */
             status: "no_exchange_account" | "forwarding_disabled" | "frozen" | "active";
         };
+        Leaderboard: {
+            /** Format: date-time */
+            week_start: string;
+            boards: components["schemas"]["Board"][];
+        };
+        Board: {
+            /** @example ma-cross */
+            id: string;
+            name: string;
+            /** @description What the strategy is */
+            tagline: string;
+            /** @description How often it asks for a decision. */
+            rhythm: string;
+            /** @description What the strategy made for all its players this week, fees included. */
+            pnl: components["schemas"]["Decimal"];
+            players: number;
+            trades: number;
+            /** @description Wallets holding a position under this strategy. */
+            active_now: number;
+            top: {
+                wallet: string;
+                pnl: components["schemas"]["Decimal"];
+                trades: number;
+            }[];
+        };
         MACrossSignal: {
             symbol: string;
             period_seconds: number;
@@ -708,6 +771,8 @@ export interface components {
             notional: components["schemas"]["Decimal"];
             /** @description Defaults to 1. */
             leverage?: components["schemas"]["Decimal"];
+            /** @description Which strategy this entry belongs to, for the leaderboard: direction (default) or ma-cross. */
+            strategy?: string;
             /** @description The strategy's exit: the platform closes the position this many seconds after it opens (10 s to 24 h). 0 or absent leaves the close to the user. A manual close disarms it. */
             horizon_seconds?: number;
         };
