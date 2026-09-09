@@ -40,6 +40,7 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /v1/exchange/network", h.exchangeNetwork)
 	mux.HandleFunc("GET /v1/signals/ma-cross", h.maCross)
 	mux.HandleFunc("GET /v1/leaderboard", h.leaderboard)
+	mux.HandleFunc("GET /v1/candles", h.candles)
 	mux.HandleFunc("GET /v1/health", h.health)
 	mux.HandleFunc("GET /v1/markets", h.markets)
 	mux.HandleFunc("GET /v1/state", h.state)
@@ -777,6 +778,45 @@ func (h *handler) maCross(w http.ResponseWriter, r *http.Request) {
 	}
 	if st.LastCross != nil {
 		out.LastCross = &signalCrossDTO{Side: st.LastCross.Side.String(), At: timeOrEmpty(st.LastCross.At)}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// --- candles ---
+
+type candleDTO struct {
+	Time   int64  `json:"t"`
+	Open   string `json:"o"`
+	High   string `json:"h"`
+	Low    string `json:"l"`
+	Close  string `json:"c"`
+	Volume string `json:"v"`
+}
+
+// candles serves OHLCV history for the chart from the platform's own
+// market-data connection: ?symbol=MON&period_seconds=60&from=<unix>&to=<unix>.
+// Public and shared, like the signals.
+func (h *handler) candles(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	period, err := strconv.Atoi(q.Get("period_seconds"))
+	if err != nil || period <= 0 {
+		writeJSON(w, http.StatusBadRequest, errorDTO{Error: "invalid", Message: "period_seconds must be a positive integer"})
+		return
+	}
+	from, err1 := strconv.ParseInt(q.Get("from"), 10, 64)
+	to, err2 := strconv.ParseInt(q.Get("to"), 10, 64)
+	if err1 != nil || err2 != nil {
+		writeJSON(w, http.StatusBadRequest, errorDTO{Error: "invalid", Message: "from and to must be unix seconds"})
+		return
+	}
+	bars, err := h.svc.Candles(r.Context(), q.Get("symbol"), time.Duration(period)*time.Second, time.Unix(from, 0), time.Unix(to, 0))
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	out := make([]candleDTO, 0, len(bars))
+	for _, b := range bars {
+		out = append(out, candleDTO{Time: b.Open.Unix(), Open: b.O.String(), High: b.H.String(), Low: b.L.String(), Close: b.C.String(), Volume: b.Volume.String()})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

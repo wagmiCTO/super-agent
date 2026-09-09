@@ -53,5 +53,5 @@ playwright-report/
 .vercel/
 .vercel
 
-# Embedded chart library, produced by scripts/embed-chart.mjs
-src/chart/vendor.generated.ts
+# TradingView Charting Library: licensed, never committed. Copy it in with scripts/link-charting-library.mjs.
+public/static/charting_library/

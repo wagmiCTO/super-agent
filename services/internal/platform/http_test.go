@@ -6,7 +6,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/wagmiCTO/super-agent/services/internal/fixed"
 	"github.com/wagmiCTO/super-agent/services/internal/keys"
 	"github.com/wagmiCTO/super-agent/services/internal/policy"
 	"github.com/wagmiCTO/super-agent/services/internal/venue"
@@ -184,5 +186,29 @@ func TestLeaderboardCountsRoundTrips(t *testing.T) {
 	}
 	if out.Boards[0].Trades != 0 {
 		t.Errorf("direction board counted the ma-cross trade: %+v", out.Boards[0])
+	}
+}
+
+func TestCandlesEndpoint(t *testing.T) {
+	t0 := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+	fv := &fakeVenue{candles: []venue.Candle{{Open: t0, Period: time.Minute, O: fixed.FromInt(1), H: fixed.FromInt(2), L: fixed.FromInt(1), C: fixed.FromInt(2)}}}
+	svc, _ := newService(t, fv)
+	h := Handler(svc, nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/candles?symbol=mon&period_seconds=60&from=1789000000&to=1789003600", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	var out []candleDTO
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 1 || out[0].Time != t0.Unix() || out[0].High != "2" {
+		t.Errorf("candles = %+v", out)
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/candles?symbol=mon&period_seconds=0&from=1&to=2", nil))
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("bad period: %d", rec.Code)
 	}
 }

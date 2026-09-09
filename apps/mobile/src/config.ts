@@ -11,6 +11,18 @@
  */
 export const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8080').replace(/\/$/, '');
 
+/**
+ * Where the web build (and the chart page, public/tv.html) is served from.
+ * On web it is the page's own origin. On a phone it must be reachable from
+ * the device: Metro on the laptop's LAN address in development, the site in
+ * production. Set EXPO_PUBLIC_WEB_URL to override; by default it follows the
+ * API host on Metro's port.
+ */
+export const WEB_URL = (
+  process.env.EXPO_PUBLIC_WEB_URL ??
+  (typeof window !== 'undefined' && window.location?.origin ? window.location.origin : API_URL.replace(/:\d+$/, ':8081'))
+).replace(/\/$/, '');
+
 /** How often the screen re-reads account state, in milliseconds. */
 export const STATE_POLL_MS = 2000;
 

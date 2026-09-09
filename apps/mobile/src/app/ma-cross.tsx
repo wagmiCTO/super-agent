@@ -14,10 +14,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAccount } from '@/account/useAccount';
 import { api, type MACrossSignal } from '@/api/client';
-import type { ChartPayload } from '@/chart/script';
-import { chartTheme } from '@/chart/theme';
 import { AccountSection } from '@/components/account';
-import { SignalChart } from '@/components/SignalChart';
+import { TVChart } from '@/components/TVChart';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import {
@@ -141,14 +139,6 @@ function SignalCard({
   const dark = useColorScheme() === 'dark';
   const trendColor = signal?.trend === 'up' ? UP : signal?.trend === 'down' ? DOWN : theme.textSecondary;
   const lit = Boolean(signal?.window);
-  const payload: ChartPayload | null = signal
-    ? {
-        mode: mode === 'Line' ? 'line' : 'candles',
-        points: signal.points,
-        trend: signal.trend,
-        cross: signal.last_cross ? { side: signal.last_cross.side, at: signal.last_cross.at } : null,
-      }
-    : null;
   return (
     <View
       testID="signal-card"
@@ -170,7 +160,14 @@ function SignalCard({
           </ThemedText>
         ) : null}
       </View>
-      <SignalChart payload={payload} theme={chartTheme(theme.backgroundElement, theme.textSecondary, dark)} height={240} />
+      <TVChart
+        symbol={DEFAULT_SYMBOL}
+        theme={dark ? 'dark' : 'light'}
+        background={theme.backgroundElement}
+        chartType={mode === 'Line' ? 'line' : 'candles'}
+        trend={signal?.trend ?? 'flat'}
+        height={280}
+      />
       <PresetRow label="Chart" options={CHART_MODES} value={mode} onChange={onMode} />
     </View>
   );

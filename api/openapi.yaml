@@ -218,6 +218,24 @@ paths:
           description: No signals are running.
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
+  /v1/candles:
+    get:
+      summary: OHLCV history for a market, for the chart
+      parameters:
+        - { in: query, name: symbol, required: true, schema: { type: string, example: MON } }
+        - { in: query, name: period_seconds, required: true, schema: { type: integer, example: 60 } }
+        - { in: query, name: from, required: true, schema: { type: integer, description: Unix seconds, inclusive. } }
+        - { in: query, name: to, required: true, schema: { type: integer, description: Unix seconds. } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Candle" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /v1/leaderboard:
     get:
       summary: This week's board for every strategy
@@ -337,6 +355,17 @@ components:
             create its exchange account on-chain; forwarding_disabled — the account
             exists but has not allowed API order forwarding; frozen — the venue froze
             the account; active — ready to trade.
+
+    Candle:
+      type: object
+      required: [t, o, h, l, c, v]
+      properties:
+        t: { type: integer, description: Bar open time, unix seconds. }
+        o: { $ref: "#/components/schemas/Decimal" }
+        h: { $ref: "#/components/schemas/Decimal" }
+        l: { $ref: "#/components/schemas/Decimal" }
+        c: { $ref: "#/components/schemas/Decimal" }
+        v: { $ref: "#/components/schemas/Decimal" }
 
     Leaderboard:
       type: object

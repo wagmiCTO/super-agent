@@ -81,3 +81,13 @@ Password Manager carry PRF; iCloud Keychain (macOS 15+/iOS 18+) and 1Password do
 ## Decided
 
 - **Every amount is a string.** The app formats; it never does money arithmetic.
+
+## The chart
+
+Strategy screens embed TradingView's Charting Library through `public/tv.html`:
+an iframe on web, a WebView on the phone, fed by the platform's `/v1/candles`.
+The library is licensed and is **not in the repository**. Point
+`CHARTING_LIBRARY_DIR` at a licensed copy and run `npm run link:chart`; it lands
+in `public/static/charting_library/` (gitignored) and ships with the web build.
+On a phone the page is loaded from `EXPO_PUBLIC_WEB_URL` (Metro's LAN address in
+development, the site in production).

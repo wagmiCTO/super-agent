@@ -133,6 +133,18 @@ func (s *Service) Markets(ctx context.Context) ([]venue.Market, error) {
 	return s.venue.Markets(ctx)
 }
 
+// Candles serves closed bars for the chart; the caller bounds the range.
+func (s *Service) Candles(ctx context.Context, symbol string, period time.Duration, from, to time.Time) ([]venue.Candle, error) {
+	symbol = strings.ToUpper(strings.TrimSpace(symbol))
+	if symbol == "" {
+		return nil, fmt.Errorf("%w: symbol is required", ErrInvalid)
+	}
+	if period <= 0 || to.Before(from) {
+		return nil, fmt.Errorf("%w: period must be positive and from <= to", ErrInvalid)
+	}
+	return s.venue.Candles(ctx, symbol, period, from, to)
+}
+
 // State is everything the app needs to render the account.
 type State struct {
 	Venue     string

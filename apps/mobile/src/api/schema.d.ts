@@ -467,6 +467,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/candles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** OHLCV history for a market, for the chart */
+        get: {
+            parameters: {
+                query: {
+                    symbol: string;
+                    period_seconds: number;
+                    from: number;
+                    to: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Candle"][];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/leaderboard": {
         parameters: {
             query?: never;
@@ -641,6 +683,15 @@ export interface components {
              * @enum {string}
              */
             status: "no_exchange_account" | "forwarding_disabled" | "frozen" | "active";
+        };
+        Candle: {
+            /** @description Bar open time */
+            t: number;
+            o: components["schemas"]["Decimal"];
+            h: components["schemas"]["Decimal"];
+            l: components["schemas"]["Decimal"];
+            c: components["schemas"]["Decimal"];
+            v: components["schemas"]["Decimal"];
         };
         Leaderboard: {
             /** Format: date-time */
