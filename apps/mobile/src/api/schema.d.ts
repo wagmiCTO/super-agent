@@ -493,6 +493,7 @@ export interface components {
             break_even_move_taker: components["schemas"]["Decimal"];
         };
         Account: {
+            /** @description Venue account id; "0" when the wallet has no exchange account yet. */
             id: string;
             balance: components["schemas"]["Decimal"];
             locked: components["schemas"]["Decimal"];
@@ -500,6 +501,11 @@ export interface components {
             can_trade: boolean;
             frozen: boolean;
             fee_tier: number;
+            /**
+             * @description Why can_trade is false. no_exchange_account — the wallet must fund and create its exchange account on-chain; forwarding_disabled — the account exists but has not allowed API order forwarding; frozen — the venue froze the account; active — ready to trade.
+             * @enum {string}
+             */
+            status: "no_exchange_account" | "forwarding_disabled" | "frozen" | "active";
         };
         Position: {
             id: string;
@@ -607,7 +613,8 @@ export interface components {
              *     leverage_too_high, daily_loss_limit_reached, cooldown,
              *     too_many_open_positions, total_exposure_too_large, malformed_request.
              *     Others: invalid_request, venue_rejected, venue_disconnected (503: outcome
-             *     unknown), enrollment_unavailable, no_key,
+             *     unknown), enrollment_unavailable, no_key, no_exchange_account (409: fund and
+             *     activate the wallet's exchange account), forwarding_disabled (409),
              *     unknown, re-read state and retry), unknown_market, no_position,
              *     no_credentials, internal.
              */

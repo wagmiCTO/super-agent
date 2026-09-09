@@ -42,4 +42,16 @@ test('a passkey wallet enrolls an exchange key bound to the builder code', async
   const key = await res.json();
   expect(key.builder_id).toBe(18);
   expect(key.max_builder_fee_per_100k).toBe(50);
+
+  // From now on the screen acts for this wallet, not the platform's own
+  // account: a fresh wallet has no exchange account yet, and the screen says
+  // what to do about it.
+  await expect(page.getByTestId('account-status')).toHaveText(/not activated yet/, { timeout: 15_000 });
+  const state = await page.request.get('http://localhost:8080/v1/state', {
+    headers: { 'X-Account-Address': address! },
+  });
+  expect(state.status()).toBe(200);
+  const body = await state.json();
+  expect(body.account.id).toBe('0');
+  expect(body.account.status).toBe('no_exchange_account');
 });

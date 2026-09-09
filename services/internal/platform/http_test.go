@@ -3,9 +3,11 @@ package platform
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/wagmiCTO/super-agent/services/internal/policy"
+	"github.com/wagmiCTO/super-agent/services/internal/venue"
 )
 
 func TestCORS(t *testing.T) {
@@ -71,5 +73,54 @@ func TestDenialWireShape(t *testing.T) {
 	want := `{"error":"` + string(policy.ReasonNotionalTooLarge) + `","message":"maximum position is 50","limit":"50","actual":"500"}`
 	if got := trimNL(rec.Body.String()); got != want {
 		t.Errorf("body = %s\nwant %s", got, want)
+	}
+}
+
+func TestNoExchangeAccountIs409(t *testing.T) {
+	svc, _ := newService(t, &fakeVenue{placeErr: venue.ErrNoExchangeAccount})
+	h := Handler(svc, nil)
+	req := httptest.NewRequest(http.MethodPost, "/v1/orders/open", stringsReader(`{"symbol":"MON","side":"long","notional":"10","leverage":"1"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"error":"no_exchange_account"`) {
+		t.Errorf("body = %s", rec.Body.String())
+	}
+}
+
+func TestAccountStatus(t *testing.T) {
+	cases := []struct {
+		in   venue.Account
+		want string
+	}{
+		{venue.Account{VenueID: "0"}, "no_exchange_account"},
+		{venue.Account{}, "no_exchange_account"},
+		{venue.Account{VenueID: "480", Frozen: true}, "frozen"},
+		{venue.Account{VenueID: "480"}, "forwarding_disabled"},
+		{venue.Account{VenueID: "480", CanTrade: true}, "active"},
+	}
+	for _, c := range cases {
+		if got := accountStatus(c.in); got != c.want {
+			t.Errorf("accountStatus(%+v) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// The account header is a custom header: a browser preflights it, and the
+// screen silently keeps acting for the platform's own account if the
+// preflight does not allow it.
+func TestCORSAllowsAccountHeader(t *testing.T) {
+	svc, _ := newService(t, &fakeVenue{})
+	h := Handler(svc, nil, WithCORS([]string{"http://localhost:8082"}))
+	req := httptest.NewRequest(http.MethodOptions, "/v1/state", nil)
+	req.Header.Set("Origin", "http://localhost:8082")
+	req.Header.Set("Access-Control-Request-Headers", AccountHeader)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if got := rec.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(strings.ToLower(got), strings.ToLower(AccountHeader)) {
+		t.Fatalf("Allow-Headers = %q, must include %s", got, AccountHeader)
 	}
 }

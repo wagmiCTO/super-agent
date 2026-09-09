@@ -278,6 +278,7 @@ func (t *tradingClient) checkHeartbeat(hb heartbeat) error {
 func (t *tradingClient) applyWallet(w wallet) {
 	t.mu.Lock()
 	t.lastHB = w.Seq
+	t.account.Address = w.Address
 	for _, a := range w.Accounts {
 		if t.wantAccount != 0 && a.ID != t.wantAccount {
 			continue
@@ -288,9 +289,11 @@ func (t *tradingClient) applyWallet(w wallet) {
 	}
 	t.mu.Unlock()
 
-	if t.currentAccount().ID != 0 {
-		t.readyOnce.Do(func() { close(t.ready) })
-	}
+	// The snapshot is the answer even when it lists no account: a wallet
+	// that has enrolled a key but not yet created an exchange account is a
+	// valid, if not yet tradable, session. Orders are refused by Place
+	// until the account exists.
+	t.readyOnce.Do(func() { close(t.ready) })
 }
 
 func (t *tradingClient) applyAccount(a account) {

@@ -52,18 +52,25 @@ type Service struct {
 // New wires the service and reconciles the policy engine against the venue's
 // own view of open positions. That reconciliation is not optional: after a
 // restart, the exchange is the source of truth and our memory is not.
-func New(ctx context.Context, v venue.Adapter, p *policy.Engine, limits policy.Limits, log *slog.Logger) (*Service, error) {
+//
+// accountKey identifies the account to the policy engine. It is the wallet
+// address where one is known, because the venue's own account id is 0 for a
+// wallet that has not yet created an exchange account and must not make two
+// such wallets share limits.
+func New(ctx context.Context, v venue.Adapter, p *policy.Engine, accountKey string, limits policy.Limits, log *slog.Logger) (*Service, error) {
 	if log == nil {
 		log = slog.Default()
 	}
-	acct, err := v.Account(ctx)
-	if err != nil {
+	if accountKey == "" {
+		return nil, errors.New("platform: an account key is required")
+	}
+	if _, err := v.Account(ctx); err != nil {
 		return nil, fmt.Errorf("platform: read account: %w", err)
 	}
-	if err := p.SetLimits(acct.VenueID, limits); err != nil {
+	if err := p.SetLimits(accountKey, limits); err != nil {
 		return nil, err
 	}
-	s := &Service{venue: v, policy: p, account: acct.VenueID, log: log}
+	s := &Service{venue: v, policy: p, account: accountKey, log: log}
 	if err := s.reconcile(ctx); err != nil {
 		return nil, err
 	}

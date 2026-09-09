@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import type { Wallet } from '@/account/derive';
-import { describeError } from '@/api/client';
+import { describeError, setAccountAddress } from '@/api/client';
 import { connectExchange, enrolledKey, type EnrolledKey } from './enroll';
 
 export type ExchangeState =
@@ -22,10 +22,15 @@ export function useExchange(wallet: Wallet | null) {
     let cancelled = false;
     if (!wallet) {
       setState({ status: 'unknown' });
+      setAccountAddress(null);
       return;
     }
     enrolledKey(wallet.address)
-      .then((key) => !cancelled && setState(key ? { status: 'connected', key } : { status: 'not-connected' }))
+      .then((key) => {
+        if (cancelled) return;
+        setState(key ? { status: 'connected', key } : { status: 'not-connected' });
+        setAccountAddress(key ? wallet.address : null);
+      })
       .catch(() => !cancelled && setState({ status: 'not-connected' }));
     return () => {
       cancelled = true;
@@ -39,6 +44,8 @@ export function useExchange(wallet: Wallet | null) {
     try {
       const key = await connectExchange(wallet);
       setState({ status: 'connected', key });
+      // From here on the screen acts for this wallet, not the platform's own account.
+      setAccountAddress(wallet.address);
     } catch (e) {
       setError(describeError(e));
     } finally {

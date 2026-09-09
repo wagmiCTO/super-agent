@@ -26,6 +26,13 @@ var (
 	ErrRejected = errors.New("venue: order rejected")
 	// ErrNotSupported is returned for a capability this venue lacks.
 	ErrNotSupported = errors.New("venue: not supported")
+	// ErrNoExchangeAccount is returned by Place when the wallet has enrolled
+	// a key but has not yet created an exchange account on-chain. The fix is
+	// funding and activation, not a retry.
+	ErrNoExchangeAccount = errors.New("venue: no exchange account for this wallet")
+	// ErrForwardingDisabled is returned by Place when the account exists but
+	// has not authorized the venue to forward API orders on-chain.
+	ErrForwardingDisabled = errors.New("venue: order forwarding not authorized for this account")
 	// ErrDisconnected is returned when the venue connection dropped while a
 	// request was in flight. The outcome is unknown: the caller must re-read
 	// positions rather than assume the order was not placed.

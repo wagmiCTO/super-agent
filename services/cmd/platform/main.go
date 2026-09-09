@@ -69,7 +69,11 @@ func run(log *slog.Logger) error {
 	}
 	defer adapter.Close()
 
-	svc, err := platform.New(ctx, adapter, policy.New(), limits, log)
+	ownKey := adapter.WalletAddress()
+	if ownKey == "" {
+		ownKey = "platform"
+	}
+	svc, err := platform.New(ctx, adapter, policy.New(), ownKey, limits, log)
 	if err != nil {
 		return err
 	}
@@ -78,11 +82,14 @@ func run(log *slog.Logger) error {
 	// endpoints answer 503 and the platform trades with its own key only.
 	handlerOpts := []platform.Option{}
 	if cfg.BuilderID > 0 {
-		enrollment, err := platform.NewEnrollment(adapter, keys.New(), cfg.BuilderID, cfg.BuilderFeePer100K, log)
+		store := keys.New()
+		enrollment, err := platform.NewEnrollment(adapter, store, cfg.BuilderID, cfg.BuilderFeePer100K, log)
 		if err != nil {
 			return err
 		}
-		handlerOpts = append(handlerOpts, platform.WithEnrollment(enrollment))
+		registry := platform.NewRegistry(store, platform.PerplFactory(cfg, log), limits, log)
+		defer registry.Close()
+		handlerOpts = append(handlerOpts, platform.WithEnrollment(enrollment), platform.WithRegistry(registry))
 		log.Info("enrollment enabled", "builder_id", cfg.BuilderID, "max_fee_per_100k", cfg.BuilderFeePer100K)
 	} else {
 		log.Warn("enrollment disabled: PERPL_BUILDER_ID is not set")

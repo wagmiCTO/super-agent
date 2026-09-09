@@ -84,7 +84,7 @@ func testLimits() policy.Limits {
 func newService(t *testing.T, fv *fakeVenue) (*Service, *policy.Engine) {
 	t.Helper()
 	eng := policy.New()
-	svc, err := New(context.Background(), fv, eng, testLimits(), nil)
+	svc, err := New(context.Background(), fv, eng, "480", testLimits(), nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -279,3 +279,17 @@ func TestRealizedPnL(t *testing.T) {
 
 func stringsReader(s string) io.Reader { return strings.NewReader(s) }
 func trimNL(s string) string           { return strings.TrimRight(s, "\n") }
+
+// A wallet without an exchange account is told so with a typed error, which
+// the API maps to a code the app can act on — not an internal error.
+func TestOpenWithoutExchangeAccount(t *testing.T) {
+	fv := &fakeVenue{placeErr: venue.ErrNoExchangeAccount}
+	svc, eng := newService(t, fv)
+	_, err := svc.Open(context.Background(), OpenRequest{Symbol: "MON", Side: venue.Long, Notional: fixed.FromInt(10), Leverage: fixed.FromInt(1)})
+	if !errors.Is(err, venue.ErrNoExchangeAccount) {
+		t.Fatalf("err = %v", err)
+	}
+	if snap := eng.Snapshot("480"); snap.OpenPositions != 0 {
+		t.Error("a refused open was recorded")
+	}
+}

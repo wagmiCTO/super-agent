@@ -67,12 +67,35 @@ export class ApiError extends Error {
 
 type Paths = paths;
 
+/**
+ * The wallet requests act for. While set, every call carries it in
+ * X-Account-Address and the platform routes to that wallet's own exchange
+ * key, limits and positions. Unset, requests use the platform's own account
+ * — the pre-passkey path the trading tests exercise.
+ *
+ * This is routing, not authentication; signed requests from the wallet are
+ * the next step, and until then the platform binds to loopback only.
+ */
+let accountAddress: string | null = null;
+
+export function setAccountAddress(address: string | null): void {
+  accountAddress = address;
+}
+
+export function currentAccountAddress(): string | null {
+  return accountAddress;
+}
+
 export async function request<T>(path: keyof Paths | string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${API_URL}${path}`, {
       ...init,
-      headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accountAddress ? { 'X-Account-Address': accountAddress } : {}),
+        ...(init?.headers ?? {}),
+      },
     });
   } catch (e) {
     throw new ApiError(0, { error: 'network', message: `cannot reach ${API_URL}` }, String(e));
@@ -129,6 +152,8 @@ export function describeError(e: unknown): string {
       return 'This market is not enabled';
     case 'no_position':
       return 'Nothing to close';
+    case 'no_key':
+      return 'This wallet has no exchange key yet — connect the exchange first';
     case 'enrollment_unavailable':
       return 'The platform has no builder code configured';
     case 'venue_rejected':

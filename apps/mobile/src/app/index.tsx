@@ -22,6 +22,14 @@ import { useTheme } from '@/hooks/use-theme';
 
 type Notional = (typeof NOTIONAL_PRESETS)[number];
 
+/** What stands between this wallet and its first order, in the user's words. */
+const ACCOUNT_STATUS_HINT: Record<State['account']['status'], string> = {
+  no_exchange_account: 'Exchange account not activated yet — fund the wallet with MON and AUSD, then activate trading',
+  forwarding_disabled: 'Exchange account exists but API trading is not authorized yet',
+  frozen: 'The exchange has frozen this account',
+  active: '',
+};
+
 export default function DirectionScreen() {
   const theme = useTheme();
   const account = useAccount();
@@ -106,7 +114,13 @@ export default function DirectionScreen() {
             </ThemedText>
           </View>
 
-          <AccountRow account={account} />
+          <AccountRow account={account} onExchangeChange={refresh} />
+
+          {state && state.account.status !== 'active' ? (
+            <ThemedText type="small" themeColor="textSecondary" testID="account-status">
+              {ACCOUNT_STATUS_HINT[state.account.status]}
+            </ThemedText>
+          ) : null}
 
           <PositionCard position={position} market={market} notional={notional} />
 
@@ -175,11 +189,22 @@ export default function DirectionScreen() {
  * The account layer, in one row: a passkey creates or unlocks the wallet, and
  * the address is the proof. No seed phrase, no extension, nothing custodial.
  */
-function AccountRow({ account }: { account: ReturnType<typeof useAccount> }) {
+function AccountRow({
+  account,
+  onExchangeChange,
+}: {
+  account: ReturnType<typeof useAccount>;
+  onExchangeChange: () => void;
+}) {
   const theme = useTheme();
   const { state, busy, error } = account;
   const address = state.status === 'unlocked' || state.status === 'remembered' ? state.stored.address : null;
   const exchange = useExchange(state.status === 'unlocked' ? state.wallet : null);
+  // The request header now names a different account: re-read its state at once.
+  const exchangeStatus = exchange.state.status;
+  useEffect(() => {
+    onExchangeChange();
+  }, [exchangeStatus, onExchangeChange]);
   return (
     <View style={[styles.accountRow, { backgroundColor: theme.backgroundElement }]}>
       <View style={{ flex: 1, gap: 2 }}>

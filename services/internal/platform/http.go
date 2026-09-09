@@ -27,7 +27,7 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	for _, opt := range opts {
 		opt(&o)
 	}
-	h := &handler{svc: s, log: log, enroll: o.enrollment}
+	h := &handler{svc: s, log: log, enroll: o.enrollment, registry: o.registry}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/exchange/enroll/payload", h.enrollPayload)
 	mux.HandleFunc("POST /v1/exchange/enroll", h.enrollFinish)
@@ -52,6 +52,13 @@ type Option func(*options)
 type options struct {
 	corsOrigins []string
 	enrollment  *Enrollment
+	registry    *Registry
+}
+
+// WithRegistry routes requests carrying X-Account-Address to that wallet's
+// own service. Requests without the header use the platform's own account.
+func WithRegistry(r *Registry) Option {
+	return func(o *options) { o.registry = r }
 }
 
 // WithEnrollment exposes the API-key enrollment endpoints. Without it they
@@ -81,7 +88,7 @@ func cors(next http.Handler, allowed []string) http.Handler {
 			h.Set("Access-Control-Allow-Origin", origin)
 			h.Set("Vary", "Origin")
 			h.Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-			h.Set("Access-Control-Allow-Headers", "Content-Type")
+			h.Set("Access-Control-Allow-Headers", "Content-Type, "+AccountHeader)
 			h.Set("Access-Control-Max-Age", "600")
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(http.StatusNoContent)
@@ -93,9 +100,38 @@ func cors(next http.Handler, allowed []string) http.Handler {
 }
 
 type handler struct {
-	svc    *Service
-	log    *slog.Logger
-	enroll *Enrollment
+	svc      *Service
+	log      *slog.Logger
+	enroll   *Enrollment
+	registry *Registry
+}
+
+// AccountHeader names the wallet a request acts for. It is not authentication
+// — that arrives with signed requests from the passkey wallet — and until it
+// does the platform must bind to loopback only.
+const AccountHeader = "X-Account-Address"
+
+// service picks the Service for a request: the wallet named in the header, or
+// the platform's own. ok is false when the response has already been written.
+func (h *handler) service(w http.ResponseWriter, r *http.Request) (*Service, bool) {
+	addr := strings.TrimSpace(r.Header.Get(AccountHeader))
+	if addr == "" {
+		return h.svc, true
+	}
+	if h.registry == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "enrollment_unavailable", Message: "per-wallet trading is not enabled"})
+		return nil, false
+	}
+	svc, err := h.registry.Get(r.Context(), addr)
+	if err != nil {
+		if errors.Is(err, ErrNoKey) {
+			writeJSON(w, http.StatusNotFound, errorDTO{Error: "no_key", Message: "no exchange key is enrolled for this wallet"})
+			return nil, false
+		}
+		h.fail(w, err)
+		return nil, false
+	}
+	return svc, true
 }
 
 // --- wire types ---
@@ -128,6 +164,24 @@ type accountDTO struct {
 	CanTrade bool   `json:"can_trade"`
 	Frozen   bool   `json:"frozen"`
 	FeeTier  int    `json:"fee_tier"`
+	// Status explains why CanTrade is false so the app can show the right
+	// next step instead of a generic "cannot trade".
+	Status string `json:"status"`
+}
+
+// accountStatus classifies the venue account for the app: what stands
+// between this wallet and its first order.
+func accountStatus(a venue.Account) string {
+	switch {
+	case a.VenueID == "" || a.VenueID == "0":
+		return "no_exchange_account"
+	case a.Frozen:
+		return "frozen"
+	case !a.CanTrade:
+		return "forwarding_disabled"
+	default:
+		return "active"
+	}
 }
 
 type positionDTO struct {
@@ -224,7 +278,11 @@ func (h *handler) health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) markets(w http.ResponseWriter, r *http.Request) {
-	ms, err := h.svc.Markets(r.Context())
+	svc, ok := h.service(w, r)
+	if !ok {
+		return
+	}
+	ms, err := svc.Markets(r.Context())
 	if err != nil {
 		h.fail(w, err)
 		return
@@ -237,7 +295,11 @@ func (h *handler) markets(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) state(w http.ResponseWriter, r *http.Request) {
-	st, err := h.svc.State(r.Context())
+	svc, ok := h.service(w, r)
+	if !ok {
+		return
+	}
+	st, err := svc.State(r.Context())
 	if err != nil {
 		h.fail(w, err)
 		return
@@ -256,7 +318,11 @@ func (h *handler) open(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, err)
 		return
 	}
-	order, err := h.svc.Open(r.Context(), req)
+	svc, ok := h.service(w, r)
+	if !ok {
+		return
+	}
+	order, err := svc.Open(r.Context(), req)
 	if err != nil {
 		h.fail(w, err)
 		return
@@ -270,7 +336,11 @@ func (h *handler) close(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, err)
 		return
 	}
-	order, err := h.svc.Close(r.Context(), CloseRequest{Symbol: in.Symbol})
+	svc, ok := h.service(w, r)
+	if !ok {
+		return
+	}
+	order, err := svc.Close(r.Context(), CloseRequest{Symbol: in.Symbol})
 	if err != nil {
 		h.fail(w, err)
 		return
@@ -326,6 +396,11 @@ func (h *handler) fail(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusNotFound, errorDTO{Error: "no_position", Message: err.Error()})
 	case errors.Is(err, ErrInvalid):
 		writeJSON(w, http.StatusBadRequest, errorDTO{Error: "invalid_request", Message: err.Error()})
+	case errors.Is(err, venue.ErrNoExchangeAccount):
+		// Not a refusal of this order: the wallet has no exchange account yet.
+		writeJSON(w, http.StatusConflict, errorDTO{Error: "no_exchange_account", Message: "this wallet has no exchange account yet — fund it and activate trading first"})
+	case errors.Is(err, venue.ErrForwardingDisabled):
+		writeJSON(w, http.StatusConflict, errorDTO{Error: "forwarding_disabled", Message: "the exchange account has not authorized API trading yet"})
 	case errors.Is(err, venue.ErrDisconnected):
 		// Not a refusal: the venue link dropped mid-request and the outcome is
 		// unknown. The app re-reads state on its next poll; the player retries.
@@ -409,6 +484,7 @@ func toStateDTO(st State) stateDTO {
 			Balance:  st.Account.Balance.String(),
 			Locked:   st.Account.Locked.String(),
 			CanTrade: st.Account.CanTrade,
+			Status:   accountStatus(st.Account),
 			Frozen:   st.Account.Frozen,
 			FeeTier:  st.Account.FeeTier,
 		},

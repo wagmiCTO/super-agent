@@ -473,10 +473,10 @@ func (a *Adapter) Place(ctx context.Context, req venue.OrderRequest) (venue.Orde
 	}
 	acct := a.trade.currentAccount()
 	if acct.ID == 0 {
-		return venue.Order{}, fmt.Errorf("perpl: no exchange account for this wallet — call createAccount on %s", a.cfg.Network.ExchangeAddress)
+		return venue.Order{}, fmt.Errorf("%w: call createAccount on %s", venue.ErrNoExchangeAccount, a.cfg.Network.ExchangeAddress)
 	}
 	if !acct.Forwarding {
-		return venue.Order{}, fmt.Errorf("perpl: order forwarding is not authorized — call allowOrderForwarding(true) on %s", a.cfg.Network.ExchangeAddress)
+		return venue.Order{}, fmt.Errorf("%w: call allowOrderForwarding(true) on %s", venue.ErrForwardingDisabled, a.cfg.Network.ExchangeAddress)
 	}
 
 	wire, err := a.buildOrder(ctx, m, acct, req)
