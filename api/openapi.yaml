@@ -99,11 +99,15 @@ paths:
     post:
       summary: Start enrolling an exchange API key for a wallet
       description: |
-        The platform generates an Ed25519 key pair and asks the venue for the
-        EIP-712 document that binds that key to the wallet and to our builder
-        terms. The wallet signs `typed_data`; `statement` is the prose the
-        user reads in the prompt. The private key waits on the server for
-        `expires_at`.
+        The platform generates an Ed25519 key pair and asks the venue for two
+        things: the wallet's sign-in message, and the EIP-712 document that
+        binds the new key to the wallet and to our builder terms. The wallet
+        signs both — `sign_in_message` as a personal message (EIP-191),
+        `typed_data` as EIP-712. `statement` is the prose the user reads. The
+        private key waits on the server until `expires_at`.
+
+        The sign-in is what creates the wallet's profile at the venue on first
+        contact; without it the venue refuses to enroll a key.
 
         When signing with viem, pass `domain.chainId` as a **bigint**: given a
         string, viem drops chainId from the domain type and the venue rejects
@@ -133,20 +137,22 @@ paths:
     post:
       summary: Finish enrolling with the wallet's signature
       description: |
-        The platform computes the EIP-712 digest, signs it with the pending
-        Ed25519 key as proof of possession, and submits both to the venue. On
-        success the key is stored and the platform can trade for this wallet.
-        A handle is single-use.
+        The platform signs the wallet in at the venue with `sign_in_signature`
+        (creating its profile on first contact), then computes the EIP-712
+        digest, signs it with the pending Ed25519 key as proof of possession,
+        and submits it with `signature`. On success the key is stored and the
+        platform can trade for this wallet. A handle is single-use.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [handle, signature]
+              required: [handle, sign_in_signature, signature]
               properties:
                 handle: { type: string }
-                signature: { type: string, description: The wallet's EIP-712 signature, 0x-hex, 65 bytes. }
+                sign_in_signature: { type: string, description: The wallet's EIP-191 signature over sign_in_message, 0x-hex, 65 bytes. }
+                signature: { type: string, description: The wallet's EIP-712 signature over typed_data, 0x-hex, 65 bytes. }
       responses:
         "200":
           content:
@@ -362,9 +368,10 @@ components:
 
     EnrollPayload:
       type: object
-      required: [handle, typed_data, statement, builder_id, max_builder_fee_per_100k, expires_at]
+      required: [handle, sign_in_message, typed_data, statement, builder_id, max_builder_fee_per_100k, expires_at]
       properties:
         handle: { type: string, description: Single-use; identifies the pending key. }
+        sign_in_message: { type: string, description: Sign-In-With-Ethereum text; sign as a personal message. }
         typed_data:
           type: object
           description: EIP-712 document (types, primaryType, domain, message). Sign it exactly as given.

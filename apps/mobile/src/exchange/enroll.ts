@@ -33,10 +33,10 @@ export const exchangeApi = {
       method: 'POST',
       body: JSON.stringify({ address, label }),
     }),
-  enroll: (handle: string, signature: string) =>
+  enroll: (handle: string, signInSignature: string, signature: string) =>
     request<EnrolledKey>('/v1/exchange/enroll', {
       method: 'POST',
-      body: JSON.stringify({ handle, signature }),
+      body: JSON.stringify({ handle, sign_in_signature: signInSignature, signature }),
     }),
   key: (address: string) => request<EnrolledKey>(`/v1/exchange/key?address=${encodeURIComponent(address)}`),
 };
@@ -65,11 +65,20 @@ export async function signEnrollment(wallet: Wallet, doc: TypedDataDocument): Pr
   });
 }
 
-/** Runs both steps. Resolves to the enrolled key; throws an ApiError on refusal. */
+/**
+ * Runs both steps. The wallet makes two signatures, neither of which prompts
+ * the user: the session key signs silently once the passkey has unlocked it.
+ *
+ * - the venue's sign-in message, as a personal message — this is the user
+ *   accepting the venue's terms and, on first contact, becoming a profile;
+ * - the enrollment document, as EIP-712 — consent to our builder fee.
+ */
 export async function connectExchange(wallet: Wallet, label = 'TradeAgent'): Promise<EnrolledKey> {
   const payload = await exchangeApi.payload(wallet.address, label);
+  const account = toViemAccount(wallet.session);
+  const signInSignature = await account.signMessage({ message: payload.sign_in_message });
   const signature = await signEnrollment(wallet, payload.typed_data as unknown as TypedDataDocument);
-  return exchangeApi.enroll(payload.handle, signature);
+  return exchangeApi.enroll(payload.handle, signInSignature, signature);
 }
 
 /** Whether a key is already enrolled for the wallet; null when the platform has none. */

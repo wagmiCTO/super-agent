@@ -18,6 +18,8 @@ import (
 // Enroller is the part of the venue adapter that enrollment needs, narrowed
 // so tests can substitute a fake without a network.
 type Enroller interface {
+	WalletAuthPayload(ctx context.Context, address string) (perpl.AuthPayload, error)
+	WalletAuthConnect(ctx context.Context, address string, payload perpl.AuthPayload, signature, refCode string) (perpl.AuthSession, error)
 	EnrollmentPayload(ctx context.Context, req perpl.EnrollmentRequest) (perpl.EnrollmentPayload, error)
 	Enroll(ctx context.Context, address string, payload perpl.EnrollmentPayload, walletSignature, popSignature string) (perpl.APIKeyInfo, error)
 }
@@ -25,13 +27,15 @@ type Enroller interface {
 // Enrollment creates exchange API keys for user wallets, bound to our builder
 // code, and keeps them so the platform can trade for those wallets.
 //
-// Two steps, mirroring the venue's flow:
+// Two round trips with the app, three with the venue:
 //
-//  1. Payload: generate an Ed25519 pair, ask the venue for the EIP-712 document
-//     that binds that public key to the wallet and to our builder terms, and
-//     hold the pair until the wallet signs.
-//  2. Enroll: compute the digest the wallet signed, sign the same digest with
-//     the Ed25519 key as proof of possession, submit both, store the key.
+//  1. Payload: generate an Ed25519 pair; ask the venue for the wallet's
+//     sign-in message and for the EIP-712 document that binds the new public
+//     key to the wallet and to our builder terms. Hand both to the app.
+//  2. Enroll: the wallet has signed both. Sign the wallet in first — a
+//     first sign-in is what creates its profile at the venue, and enrollment
+//     is refused without one — then compute the EIP-712 digest, sign it with
+//     the Ed25519 key as proof of possession, submit, store the key.
 //
 // The wallet signature is the user's consent to the builder fee, in prose they
 // read in the passkey prompt. The platform never holds a wallet key.
@@ -58,9 +62,12 @@ func NewEnrollment(v Enroller, store *keys.Store, builderID, maxFeePer100K int, 
 	return &Enrollment{venue: v, store: store, builderID: builderID, maxFee: maxFeePer100K, log: log}, nil
 }
 
-// PayloadResult is what the app needs to ask the wallet for a signature.
+// PayloadResult is what the app needs to ask the wallet for its signatures.
 type PayloadResult struct {
-	Handle    string
+	Handle string
+	// SignInMessage is signed as a personal message (EIP-191).
+	SignInMessage string
+	// TypedData is signed as EIP-712.
 	TypedData []byte
 	Statement string
 	BuilderID int
@@ -78,6 +85,10 @@ func (e *Enrollment) Payload(ctx context.Context, address, label string) (Payloa
 		label = "TradeAgent"
 	}
 	pending, err := e.store.PreparePending(address, label, e.builderID, e.maxFee)
+	if err != nil {
+		return PayloadResult{}, err
+	}
+	auth, err := e.venue.WalletAuthPayload(ctx, address)
 	if err != nil {
 		return PayloadResult{}, err
 	}
@@ -99,27 +110,39 @@ func (e *Enrollment) Payload(ctx context.Context, address, label string) (Payloa
 	}
 	pending.TypedData = payload.TypedData
 	pending.MAC = payload.MAC
+	pending.Auth = auth
 	e.store.Register(pending)
 	return PayloadResult{
-		Handle:    pending.Handle,
-		TypedData: payload.TypedData,
-		Statement: payload.Statement(),
-		BuilderID: e.builderID,
-		MaxFee:    e.maxFee,
-		ExpiresAt: pending.ExpiresAt,
+		Handle:        pending.Handle,
+		SignInMessage: auth.Message,
+		TypedData:     payload.TypedData,
+		Statement:     payload.Statement(),
+		BuilderID:     e.builderID,
+		MaxFee:        e.maxFee,
+		ExpiresAt:     pending.ExpiresAt,
 	}, nil
 }
 
-// Enroll runs step two: walletSignature is the EIP-712 signature (0x-hex)
-// over the payload from Payload, made by the wallet the payload names.
-func (e *Enrollment) Enroll(ctx context.Context, handle, walletSignature string) (keys.Key, error) {
+// Enroll runs step two. signInSignature is the wallet's EIP-191 signature over
+// the sign-in message; walletSignature is its EIP-712 signature over the
+// typed data. Both 0x-hex, 65 bytes.
+func (e *Enrollment) Enroll(ctx context.Context, handle, signInSignature, walletSignature string) (keys.Key, error) {
+	signInSignature = strings.TrimSpace(signInSignature)
 	walletSignature = strings.TrimSpace(walletSignature)
-	if !strings.HasPrefix(walletSignature, "0x") || len(walletSignature) != 132 {
-		return keys.Key{}, fmt.Errorf("%w: signature must be 0x-hex, 65 bytes", ErrInvalid)
+	for _, sig := range []string{signInSignature, walletSignature} {
+		if !strings.HasPrefix(sig, "0x") || len(sig) != 132 {
+			return keys.Key{}, fmt.Errorf("%w: signatures must be 0x-hex, 65 bytes", ErrInvalid)
+		}
 	}
 	pending, err := e.store.TakePending(handle)
 	if err != nil {
 		return keys.Key{}, fmt.Errorf("%w: %v", ErrInvalid, err)
+	}
+
+	// Sign the wallet in. The first time, this creates its profile at the
+	// venue; without one, enrollment below is refused with 404.
+	if _, err := e.venue.WalletAuthConnect(ctx, pending.Address, pending.Auth, signInSignature, ""); err != nil {
+		return keys.Key{}, err
 	}
 
 	td, err := eip712.Parse(pending.TypedData)
@@ -133,11 +156,27 @@ func (e *Enrollment) Enroll(ctx context.Context, handle, walletSignature string)
 	pop := ed25519.Sign(pending.PrivateKey, digest[:])
 	popHex := "0x" + hex.EncodeToString(pop)
 
-	info, err := e.venue.Enroll(ctx, pending.Address,
-		perpl.EnrollmentPayload{TypedData: pending.TypedData, MAC: pending.MAC},
-		walletSignature, popHex)
-	if err != nil {
-		return keys.Key{}, err
+	// A profile created by the sign-in a moment ago is not always visible to
+	// enrollment immediately: the venue has been seen to answer 400 within
+	// the first second and 200 on a retry. Give it a few short attempts.
+	var info perpl.APIKeyInfo
+	for attempt := 1; ; attempt++ {
+		info, err = e.venue.Enroll(ctx, pending.Address,
+			perpl.EnrollmentPayload{TypedData: pending.TypedData, MAC: pending.MAC},
+			walletSignature, popHex)
+		if err == nil {
+			break
+		}
+		if attempt >= enrollAttempts || !isVenueRefusal(err) {
+			e.log.Warn("enroll refused", "address", pending.Address, "attempt", attempt, "err", err)
+			return keys.Key{}, err
+		}
+		e.log.Info("enroll refused, retrying", "address", pending.Address, "attempt", attempt, "err", err)
+		select {
+		case <-ctx.Done():
+			return keys.Key{}, ctx.Err()
+		case <-time.After(enrollRetryDelay):
+		}
 	}
 	if info.BuilderID != e.builderID {
 		// The venue re-derives the terms; a mismatch here means the key is
@@ -168,6 +207,17 @@ func isAddress(s string) bool {
 	}
 	_, err := hex.DecodeString(s[2:])
 	return err == nil
+}
+
+const (
+	enrollAttempts   = 4
+	enrollRetryDelay = 750 * time.Millisecond
+)
+
+// isVenueRefusal reports a 4xx from the venue's REST API, the only failure a
+// retry can help with here.
+func isVenueRefusal(err error) bool {
+	return err != nil && strings.Contains(err.Error(), ": HTTP 4")
 }
 
 var errNoBuilder = errors.New("platform: enrollment is not configured: set PERPL_BUILDER_ID")

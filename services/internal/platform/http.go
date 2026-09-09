@@ -462,17 +462,19 @@ type enrollPayloadReqDTO struct {
 }
 
 type enrollPayloadDTO struct {
-	Handle    string          `json:"handle"`
-	TypedData json.RawMessage `json:"typed_data"`
-	Statement string          `json:"statement"`
-	BuilderID int             `json:"builder_id"`
-	MaxFee    int             `json:"max_builder_fee_per_100k"`
-	ExpiresAt string          `json:"expires_at"`
+	Handle        string          `json:"handle"`
+	SignInMessage string          `json:"sign_in_message"`
+	TypedData     json.RawMessage `json:"typed_data"`
+	Statement     string          `json:"statement"`
+	BuilderID     int             `json:"builder_id"`
+	MaxFee        int             `json:"max_builder_fee_per_100k"`
+	ExpiresAt     string          `json:"expires_at"`
 }
 
 type enrollReqDTO struct {
-	Handle    string `json:"handle"`
-	Signature string `json:"signature"`
+	Handle          string `json:"handle"`
+	SignInSignature string `json:"sign_in_signature"`
+	Signature       string `json:"signature"`
 }
 
 type enrolledKeyDTO struct {
@@ -500,12 +502,13 @@ func (h *handler) enrollPayload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, enrollPayloadDTO{
-		Handle:    res.Handle,
-		TypedData: res.TypedData,
-		Statement: res.Statement,
-		BuilderID: res.BuilderID,
-		MaxFee:    res.MaxFee,
-		ExpiresAt: timeOrEmpty(res.ExpiresAt),
+		Handle:        res.Handle,
+		SignInMessage: res.SignInMessage,
+		TypedData:     res.TypedData,
+		Statement:     res.Statement,
+		BuilderID:     res.BuilderID,
+		MaxFee:        res.MaxFee,
+		ExpiresAt:     timeOrEmpty(res.ExpiresAt),
 	})
 }
 
@@ -519,7 +522,7 @@ func (h *handler) enrollFinish(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, err)
 		return
 	}
-	k, err := h.enroll.Enroll(r.Context(), in.Handle, in.Signature)
+	k, err := h.enroll.Enroll(r.Context(), in.Handle, in.SignInSignature, in.Signature)
 	if err != nil {
 		h.fail(w, err)
 		return

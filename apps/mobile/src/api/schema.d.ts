@@ -219,11 +219,15 @@ export interface paths {
         put?: never;
         /**
          * Start enrolling an exchange API key for a wallet
-         * @description The platform generates an Ed25519 key pair and asks the venue for the
-         *     EIP-712 document that binds that key to the wallet and to our builder
-         *     terms. The wallet signs `typed_data`; `statement` is the prose the
-         *     user reads in the prompt. The private key waits on the server for
-         *     `expires_at`.
+         * @description The platform generates an Ed25519 key pair and asks the venue for two
+         *     things: the wallet's sign-in message, and the EIP-712 document that
+         *     binds the new key to the wallet and to our builder terms. The wallet
+         *     signs both — `sign_in_message` as a personal message (EIP-191),
+         *     `typed_data` as EIP-712. `statement` is the prose the user reads. The
+         *     private key waits on the server until `expires_at`.
+         *
+         *     The sign-in is what creates the wallet's profile at the venue on first
+         *     contact; without it the venue refuses to enroll a key.
          *
          *     When signing with viem, pass `domain.chainId` as a **bigint**: given a
          *     string, viem drops chainId from the domain type and the venue rejects
@@ -285,10 +289,11 @@ export interface paths {
         put?: never;
         /**
          * Finish enrolling with the wallet's signature
-         * @description The platform computes the EIP-712 digest, signs it with the pending
-         *     Ed25519 key as proof of possession, and submits both to the venue. On
-         *     success the key is stored and the platform can trade for this wallet.
-         *     A handle is single-use.
+         * @description The platform signs the wallet in at the venue with `sign_in_signature`
+         *     (creating its profile on first contact), then computes the EIP-712
+         *     digest, signs it with the pending Ed25519 key as proof of possession,
+         *     and submits it with `signature`. On success the key is stored and the
+         *     platform can trade for this wallet. A handle is single-use.
          */
         post: {
             parameters: {
@@ -301,7 +306,9 @@ export interface paths {
                 content: {
                     "application/json": {
                         handle: string;
-                        /** @description The wallet's EIP-712 signature */
+                        /** @description The wallet's EIP-191 signature over sign_in_message */
+                        sign_in_signature: string;
+                        /** @description The wallet's EIP-712 signature over typed_data */
                         signature: string;
                     };
                 };
@@ -571,6 +578,8 @@ export interface components {
         EnrollPayload: {
             /** @description Single-use; identifies the pending key. */
             handle: string;
+            /** @description Sign-In-With-Ethereum text; sign as a personal message. */
+            sign_in_message: string;
             /** @description EIP-712 document (types, primaryType, domain, message). Sign it exactly as given. */
             typed_data: Record<string, never>;
             /** @description The prose the user reads in the wallet prompt. */

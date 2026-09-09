@@ -14,10 +14,12 @@ package keys
 
 import (
 	"crypto/ed25519"
+
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/wagmiCTO/super-agent/services/internal/venue/perpl"
 	"strings"
 	"sync"
 	"time"
@@ -51,9 +53,11 @@ type Pending struct {
 	PublicKey  ed25519.PublicKey
 	TypedData  []byte
 	MAC        string
-	BuilderID  int
-	MaxFee     int
-	ExpiresAt  time.Time
+	// Auth is the venue's sign-in payload for the wallet, signed alongside.
+	Auth      perpl.AuthPayload
+	BuilderID int
+	MaxFee    int
+	ExpiresAt time.Time
 }
 
 // PendingTTL bounds how long a payload may sit unsigned. The venue's payload

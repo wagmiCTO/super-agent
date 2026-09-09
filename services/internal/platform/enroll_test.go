@@ -25,10 +25,20 @@ type fakeEnroller struct {
 	builderID int
 	maxFee    int
 	// captured
+	connected  []string
 	payloadReq perpl.EnrollmentRequest
 	enrolled   *perpl.APIKeyInfo
 	popOK      bool
 	failEnroll error
+}
+
+func (f *fakeEnroller) WalletAuthPayload(_ context.Context, address string) (perpl.AuthPayload, error) {
+	return perpl.AuthPayload{Message: "perpl wants you to sign in: " + address, Nonce: "n", IssuedAt: 1, MAC: "m"}, nil
+}
+
+func (f *fakeEnroller) WalletAuthConnect(_ context.Context, address string, p perpl.AuthPayload, sig, ref string) (perpl.AuthSession, error) {
+	f.connected = append(f.connected, address)
+	return perpl.AuthSession{Profiles: []string{address}}, nil
 }
 
 func (f *fakeEnroller) EnrollmentPayload(_ context.Context, req perpl.EnrollmentRequest) (perpl.EnrollmentPayload, error) {
@@ -118,9 +128,16 @@ func TestEnrollmentRoundTrip(t *testing.T) {
 		t.Errorf("statement = %q", res.Statement)
 	}
 
-	k, err := e.Enroll(context.Background(), res.Handle, walletSig)
+	if res.SignInMessage == "" {
+		t.Error("payload carries no sign-in message")
+	}
+	k, err := e.Enroll(context.Background(), res.Handle, walletSig, walletSig)
 	if err != nil {
 		t.Fatalf("Enroll: %v", err)
+	}
+	// The wallet was signed in — profile created — before enrollment.
+	if len(fake.connected) != 1 || !strings.EqualFold(fake.connected[0], addr) {
+		t.Errorf("wallet sign-in not performed before enroll: %v", fake.connected)
 	}
 	if !fake.popOK {
 		t.Error("proof-of-possession did not verify over the EIP-712 digest")
@@ -133,7 +150,7 @@ func TestEnrollmentRoundTrip(t *testing.T) {
 		t.Errorf("store.Get = %+v, %v", got, err)
 	}
 	// A handle is single-use.
-	if _, err := e.Enroll(context.Background(), res.Handle, walletSig); !errors.Is(err, ErrInvalid) {
+	if _, err := e.Enroll(context.Background(), res.Handle, walletSig, walletSig); !errors.Is(err, ErrInvalid) {
 		t.Errorf("second enroll with the same handle: %v", err)
 	}
 }
@@ -155,11 +172,11 @@ func TestEnrollValidation(t *testing.T) {
 	if _, err := e.Payload(context.Background(), "not-an-address", ""); !errors.Is(err, ErrInvalid) {
 		t.Errorf("bad address: %v", err)
 	}
-	if _, err := e.Enroll(context.Background(), "nope", walletSig); !errors.Is(err, ErrInvalid) {
+	if _, err := e.Enroll(context.Background(), "nope", walletSig, walletSig); !errors.Is(err, ErrInvalid) {
 		t.Errorf("unknown handle: %v", err)
 	}
 	res, _ := e.Payload(context.Background(), "0x000000000000000000000000000000000000dEaD", "")
-	if _, err := e.Enroll(context.Background(), res.Handle, "0xdeadbeef"); !errors.Is(err, ErrInvalid) {
+	if _, err := e.Enroll(context.Background(), res.Handle, walletSig, "0xdeadbeef"); !errors.Is(err, ErrInvalid) {
 		t.Errorf("malformed signature: %v", err)
 	}
 	if _, err := NewEnrollment(fake, keys.New(), 0, 50, nil); err == nil {
