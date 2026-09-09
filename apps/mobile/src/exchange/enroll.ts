@@ -72,13 +72,32 @@ export async function signEnrollment(wallet: Wallet, doc: TypedDataDocument): Pr
  * - the venue's sign-in message, as a personal message — this is the user
  *   accepting the venue's terms and, on first contact, becoming a profile;
  * - the enrollment document, as EIP-712 — consent to our builder fee.
+ *
+ * The venue's enroll endpoint accepts the EIP-712 signature only when its
+ * recovery byte is 27 (measured 10 Sep 2026: v=27 enrolls, v=28 is refused
+ * with a bare 400, same wallet, same document otherwise valid). The byte is
+ * a coin flip per document, so when it comes up 28 the wallet simply signs a
+ * fresh document — a new payload carries a new API key and timestamp — until
+ * it lands on 27. Silent, and two tries on average.
  */
 export async function connectExchange(wallet: Wallet, label = 'TradeAgent'): Promise<EnrolledKey> {
-  const payload = await exchangeApi.payload(wallet.address, label);
   const account = toViemAccount(wallet.session);
-  const signInSignature = await account.signMessage({ message: payload.sign_in_message });
-  const signature = await signEnrollment(wallet, payload.typed_data as unknown as TypedDataDocument);
-  return exchangeApi.enroll(payload.handle, signInSignature, signature);
+  for (let attempt = 0; attempt < MAX_SIGN_ATTEMPTS; attempt++) {
+    const payload = await exchangeApi.payload(wallet.address, label);
+    const signature = await signEnrollment(wallet, payload.typed_data as unknown as TypedDataDocument);
+    if (!recoversWithV27(signature)) continue;
+    const signInSignature = await account.signMessage({ message: payload.sign_in_message });
+    return exchangeApi.enroll(payload.handle, signInSignature, signature);
+  }
+  throw new Error('could not produce a signature the exchange accepts; try again');
+}
+
+/** Bound on re-signing: 2^-12 chance of never seeing v=27. */
+const MAX_SIGN_ATTEMPTS = 12;
+
+/** The last byte of a 65-byte secp256k1 signature is the recovery id, 27 or 28. */
+export function recoversWithV27(signature: `0x${string}`): boolean {
+  return signature.length === 132 && signature.slice(-2).toLowerCase() === '1b';
 }
 
 /** Whether a key is already enrolled for the wallet; null when the platform has none. */
