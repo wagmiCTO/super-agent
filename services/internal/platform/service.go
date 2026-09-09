@@ -167,7 +167,13 @@ func (s *Service) Open(ctx context.Context, req OpenRequest) (venue.Order, error
 		// The venue refused after admission; nothing was opened.
 		return placed, nil
 	}
-	s.policy.RecordOpen(s.account, req.Notional)
+	// Record what actually opened, not what was asked: lot rounding makes
+	// the filled notional differ from the request by a few cents.
+	opened := req.Notional
+	if placed.FilledSize > 0 && placed.AvgPrice > 0 {
+		opened = placed.AvgPrice.Mul(placed.FilledSize)
+	}
+	s.policy.RecordOpen(s.account, opened)
 	s.log.Info("opened", "symbol", req.Symbol, "side", req.Side, "notional", req.Notional,
 		"leverage", req.Leverage, "order", placed.VenueID, "status", placed.Status, "fee", placed.Fee)
 	return placed, nil

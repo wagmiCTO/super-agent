@@ -330,3 +330,20 @@ func TestFromOrder(t *testing.T) {
 		t.Errorf("FromOrder = %+v, want %+v", got, want)
 	}
 }
+
+// Opening records the requested notional; closing subtracts what the venue
+// actually filled, which lot rounding makes slightly different. Once no
+// position is open, exposure must read exactly zero.
+func TestExposureIsZeroWhenFlat(t *testing.T) {
+	e := New()
+	account := "480"
+	e.RecordOpen(account, fixed.FromInt(10))
+	closed, err := fixed.Parse("9.95705")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.RecordClose(account, closed, 0)
+	if got := e.Snapshot(account).Exposure; got != 0 {
+		t.Fatalf("exposure when flat = %s, want 0", got)
+	}
+}

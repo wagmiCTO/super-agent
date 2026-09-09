@@ -336,7 +336,10 @@ func (e *Engine) RecordClose(account string, notional, pnl fixed.D) {
 		st.openPositions--
 	}
 	st.exposure = st.exposure.Sub(notional)
-	if st.exposure.IsNeg() {
+	// Flat means flat: the notional that opened a position and the notional
+	// that closed it can differ by lot rounding, and that dust must not
+	// accumulate into a phantom exposure that eventually refuses orders.
+	if st.exposure.IsNeg() || st.openPositions == 0 {
 		st.exposure = 0
 	}
 	if pnl.IsNeg() {
