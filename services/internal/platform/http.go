@@ -12,6 +12,7 @@ import (
 
 	"github.com/wagmiCTO/super-agent/services/internal/fixed"
 	"github.com/wagmiCTO/super-agent/services/internal/policy"
+	"github.com/wagmiCTO/super-agent/services/internal/strategy"
 	"github.com/wagmiCTO/super-agent/services/internal/venue"
 )
 
@@ -200,6 +201,8 @@ type positionDTO struct {
 	UnrealizedPnL string `json:"unrealized_pnl"`
 	FeesPaid      string `json:"fees_paid"`
 	OpenedAt      string `json:"opened_at,omitempty"`
+	// ClosesAt is when the horizon closes this position; absent without one.
+	ClosesAt string `json:"closes_at,omitempty"`
 }
 
 type limitsDTO struct {
@@ -224,6 +227,7 @@ type stateDTO struct {
 	Venue     string        `json:"venue"`
 	Account   accountDTO    `json:"account"`
 	Positions []positionDTO `json:"positions"`
+	LastClose *lastCloseDTO `json:"last_close,omitempty"`
 	Limits    limitsDTO     `json:"limits"`
 	Risk      riskDTO       `json:"risk"`
 	Killed    bool          `json:"killed"`
@@ -235,6 +239,18 @@ type openReqDTO struct {
 	Side     string `json:"side"`
 	Notional string `json:"notional"`
 	Leverage string `json:"leverage"`
+	// HorizonSeconds closes the position after this long; 0 or absent
+	// leaves it to the user.
+	HorizonSeconds int `json:"horizon_seconds"`
+}
+
+type lastCloseDTO struct {
+	Symbol string `json:"symbol"`
+	Side   string `json:"side"`
+	Reason string `json:"reason"`
+	Price  string `json:"price"`
+	PnL    string `json:"pnl"`
+	At     string `json:"at"`
 }
 
 type closeReqDTO struct {
@@ -441,7 +457,11 @@ func parseOpen(in openReqDTO) (OpenRequest, error) {
 			return OpenRequest{}, fmt.Errorf("%w: leverage: %v", ErrInvalid, err)
 		}
 	}
-	return OpenRequest{Symbol: in.Symbol, Side: side, Notional: notional, Leverage: leverage}, nil
+	if in.HorizonSeconds < 0 {
+		return OpenRequest{}, fmt.Errorf("%w: horizon_seconds must not be negative", ErrInvalid)
+	}
+	rules := strategy.Rules{Horizon: time.Duration(in.HorizonSeconds) * time.Second}
+	return OpenRequest{Symbol: in.Symbol, Side: side, Notional: notional, Leverage: leverage, Rules: rules}, nil
 }
 
 func toMarketDTO(m venue.Market) marketDTO {
@@ -481,10 +501,19 @@ func toStateDTO(st State) stateDTO {
 			UnrealizedPnL: p.UnrealizedPnL.String(),
 			FeesPaid:      p.FeesPaid.String(),
 			OpenedAt:      timeOrEmpty(p.OpenedAt),
+			ClosesAt:      timeOrEmpty(st.Deadlines[p.Symbol]),
 		})
 	}
+	var last *lastCloseDTO
+	if st.LastClose != nil {
+		last = &lastCloseDTO{
+			Symbol: st.LastClose.Symbol, Side: st.LastClose.Side.String(), Reason: string(st.LastClose.Reason),
+			Price: st.LastClose.Price.String(), PnL: st.LastClose.PnL.String(), At: timeOrEmpty(st.LastClose.At),
+		}
+	}
 	return stateDTO{
-		Venue: st.Venue,
+		Venue:     st.Venue,
+		LastClose: last,
 		Account: accountDTO{
 			ID:       st.Account.VenueID,
 			Balance:  st.Account.Balance.String(),

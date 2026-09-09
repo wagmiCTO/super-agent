@@ -50,7 +50,7 @@ test.describe('Direction screen', () => {
 
     // The one number: a signed unrealized PnL under a position caption.
     await expect(page.getByText(/^Up · \d+ MON @ [\d.]+ · 2x$/)).toBeVisible();
-    await expect(page.getByText(/^unrealized · fees paid [\d.]+$/)).toBeVisible();
+    await expect(page.getByText(/^unrealized · fees paid [\d.]+( · closes in \d+:\d\d)?$/)).toBeVisible();
 
     // Buttons flip: no Up/Down while a position is open, only Close.
     await expect(page.getByRole('button', { name: 'Up', exact: true })).toHaveCount(0);
@@ -76,5 +76,31 @@ test.describe('Direction screen', () => {
     // The open above started a 5s cooldown; a second open inside it is refused.
     await page.getByRole('button', { name: 'Up', exact: true }).click();
     await expect(page.getByText(/^Wait \d+s before opening again$/)).toBeVisible();
+  });
+
+  // The horizon is the strategy's exit. The screen sends it with the tap,
+  // counts down to it, and explains the close after the platform made it.
+  // The presets are minutes long; this opens through the API with the
+  // shortest horizon the platform accepts so the test sees the whole arc.
+  test('a horizon closes the position and the screen says so', async ({ page }) => {
+    await ensureFlat(page);
+    await expect(page.getByRole('button', { name: 'Horizon 15m', exact: true })).toBeVisible();
+
+    // The previous test's refusal leaves a cooldown running; wait it out.
+    let status = 0;
+    for (let attempt = 0; attempt < 4 && status !== 200; attempt++) {
+      const res = await page.request.post('http://localhost:8080/v1/orders/open', {
+        data: { symbol: 'MON', side: 'long', notional: '5', leverage: '2', horizon_seconds: 12 },
+      });
+      status = res.status();
+      if (status === 403) {
+        const body = (await res.json()) as { retry_after_seconds?: number };
+        await page.waitForTimeout(((body.retry_after_seconds ?? 5) + 1) * 1000);
+      }
+    }
+    expect(status).toBe(200);
+    await expect(page.getByTestId('position-footer')).toHaveText(/closes in 00:(0|1)\d/, { timeout: 15_000 });
+    await expect(page.getByTestId('notice')).toHaveText(/^Closed by timer @ [\d.]+, [+-]?[\d.]+$/, { timeout: 40_000 });
+    await expect(page.getByText('No position')).toBeVisible();
   });
 });

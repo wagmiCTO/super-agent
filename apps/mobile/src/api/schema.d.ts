@@ -554,6 +554,17 @@ export interface components {
              */
             status: "no_exchange_account" | "forwarding_disabled" | "frozen" | "active";
         };
+        /** @description The most recent round trip's outcome, so the screen can say a position was closed while the user was away. */
+        LastClose: {
+            symbol: string;
+            side: components["schemas"]["Side"];
+            /** @enum {string} */
+            reason: "manual" | "horizon";
+            price: components["schemas"]["Decimal"];
+            pnl: components["schemas"]["Decimal"];
+            /** Format: date-time */
+            at: string;
+        };
         Position: {
             id: string;
             symbol: string;
@@ -567,6 +578,11 @@ export interface components {
             fees_paid: components["schemas"]["Decimal"];
             /** Format: date-time */
             opened_at?: string;
+            /**
+             * Format: date-time
+             * @description When the horizon closes this position; absent without one.
+             */
+            closes_at?: string;
         };
         Limits: {
             allowed_symbols: string[];
@@ -587,6 +603,7 @@ export interface components {
             last_open?: string;
         };
         State: {
+            last_close?: components["schemas"]["LastClose"];
             /** @example perpl */
             venue: string;
             account: components["schemas"]["Account"];
@@ -604,6 +621,8 @@ export interface components {
             notional: components["schemas"]["Decimal"];
             /** @description Defaults to 1. */
             leverage?: components["schemas"]["Decimal"];
+            /** @description The strategy's exit: the platform closes the position this many seconds after it opens (10 s to 24 h). 0 or absent leaves the close to the user. A manual close disarms it. */
+            horizon_seconds?: number;
         };
         CloseRequest: {
             symbol: string;
@@ -681,6 +700,7 @@ export interface components {
              *     Others: invalid_request, venue_rejected, venue_disconnected (503: outcome
              *     unknown), enrollment_unavailable, no_key, no_exchange_account (409: fund and
              *     activate the wallet's exchange account), forwarding_disabled (409),
+             *     venue_unconfirmed (504: acknowledged, outcome unknown — reconcile then retry),
              *     unknown, re-read state and retry), unknown_market, no_position,
              *     no_credentials, internal.
              */

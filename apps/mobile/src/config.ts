@@ -22,3 +22,26 @@ export const DEFAULT_LEVERAGE = '2';
 
 /** The market the Direction strategy opens on by default. */
 export const DEFAULT_SYMBOL = 'MON';
+
+/**
+ * Horizons the Direction strategy offers: the platform closes the position
+ * when the horizon ends. "Evening" is 20:00 local time — tonight, or
+ * tomorrow's if it is already past.
+ */
+export const HORIZON_PRESETS = ['15m', '1h', 'Evening'] as const;
+export type Horizon = (typeof HORIZON_PRESETS)[number];
+
+export function horizonSeconds(h: Horizon, now = new Date()): number {
+  switch (h) {
+    case '15m':
+      return 15 * 60;
+    case '1h':
+      return 60 * 60;
+    case 'Evening': {
+      const evening = new Date(now);
+      evening.setHours(20, 0, 0, 0);
+      if (evening.getTime() - now.getTime() < 60_000) evening.setDate(evening.getDate() + 1);
+      return Math.round((evening.getTime() - now.getTime()) / 1000);
+    }
+  }
+}

@@ -14,10 +14,12 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/wagmiCTO/super-agent/services/internal/fixed"
 	"github.com/wagmiCTO/super-agent/services/internal/policy"
+	"github.com/wagmiCTO/super-agent/services/internal/strategy"
 	"github.com/wagmiCTO/super-agent/services/internal/venue"
 )
 
@@ -27,12 +29,34 @@ var (
 	ErrNoPosition = errors.New("platform: no open position")
 )
 
-// OpenRequest is what the app sends to take a position.
+// OpenRequest is what the app sends to take a position. Rules are the exit
+// the user chose along with the entry: the horizon that closes the position
+// for them.
 type OpenRequest struct {
 	Symbol   string
 	Side     venue.Side
 	Notional fixed.D
 	Leverage fixed.D
+	Rules    strategy.Rules
+}
+
+// CloseReason says who closed a position.
+type CloseReason string
+
+const (
+	CloseManual  CloseReason = "manual"
+	CloseHorizon CloseReason = "horizon"
+)
+
+// CloseEvent is the last round trip's outcome, kept so the screen can tell
+// the user their position was closed while they were not looking.
+type CloseEvent struct {
+	Symbol string
+	Side   venue.Side
+	Reason CloseReason
+	Price  fixed.D
+	PnL    fixed.D
+	At     time.Time
 }
 
 // CloseRequest closes the open position in a market.
@@ -47,6 +71,11 @@ type Service struct {
 	policy  *policy.Engine
 	account string
 	log     *slog.Logger
+	timers  *strategy.Timers
+	now     func() time.Time
+
+	mu        sync.Mutex
+	lastClose *CloseEvent
 }
 
 // New wires the service and reconciles the policy engine against the venue's
@@ -70,12 +99,16 @@ func New(ctx context.Context, v venue.Adapter, p *policy.Engine, accountKey stri
 	if err := p.SetLimits(accountKey, limits); err != nil {
 		return nil, err
 	}
-	s := &Service{venue: v, policy: p, account: accountKey, log: log}
+	s := &Service{venue: v, policy: p, account: accountKey, log: log, timers: strategy.NewTimers(), now: time.Now}
 	if err := s.reconcile(ctx); err != nil {
 		return nil, err
 	}
 	return s, nil
 }
+
+// Shutdown releases the service's timers. Positions stay as they are on
+// the venue; a horizon pending at shutdown is lost — see the strategy ADR.
+func (s *Service) Shutdown() { s.timers.Close() }
 
 func (s *Service) reconcile(ctx context.Context) error {
 	positions, err := s.venue.Positions(ctx)
@@ -97,6 +130,9 @@ type State struct {
 	Venue     string
 	Account   venue.Account
 	Positions []venue.Position
+	// Deadlines is when each position's horizon closes it, by symbol.
+	Deadlines map[string]time.Time
+	LastClose *CloseEvent
 	Limits    policy.Limits
 	Risk      policy.Snapshot
 	Killed    bool
@@ -116,10 +152,21 @@ func (s *Service) State(ctx context.Context) (State, error) {
 	}
 	limits, _ := s.policy.Limits(s.account)
 	killed, note := s.policy.Killed()
+	deadlines := make(map[string]time.Time, len(positions))
+	for _, p := range positions {
+		if at, ok := s.timers.Deadline(p.Symbol); ok {
+			deadlines[p.Symbol] = at
+		}
+	}
+	s.mu.Lock()
+	last := s.lastClose
+	s.mu.Unlock()
 	return State{
 		Venue:     s.venue.Name(),
 		Account:   acct,
 		Positions: positions,
+		Deadlines: deadlines,
+		LastClose: last,
 		Limits:    limits,
 		Risk:      s.policy.Snapshot(s.account),
 		Killed:    killed,
@@ -146,6 +193,9 @@ func (s *Service) Open(ctx context.Context, req OpenRequest) (venue.Order, error
 	}
 	if !req.Leverage.IsPos() {
 		return venue.Order{}, fmt.Errorf("%w: leverage must be positive", ErrInvalid)
+	}
+	if err := req.Rules.Validate(); err != nil {
+		return venue.Order{}, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
 
 	order := venue.OrderRequest{
@@ -174,10 +224,42 @@ func (s *Service) Open(ctx context.Context, req OpenRequest) (venue.Order, error
 		opened = placed.AvgPrice.Mul(placed.FilledSize)
 	}
 	s.policy.RecordOpen(s.account, opened)
+	if req.Rules.Horizon > 0 {
+		// The exit is armed the moment the entry is confirmed. It fires on
+		// its own goroutine and goes through the same Close as a tap would.
+		symbol := req.Symbol
+		s.timers.Schedule(symbol, s.now().Add(req.Rules.Horizon), func() { s.closeOnHorizon(symbol) })
+	}
 	s.log.Info("opened", "symbol", req.Symbol, "side", req.Side, "notional", req.Notional,
-		"leverage", req.Leverage, "order", placed.VenueID, "status", placed.Status, "fee", placed.Fee)
+		"leverage", req.Leverage, "horizon", req.Rules.Horizon, "order", placed.VenueID, "status", placed.Status, "fee", placed.Fee)
 	return placed, nil
 }
+
+// closeOnHorizon is the horizon timer's callback. Closing must not depend on
+// anything transient, so it retries a few times before giving up loudly; a
+// position that is already gone (closed by hand, liquidated) is not an error.
+func (s *Service) closeOnHorizon(symbol string) {
+	for attempt := 1; attempt <= horizonCloseAttempts; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), horizonCloseTimeout)
+		_, err := s.close(ctx, symbol, CloseHorizon)
+		cancel()
+		switch {
+		case err == nil, errors.Is(err, ErrNoPosition):
+			return
+		case attempt < horizonCloseAttempts:
+			s.log.Warn("horizon close failed, retrying", "symbol", symbol, "attempt", attempt, "err", err)
+			time.Sleep(horizonCloseRetry)
+		default:
+			s.log.Error("horizon close failed; position left open", "symbol", symbol, "err", err)
+		}
+	}
+}
+
+const (
+	horizonCloseAttempts = 3
+	horizonCloseTimeout  = 30 * time.Second
+	horizonCloseRetry    = 5 * time.Second
+)
 
 // Close flattens the open position in a market. It sizes the order from the
 // venue's position, not from anything the caller sends: a close that could be
@@ -187,6 +269,14 @@ func (s *Service) Close(ctx context.Context, req CloseRequest) (venue.Order, err
 	if symbol == "" {
 		return venue.Order{}, fmt.Errorf("%w: symbol is required", ErrInvalid)
 	}
+	return s.close(ctx, symbol, CloseManual)
+}
+
+// close is the one exit, whoever asks for it. A pending horizon for the
+// symbol is disarmed first: the tap and the timer must not race to close
+// twice, which on a venue would mean opening the opposite side.
+func (s *Service) close(ctx context.Context, symbol string, reason CloseReason) (venue.Order, error) {
+	s.timers.Cancel(symbol)
 
 	positions, err := s.venue.Positions(ctx)
 	if err != nil {
@@ -228,7 +318,10 @@ func (s *Service) Close(ctx context.Context, req CloseRequest) (venue.Order, err
 	notional := pos.EntryPrice.Mul(pos.Size)
 	pnl := realizedPnL(*pos, placed)
 	s.policy.RecordClose(s.account, notional, pnl)
-	s.log.Info("closed", "symbol", symbol, "side", pos.Side, "size", pos.Size,
+	s.mu.Lock()
+	s.lastClose = &CloseEvent{Symbol: symbol, Side: pos.Side, Reason: reason, Price: placed.AvgPrice, PnL: pnl, At: s.now()}
+	s.mu.Unlock()
+	s.log.Info("closed", "symbol", symbol, "side", pos.Side, "size", pos.Size, "reason", reason,
 		"entry", pos.EntryPrice, "exit", placed.AvgPrice, "pnl", pnl, "fee", placed.Fee)
 	return placed, nil
 }

@@ -128,6 +128,7 @@ func (r *Registry) Close() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for addr, svc := range r.byAddr {
+		svc.Shutdown()
 		_ = svc.venue.Close()
 		delete(r.byAddr, addr)
 	}

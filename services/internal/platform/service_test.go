@@ -10,6 +10,7 @@ import (
 
 	"github.com/wagmiCTO/super-agent/services/internal/fixed"
 	"github.com/wagmiCTO/super-agent/services/internal/policy"
+	"github.com/wagmiCTO/super-agent/services/internal/strategy"
 	"github.com/wagmiCTO/super-agent/services/internal/venue"
 )
 
@@ -53,8 +54,26 @@ func (f *fakeVenue) Place(_ context.Context, req venue.OrderRequest) (venue.Orde
 	if f.placeResp != nil {
 		return f.placeResp(req), nil
 	}
+	price := fixed.MustParse("0.025")
+	size := req.Size
+	if size.IsZero() && req.Notional.IsPos() {
+		size = req.Notional.Div(price)
+	}
+	// Keep the venue's view of positions honest: an opening fill adds one,
+	// a reducing fill takes it away.
+	if req.Reduce {
+		kept := f.positions[:0]
+		for _, p := range f.positions {
+			if p.Symbol != req.Symbol {
+				kept = append(kept, p)
+			}
+		}
+		f.positions = kept
+	} else {
+		f.positions = append(f.positions, venue.Position{Symbol: req.Symbol, Side: req.Side, Size: size, EntryPrice: price, Leverage: req.Leverage})
+	}
 	return venue.Order{ClientID: req.ClientID, VenueID: "1", Symbol: req.Symbol, Side: req.Side,
-		Status: venue.StatusFilled, FilledSize: req.Size, AvgPrice: fixed.MustParse("0.025")}, nil
+		Status: venue.StatusFilled, FilledSize: size, AvgPrice: price}, nil
 }
 func (f *fakeVenue) Cancel(context.Context, string) error { return nil }
 func (f *fakeVenue) Positions(context.Context) ([]venue.Position, error) {
@@ -292,4 +311,87 @@ func TestOpenWithoutExchangeAccount(t *testing.T) {
 	if snap := eng.Snapshot("480"); snap.OpenPositions != 0 {
 		t.Error("a refused open was recorded")
 	}
+}
+
+// The horizon is the strategy's exit: armed when the entry fills, it closes
+// the position through the same path a tap would, and a manual close
+// disarms it so the two can never close twice.
+func TestHorizonClosesThePosition(t *testing.T) {
+	fv := &fakeVenue{}
+	svc, eng := newService(t, fv)
+	fa := &fakeAfter{}
+	now := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+	svc.timers = strategy.NewTimersWith(func() time.Time { return now }, fa.after)
+	svc.now = func() time.Time { return now }
+
+	_, err := svc.Open(context.Background(), OpenRequest{Symbol: "MON", Side: venue.Long, Notional: fixed.FromInt(10), Leverage: fixed.FromInt(1), Rules: strategy.Rules{Horizon: 15 * time.Minute}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, _ := svc.State(context.Background())
+	if at, ok := st.Deadlines["MON"]; !ok || !at.Equal(now.Add(15*time.Minute)) {
+		t.Fatalf("deadline = %v, %v", at, ok)
+	}
+	if len(fa.calls) != 1 {
+		t.Fatalf("scheduled %d timers", len(fa.calls))
+	}
+
+	fa.calls[0].fn() // the horizon fires
+	st, _ = svc.State(context.Background())
+	if len(st.Positions) != 0 {
+		t.Fatal("position still open after the horizon")
+	}
+	if st.LastClose == nil || st.LastClose.Reason != CloseHorizon || st.LastClose.Symbol != "MON" {
+		t.Fatalf("last close = %+v", st.LastClose)
+	}
+	if snap := eng.Snapshot("480"); snap.OpenPositions != 0 {
+		t.Error("policy still counts the position")
+	}
+}
+
+func TestManualCloseDisarmsHorizon(t *testing.T) {
+	fv := &fakeVenue{}
+	svc, _ := newService(t, fv)
+	fa := &fakeAfter{}
+	svc.timers = strategy.NewTimersWith(time.Now, fa.after)
+	_, err := svc.Open(context.Background(), OpenRequest{Symbol: "MON", Side: venue.Long, Notional: fixed.FromInt(10), Leverage: fixed.FromInt(1), Rules: strategy.Rules{Horizon: time.Hour}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Close(context.Background(), CloseRequest{Symbol: "MON"}); err != nil {
+		t.Fatal(err)
+	}
+	if !fa.calls[0].stopped {
+		t.Fatal("horizon still armed after a manual close")
+	}
+	st, _ := svc.State(context.Background())
+	if st.LastClose == nil || st.LastClose.Reason != CloseManual {
+		t.Fatalf("last close = %+v", st.LastClose)
+	}
+}
+
+func TestHorizonOutOfRangeIsInvalid(t *testing.T) {
+	svc, _ := newService(t, &fakeVenue{})
+	_, err := svc.Open(context.Background(), OpenRequest{Symbol: "MON", Side: venue.Long, Notional: fixed.FromInt(10), Leverage: fixed.FromInt(1), Rules: strategy.Rules{Horizon: time.Second}})
+	if !errors.Is(err, ErrInvalid) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// fakeAfter captures scheduled callbacks and fires them on demand.
+type fakeAfter struct {
+	calls []*fakeTimer
+}
+
+type fakeTimer struct {
+	fn      func()
+	stopped bool
+}
+
+func (f *fakeTimer) Stop() bool { f.stopped = true; return true }
+
+func (f *fakeAfter) after(_ time.Duration, fn func()) strategy.Stopper {
+	ft := &fakeTimer{fn: fn}
+	f.calls = append(f.calls, ft)
+	return ft
 }

@@ -19,7 +19,7 @@ import { useExchange } from '@/exchange/useExchange';
 import { api, ApiError, describeError, type Market, type Position, type State } from '@/api/client';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { DEFAULT_LEVERAGE, DEFAULT_SYMBOL, NOTIONAL_PRESETS, STATE_POLL_MS } from '@/config';
+import { DEFAULT_LEVERAGE, DEFAULT_SYMBOL, HORIZON_PRESETS, horizonSeconds, NOTIONAL_PRESETS, STATE_POLL_MS, type Horizon } from '@/config';
 import { Colors, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -39,6 +39,10 @@ export default function DirectionScreen() {
   const [state, setState] = useState<State | null>(null);
   const [market, setMarket] = useState<Market | null>(null);
   const [notional, setNotional] = useState<Notional>('20');
+  const [horizon, setHorizon] = useState<Horizon>('15m');
+  // The last close the screen has already explained, so a horizon close is
+  // announced once and not on every poll.
+  const explainedClose = useRef<string | null>(null);
   const [busy, setBusy] = useState<'up' | 'down' | 'close' | null>(null);
   const [notice, setNotice] = useState<{ text: string; kind: 'error' | 'info' } | null>(null);
   const [offline, setOffline] = useState(false);
@@ -50,6 +54,16 @@ export default function DirectionScreen() {
       if (!mounted.current) return;
       setState(s);
       setOffline(false);
+      // A position closed by its horizon while the user was away is news.
+      const last = s.last_close;
+      if (last && last.reason === 'horizon' && explainedClose.current !== last.at) {
+        if (explainedClose.current !== null) {
+          setNotice({ text: `Closed by timer @ ${trim(last.price)}, ${Number(last.pnl) >= 0 ? '+' : ''}${trim(last.pnl)}`, kind: 'info' });
+        }
+        explainedClose.current = last.at;
+      } else if (explainedClose.current === null) {
+        explainedClose.current = last?.at ?? '';
+      }
     } catch (e) {
       if (!mounted.current) return;
       if (e instanceof ApiError && e.code === 'network') setOffline(true);
@@ -76,7 +90,7 @@ export default function DirectionScreen() {
     setBusy(side === 'long' ? 'up' : 'down');
     setNotice(null);
     try {
-      const order = await api.open({ symbol: DEFAULT_SYMBOL, side, notional, leverage: DEFAULT_LEVERAGE });
+      const order = await api.open({ symbol: DEFAULT_SYMBOL, side, notional, leverage: DEFAULT_LEVERAGE, horizon_seconds: horizonSeconds(horizon) });
       if (order.status === 'failed') {
         setNotice({ text: `The exchange refused: ${order.rejection?.code ?? 'unknown'}`, kind: 'error' });
       } else {
@@ -158,6 +172,22 @@ export default function DirectionScreen() {
                       { backgroundColor: n === notional ? theme.backgroundSelected : theme.backgroundElement },
                     ]}>
                     <ThemedText type="smallBold">{n}</ThemedText>
+                  </Pressable>
+                ))}
+              </View>
+              <View style={styles.presets}>
+                {HORIZON_PRESETS.map((h) => (
+                  <Pressable
+                    key={h}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Horizon ${h}`}
+                    accessibilityState={{ selected: h === horizon }}
+                    onPress={() => setHorizon(h)}
+                    style={[
+                      styles.preset,
+                      { backgroundColor: h === horizon ? theme.backgroundSelected : theme.backgroundElement },
+                    ]}>
+                    <ThemedText type="smallBold">{h}</ThemedText>
                   </Pressable>
                 ))}
               </View>
@@ -347,6 +377,7 @@ function SmallButton({ label, onPress, busy }: { label: string; onPress: () => v
 /** The one number: unrealized PnL while open; the cost of entry while flat. */
 function PositionCard({ position, market, notional }: { position: Position | null; market: Market | null; notional: string }) {
   const theme = useTheme();
+  const closesIn = useCountdown(position?.closes_at ?? null);
   if (position) {
     const pnl = Number(position.unrealized_pnl);
     const color = pnl > 0 ? '#16a34a' : pnl < 0 ? '#dc2626' : theme.text;
@@ -359,8 +390,9 @@ function PositionCard({ position, market, notional }: { position: Position | nul
           {pnl > 0 ? '+' : ''}
           {trim(position.unrealized_pnl)}
         </ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="small" themeColor="textSecondary" testID="position-footer">
           unrealized · fees paid {trim(position.fees_paid)}
+          {closesIn !== null ? ` · closes in ${closesIn}` : ''}
         </ThemedText>
       </View>
     );
@@ -380,6 +412,24 @@ function PositionCard({ position, market, notional }: { position: Position | nul
       </ThemedText>
     </View>
   );
+}
+
+/** A mm:ss (or h:mm:ss) countdown to an ISO time; null without one. */
+function useCountdown(until: string | null): string | null {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!until) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [until]);
+  if (!until) return null;
+  const left = Math.max(0, Math.floor((new Date(until).getTime() - now) / 1000));
+  const h = Math.floor(left / 3600);
+  const m = Math.floor((left % 3600) / 60);
+  const sec = left % 60;
+  const mm = String(m).padStart(2, '0');
+  const ss = String(sec).padStart(2, '0');
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
 function DirectionButton({ label, color, busy, disabled, onPress }: { label: string; color: string; busy: boolean; disabled: boolean; onPress: () => void }) {

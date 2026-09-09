@@ -302,6 +302,20 @@ components:
             exists but has not allowed API order forwarding; frozen — the venue froze
             the account; active — ready to trade.
 
+    LastClose:
+      type: object
+      description: The most recent round trip's outcome, so the screen can say a position was closed while the user was away.
+      required: [symbol, side, reason, price, pnl, at]
+      properties:
+        symbol: { type: string }
+        side: { $ref: "#/components/schemas/Side" }
+        reason:
+          type: string
+          enum: [manual, horizon]
+        price: { $ref: "#/components/schemas/Decimal" }
+        pnl: { $ref: "#/components/schemas/Decimal" }
+        at: { type: string, format: date-time }
+
     Position:
       type: object
       required: [id, symbol, side, size, entry_price, notional, collateral, leverage, unrealized_pnl, fees_paid]
@@ -317,6 +331,10 @@ components:
         unrealized_pnl: { $ref: "#/components/schemas/Decimal" }
         fees_paid: { $ref: "#/components/schemas/Decimal" }
         opened_at: { type: string, format: date-time }
+        closes_at:
+          type: string
+          format: date-time
+          description: When the horizon closes this position; absent without one.
 
     Limits:
       type: object
@@ -345,6 +363,8 @@ components:
       type: object
       required: [venue, account, positions, limits, risk, killed]
       properties:
+        last_close:
+          $ref: "#/components/schemas/LastClose"
         venue: { type: string, example: perpl }
         account: { $ref: "#/components/schemas/Account" }
         positions: { type: array, items: { $ref: "#/components/schemas/Position" } }
@@ -365,6 +385,13 @@ components:
         leverage:
           $ref: "#/components/schemas/Decimal"
           description: Defaults to 1.
+        horizon_seconds:
+          type: integer
+          minimum: 0
+          description: >-
+            The strategy's exit: the platform closes the position this many
+            seconds after it opens (10 s to 24 h). 0 or absent leaves the
+            close to the user. A manual close disarms it.
 
     CloseRequest:
       type: object
