@@ -34,9 +34,16 @@ type httpError struct {
 	Status int
 	Target string
 	Body   string
+	// Edge tells an application refusal from one produced by the CDN in
+	// front of the venue (rate limiting, WAF): those carry a cf-ray id and
+	// a plain-text body, and are worth a slower retry rather than a bug hunt.
+	Edge string
 }
 
 func (e *httpError) Error() string {
+	if e.Edge != "" {
+		return fmt.Sprintf("perpl: %s: HTTP %d (edge %s): %s", e.Target, e.Status, e.Edge, e.Body)
+	}
 	return fmt.Sprintf("perpl: %s: HTTP %d: %s", e.Target, e.Status, e.Body)
 }
 
@@ -123,7 +130,7 @@ func (c *restClient) attempt(ctx context.Context, method, target string, body []
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
-		return &httpError{Status: resp.StatusCode, Target: target, Body: strings.TrimSpace(string(b))}
+		return &httpError{Status: resp.StatusCode, Target: target, Body: strings.TrimSpace(string(b)), Edge: resp.Header.Get("Cf-Ray")}
 	}
 	if out == nil {
 		_, _ = io.Copy(io.Discard, resp.Body)

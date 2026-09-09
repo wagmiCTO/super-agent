@@ -175,7 +175,7 @@ func (e *Enrollment) Enroll(ctx context.Context, handle, signInSignature, wallet
 		select {
 		case <-ctx.Done():
 			return keys.Key{}, ctx.Err()
-		case <-time.After(enrollRetryDelay):
+		case <-time.After(enrollRetryDelay << uint(attempt-1)):
 		}
 	}
 	if info.BuilderID != e.builderID {
@@ -210,8 +210,8 @@ func isAddress(s string) bool {
 }
 
 const (
-	enrollAttempts   = 4
-	enrollRetryDelay = 750 * time.Millisecond
+	enrollAttempts   = 5
+	enrollRetryDelay = time.Second // doubles each attempt: 1+2+4+8 s
 )
 
 // isVenueRefusal reports a 4xx from the venue's REST API, the only failure a
