@@ -1,0 +1,97 @@
+{
+  "typed_data": {
+    "types": {
+      "EIP712Domain": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "version",
+          "type": "string"
+        },
+        {
+          "name": "chainId",
+          "type": "uint256"
+        },
+        {
+          "name": "verifyingContract",
+          "type": "address"
+        },
+        {
+          "name": "salt",
+          "type": "bytes32"
+        }
+      ],
+      "PerplRegisterApiKey": [
+        {
+          "name": "signer",
+          "type": "address"
+        },
+        {
+          "name": "statement",
+          "type": "string"
+        },
+        {
+          "name": "publicKey",
+          "type": "string"
+        },
+        {
+          "name": "scope",
+          "type": "string"
+        },
+        {
+          "name": "label",
+          "type": "string"
+        },
+        {
+          "name": "expiresAt",
+          "type": "string"
+        },
+        {
+          "name": "ipCidrs",
+          "type": "string"
+        },
+        {
+          "name": "origin",
+          "type": "string"
+        },
+        {
+          "name": "builderId",
+          "type": "string"
+        },
+        {
+          "name": "maxBuilderFeePer100K",
+          "type": "string"
+        },
+        {
+          "name": "time",
+          "type": "uint64"
+        }
+      ]
+    },
+    "primaryType": "PerplRegisterApiKey",
+    "domain": {
+      "name": "perpl.xyz",
+      "version": "1",
+      "chainId": "0x279f",
+      "verifyingContract": "0x0000000000000000000000000000000000000000",
+      "salt": "0x00000000000000000000000000000000000000006aa284e9895a93c38d6415ee"
+    },
+    "message": {
+      "builderId": "18",
+      "expiresAt": "0",
+      "ipCidrs": "",
+      "label": "eip712-vector",
+      "maxBuilderFeePer100K": "50",
+      "origin": "",
+      "publicKey": "m3H_hJokp0AUzOocH70-Ggs-DsnY2ahq3GQHaTbDWnQ",
+      "scope": "3",
+      "signer": "0x000000000000000000000000000000000000dEaD",
+      "statement": "Authorize Super Agent (builder code 18) to place orders from this wallet and to charge a builder fee of up to 0.050% per order. This does not permit withdrawals.",
+      "time": "0x1a08ad73117"
+    }
+  },
+  "digest": "0x7c535ba784fd68f9a60810ceb4763655ffef2b6c7b9a285b4ac5a6257a93a066",
+  "_note": "digest = ethers.TypedDataEncoder.hash (Perpl's reference) = viem.hashTypedData with domain.chainId as a bigint. viem given chainId as a string omits it from the domain type and yields 0x5492...e09e, which Perpl would reject."
+}

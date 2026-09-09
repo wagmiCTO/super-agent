@@ -21,6 +21,10 @@ const config: ExpoConfig = {
   userInterfaceStyle: 'automatic',
   ios: {
     bundleIdentifier: applicationId,
+    // The team that owns the bundle id. Xcode needs it to build a target with
+    // entitlements, simulator included; signing for a device additionally
+    // needs the Apple account in Xcode.
+    appleTeamId: '9Q73U33Y7D',
     icon: './assets/expo.icon',
     ...(rpId ? { associatedDomains: [`webcredentials:${rpId}`] } : {}),
   },
