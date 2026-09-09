@@ -29,12 +29,13 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	for _, opt := range opts {
 		opt(&o)
 	}
-	h := &handler{svc: s, log: log, enroll: o.enrollment, registry: o.registry}
+	h := &handler{svc: s, log: log, enroll: o.enrollment, registry: o.registry, signals: o.signals}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/exchange/enroll/payload", h.enrollPayload)
 	mux.HandleFunc("POST /v1/exchange/enroll", h.enrollFinish)
 	mux.HandleFunc("GET /v1/exchange/key", h.enrolledKey)
 	mux.HandleFunc("GET /v1/exchange/network", h.exchangeNetwork)
+	mux.HandleFunc("GET /v1/signals/ma-cross", h.maCross)
 	mux.HandleFunc("GET /v1/health", h.health)
 	mux.HandleFunc("GET /v1/markets", h.markets)
 	mux.HandleFunc("GET /v1/state", h.state)
@@ -56,12 +57,18 @@ type options struct {
 	corsOrigins []string
 	enrollment  *Enrollment
 	registry    *Registry
+	signals     *Signals
 }
 
 // WithRegistry routes requests carrying X-Account-Address to that wallet's
 // own service. Requests without the header use the platform's own account.
 func WithRegistry(r *Registry) Option {
 	return func(o *options) { o.registry = r }
+}
+
+// WithSignals serves the strategies' signals.
+func WithSignals(s *Signals) Option {
+	return func(o *options) { o.signals = s }
 }
 
 // WithEnrollment exposes the API-key enrollment endpoints. Without it they
@@ -109,6 +116,7 @@ type handler struct {
 	log      *slog.Logger
 	enroll   *Enrollment
 	registry *Registry
+	signals  *Signals
 }
 
 // AccountHeader names the wallet a request acts for. It is not authentication
@@ -685,6 +693,76 @@ func (h *handler) exchangeNetwork(w http.ResponseWriter, r *http.Request) {
 		CollateralSymbol: act.CollateralSymbol, CollateralDecimals: act.CollateralDecimals,
 		MinAccountOpenAmount: minOpen.String(), MinAccountOpenRaw: act.MinAccountOpenAmount,
 	})
+}
+
+// --- signals ---
+
+type signalPointDTO struct {
+	At    string `json:"at"`
+	Close string `json:"close"`
+	Fast  string `json:"fast,omitempty"`
+	Slow  string `json:"slow,omitempty"`
+}
+
+type signalWindowDTO struct {
+	Side      string `json:"side"`
+	OpenedAt  string `json:"opened_at"`
+	ExpiresAt string `json:"expires_at"`
+}
+
+type signalCrossDTO struct {
+	Side string `json:"side"`
+	At   string `json:"at"`
+}
+
+type maCrossDTO struct {
+	Symbol        string           `json:"symbol"`
+	PeriodSeconds int              `json:"period_seconds"`
+	Fast          int              `json:"fast"`
+	Slow          int              `json:"slow"`
+	Ready         bool             `json:"ready"`
+	Trend         string           `json:"trend"`
+	Forming       bool             `json:"forming"`
+	Window        *signalWindowDTO `json:"window,omitempty"`
+	LastCross     *signalCrossDTO  `json:"last_cross,omitempty"`
+	Points        []signalPointDTO `json:"points"`
+}
+
+// maCross serves the MA Cross signal for a market: the chart, the trend,
+// and whether an entry is on offer right now. Public and shared: the signal
+// is about the market, not the caller.
+func (h *handler) maCross(w http.ResponseWriter, r *http.Request) {
+	if h.signals == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "signals_unavailable", Message: "no signals are running"})
+		return
+	}
+	symbol := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("symbol")))
+	st, ok := h.signals.MACross(symbol)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, errorDTO{Error: "unknown_market", Message: "no signal for this market"})
+		return
+	}
+	out := maCrossDTO{
+		Symbol: st.Symbol, PeriodSeconds: int(st.Period / time.Second), Fast: st.Fast, Slow: st.Slow,
+		Ready: st.Ready, Trend: string(st.Trend), Forming: st.Forming, Points: make([]signalPointDTO, 0, len(st.Points)),
+	}
+	for _, p := range st.Points {
+		d := signalPointDTO{At: p.At.UTC().Format(time.RFC3339), Close: p.Close.String()}
+		if !p.Fast.IsZero() {
+			d.Fast = p.Fast.String()
+		}
+		if !p.Slow.IsZero() {
+			d.Slow = p.Slow.String()
+		}
+		out.Points = append(out.Points, d)
+	}
+	if st.Window != nil {
+		out.Window = &signalWindowDTO{Side: st.Window.Side.String(), OpenedAt: timeOrEmpty(st.Window.OpenedAt), ExpiresAt: timeOrEmpty(st.Window.ExpiresAt)}
+	}
+	if st.LastCross != nil {
+		out.LastCross = &signalCrossDTO{Side: st.LastCross.Side.String(), At: timeOrEmpty(st.LastCross.At)}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (h *handler) enrolledKey(w http.ResponseWriter, r *http.Request) {

@@ -417,6 +417,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/signals/ma-cross": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The MA Cross signal for a market
+         * @description The strategy's signal, shared by everyone: closed one-minute bars with the fast and slow averages, which average is on top, and — for a few minutes after a cross — an open window inviting an entry in the cross's direction. The signal never places orders; the user does.
+         */
+        get: {
+            parameters: {
+                query: {
+                    symbol: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MACrossSignal"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+                /** @description No signals are running. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/kill": {
         parameters: {
             query?: never;
@@ -553,6 +603,43 @@ export interface components {
              * @enum {string}
              */
             status: "no_exchange_account" | "forwarding_disabled" | "frozen" | "active";
+        };
+        MACrossSignal: {
+            symbol: string;
+            period_seconds: number;
+            /** @description Fast average length */
+            fast: number;
+            /** @description Slow average length */
+            slow: number;
+            /** @description False until slow closed bars exist. */
+            ready: boolean;
+            /**
+             * @description Which average is on top as of the last closed bar.
+             * @enum {string}
+             */
+            trend: "up" | "down" | "flat";
+            /** @description Whether the last point is the bar still forming. */
+            forming: boolean;
+            /** @description Present while an entry is offered after a cross. */
+            window?: {
+                side: components["schemas"]["Side"];
+                /** Format: date-time */
+                opened_at: string;
+                /** Format: date-time */
+                expires_at: string;
+            };
+            last_cross?: {
+                side: components["schemas"]["Side"];
+                /** Format: date-time */
+                at: string;
+            };
+            points: {
+                /** Format: date-time */
+                at: string;
+                close: components["schemas"]["Decimal"];
+                fast?: components["schemas"]["Decimal"];
+                slow?: components["schemas"]["Decimal"];
+            }[];
         };
         /** @description The most recent round trip's outcome, so the screen can say a position was closed while the user was away. */
         LastClose: {

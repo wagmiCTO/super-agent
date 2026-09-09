@@ -22,6 +22,9 @@ type fakeVenue struct {
 	positions []venue.Position
 	placeErr  error
 	placeResp func(venue.OrderRequest) venue.Order
+	// candles is the history Candles returns; candleStream feeds StreamCandles.
+	candles      []venue.Candle
+	candleStream chan venue.Candle
 }
 
 func (f *fakeVenue) Name() string { return "fake" }
@@ -32,10 +35,13 @@ func (f *fakeVenue) Market(_ context.Context, s string) (venue.Market, error) {
 	return venue.Market{Symbol: s}, nil
 }
 func (f *fakeVenue) Candles(context.Context, string, time.Duration, time.Time, time.Time) ([]venue.Candle, error) {
-	return nil, nil
+	return f.candles, nil
 }
 func (f *fakeVenue) StreamCandles(context.Context, string, time.Duration) (<-chan venue.Candle, error) {
-	return nil, venue.ErrNotSupported
+	if f.candleStream == nil {
+		return nil, venue.ErrNotSupported
+	}
+	return f.candleStream, nil
 }
 func (f *fakeVenue) StreamBook(context.Context, string) (<-chan venue.Book, error) {
 	return nil, venue.ErrNotSupported

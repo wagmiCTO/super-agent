@@ -195,6 +195,29 @@ paths:
           description: No builder code configured; enrollment is unavailable.
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
+  /v1/signals/ma-cross:
+    get:
+      summary: The MA Cross signal for a market
+      description: >-
+        The strategy's signal, shared by everyone: closed one-minute bars with
+        the fast and slow averages, which average is on top, and — for a few
+        minutes after a cross — an open window inviting an entry in the
+        cross's direction. The signal never places orders; the user does.
+      parameters:
+        - in: query
+          name: symbol
+          required: true
+          schema: { type: string, example: MON }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MACrossSignal" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503":
+          description: No signals are running.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
   /v1/kill:
     post:
       summary: Engage the kill switch — stops all opening, closing stays allowed
@@ -301,6 +324,47 @@ components:
             create its exchange account on-chain; forwarding_disabled — the account
             exists but has not allowed API order forwarding; frozen — the venue froze
             the account; active — ready to trade.
+
+    MACrossSignal:
+      type: object
+      required: [symbol, period_seconds, fast, slow, ready, trend, forming, points]
+      properties:
+        symbol: { type: string }
+        period_seconds: { type: integer }
+        fast: { type: integer, description: Fast average length, in bars. }
+        slow: { type: integer, description: Slow average length, in bars. }
+        ready: { type: boolean, description: False until slow closed bars exist. }
+        trend:
+          type: string
+          enum: [up, down, flat]
+          description: Which average is on top as of the last closed bar.
+        forming:
+          type: boolean
+          description: Whether the last point is the bar still forming.
+        window:
+          type: object
+          description: Present while an entry is offered after a cross.
+          required: [side, opened_at, expires_at]
+          properties:
+            side: { $ref: "#/components/schemas/Side" }
+            opened_at: { type: string, format: date-time }
+            expires_at: { type: string, format: date-time }
+        last_cross:
+          type: object
+          required: [side, at]
+          properties:
+            side: { $ref: "#/components/schemas/Side" }
+            at: { type: string, format: date-time }
+        points:
+          type: array
+          items:
+            type: object
+            required: [at, close]
+            properties:
+              at: { type: string, format: date-time }
+              close: { $ref: "#/components/schemas/Decimal" }
+              fast: { $ref: "#/components/schemas/Decimal" }
+              slow: { $ref: "#/components/schemas/Decimal" }
 
     LastClose:
       type: object

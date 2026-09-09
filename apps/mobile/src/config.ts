@@ -14,6 +14,9 @@ export const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:808
 /** How often the screen re-reads account state, in milliseconds. */
 export const STATE_POLL_MS = 2000;
 
+/** How often a strategy screen re-reads its signal, in milliseconds. */
+export const SIGNAL_POLL_MS = 5000;
+
 /** Notional presets the player can pick, in collateral units. */
 export const NOTIONAL_PRESETS = ['5', '10', '20', '50'] as const;
 

@@ -108,6 +108,12 @@ func run(log *slog.Logger) error {
 		log.Warn("enrollment disabled: PERPL_BUILDER_ID is not set")
 	}
 
+	// The strategies' signals run on the platform's own market-data
+	// connection, one per allowed market, shared by every wallet.
+	signals := platform.NewSignals(adapter, log)
+	go signals.Run(ctx, limits.AllowedSymbols)
+	handlerOpts = append(handlerOpts, platform.WithSignals(signals))
+
 	// Bind to loopback unless told otherwise: this API places orders and has
 	// no authentication yet.
 	addr := envOr("PLATFORM_ADDR", "127.0.0.1:8080")

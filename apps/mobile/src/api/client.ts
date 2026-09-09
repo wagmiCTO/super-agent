@@ -19,6 +19,7 @@ export type OpenRequest = components['schemas']['OpenRequest'];
 export type CloseRequest = components['schemas']['CloseRequest'];
 export type ErrorBody = components['schemas']['Error'];
 export type Side = components['schemas']['Side'];
+export type MACrossSignal = components['schemas']['MACrossSignal'];
 
 /** Stable machine codes the server returns. Policy reasons come first. */
 export type ErrorCode =
@@ -126,6 +127,7 @@ export const api = {
     request<Order>('/v1/orders/open', { method: 'POST', body: JSON.stringify(body) }),
   close: (body: CloseRequest) =>
     request<Order>('/v1/orders/close', { method: 'POST', body: JSON.stringify(body) }),
+  maCross: (symbol: string) => request<MACrossSignal>(`/v1/signals/ma-cross?symbol=${encodeURIComponent(symbol)}`),
 };
 
 /**
