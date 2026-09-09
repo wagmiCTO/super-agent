@@ -48,3 +48,7 @@ playwright-report/
 
 # local config
 .env
+
+# Vercel
+.vercel/
+.vercel
