@@ -167,6 +167,12 @@ func (a *Adapter) Enroll(ctx context.Context, address string, payload Enrollment
 		APIKey APIKeyInfo `json:"api_key"`
 	}
 	if err := a.rest.post(ctx, "/v1/api-key/enroll", body, a.enrollHeaders(), &out); err != nil {
+		// Debug only: the body holds signatures over a public document, no
+		// secrets, and is the one thing that tells a content refusal from a
+		// rate limit when the venue answers a bare 400.
+		if raw, jerr := json.Marshal(body); jerr == nil {
+			a.log.Debug("perpl enroll refused", "err", err, "body", string(raw))
+		}
 		return APIKeyInfo{}, err
 	}
 	if out.APIKey.APIKey == "" {

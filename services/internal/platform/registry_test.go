@@ -136,3 +136,29 @@ func TestHeaderRouting(t *testing.T) {
 		t.Errorf("no registry: %d, want 503", rec.Code)
 	}
 }
+
+// The first request for a wallet builds its venue connection; that
+// connection must not die with the request. A cancelled request context
+// once killed every wallet session eleven milliseconds after it connected.
+func TestRegistryConnectionOutlivesRequest(t *testing.T) {
+	addr := "0x00000000000000000000000000000000000000aa"
+	var captured context.Context
+	r := NewRegistry(storeWithKey(t, addr), func(ctx context.Context, _ keys.Key) (venue.Adapter, error) {
+		captured = ctx
+		return &fakeVenue{}, nil
+	}, testLimits(), nil)
+	defer r.Close()
+
+	reqCtx, cancel := context.WithCancel(context.Background())
+	if _, err := r.Get(reqCtx, addr); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	if captured.Err() != nil {
+		t.Fatal("venue connection context died with the request")
+	}
+	r.Close()
+	if captured.Err() == nil {
+		t.Fatal("Close must end the venue connection context")
+	}
+}

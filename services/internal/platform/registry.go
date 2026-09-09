@@ -28,6 +28,10 @@ type VenueFactory func(ctx context.Context, k keys.Key) (venue.Adapter, error)
 // API key, and its own policy limits under its own address. Nothing is
 // shared between wallets except the process.
 type Registry struct {
+	// ctx outlives any request: a wallet's venue connection is built on it,
+	// not on the request that happened to be first. Close cancels it.
+	ctx     context.Context
+	cancel  context.CancelFunc
 	store   *keys.Store
 	build   VenueFactory
 	limits  policy.Limits
@@ -44,7 +48,10 @@ func NewRegistry(store *keys.Store, build VenueFactory, limits policy.Limits, lo
 	if log == nil {
 		log = slog.Default()
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Registry{
+		ctx:     ctx,
+		cancel:  cancel,
 		store:   store,
 		build:   build,
 		limits:  limits,
@@ -100,11 +107,13 @@ func (r *Registry) connect(ctx context.Context, addr string) (*Service, error) {
 	if err != nil {
 		return nil, ErrNoKey
 	}
-	v, err := r.build(ctx, k)
+	// The request context only bounds this call; the connection lives on.
+	_ = ctx
+	v, err := r.build(r.ctx, k)
 	if err != nil {
 		return nil, fmt.Errorf("platform: connect venue for %s: %w", addr, err)
 	}
-	svc, err := New(ctx, v, r.policy, addr, r.limits, r.log.With("wallet", addr))
+	svc, err := New(r.ctx, v, r.policy, addr, r.limits, r.log.With("wallet", addr))
 	if err != nil {
 		_ = v.Close()
 		return nil, err
@@ -115,6 +124,7 @@ func (r *Registry) connect(ctx context.Context, addr string) (*Service, error) {
 
 // Close disconnects every wallet.
 func (r *Registry) Close() {
+	r.cancel()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for addr, svc := range r.byAddr {

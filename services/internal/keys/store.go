@@ -7,9 +7,11 @@
 // signing key is never here: it lives on the user's device, derived from a
 // passkey, and only ever signs the enrollment.
 //
-// The store is in memory. Persistence is a later step and must encrypt the
-// private keys at rest; until then a restart forgets every user's key and
-// they re-enroll, which costs one passkey prompt.
+// The store is in memory, optionally mirrored to a JSON file (see WithFile)
+// so a restart does not forget every user's key. The file holds the private
+// keys in the clear, guarded only by 0600 permissions — acceptable for a
+// testnet development box, not for anything that trades real money: at-rest
+// encryption is the next step before that.
 package keys
 
 import (
@@ -17,12 +19,16 @@ import (
 
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/wagmiCTO/super-agent/services/internal/venue/perpl"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/wagmiCTO/super-agent/services/internal/venue/perpl"
 )
 
 var (
@@ -70,6 +76,7 @@ type Store struct {
 	mu      sync.Mutex
 	keys    map[string]Key     // by lower-case address
 	pending map[string]Pending // by handle
+	file    string             // "" keeps the store in memory only
 }
 
 func New() *Store {
@@ -78,6 +85,91 @@ func New() *Store {
 		keys:    make(map[string]Key),
 		pending: make(map[string]Pending),
 	}
+}
+
+// WithFile returns a store mirrored to path: existing keys are loaded now,
+// and every Put and Delete rewrites the file. Pending enrollments stay in
+// memory — they are short-lived by design.
+func WithFile(path string) (*Store, error) {
+	s := New()
+	s.file = path
+	b, err := os.ReadFile(path)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return s, nil
+	case err != nil:
+		return nil, fmt.Errorf("keys: read %s: %w", path, err)
+	}
+	var recs []keyRecord
+	if err := json.Unmarshal(b, &recs); err != nil {
+		return nil, fmt.Errorf("keys: parse %s: %w", path, err)
+	}
+	for _, r := range recs {
+		k, err := r.key()
+		if err != nil {
+			return nil, fmt.Errorf("keys: %s: %w", path, err)
+		}
+		s.keys[k.Address] = k
+	}
+	return s, nil
+}
+
+// Len reports how many keys are held.
+func (s *Store) Len() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.keys)
+}
+
+// keyRecord is the on-disk form of a Key.
+type keyRecord struct {
+	Address              string    `json:"address"`
+	APIKey               string    `json:"api_key"`
+	PrivateKeyHex        string    `json:"private_key"`
+	Label                string    `json:"label"`
+	BuilderID            int       `json:"builder_id"`
+	MaxBuilderFeePer100K int       `json:"max_builder_fee_per_100k"`
+	MaxBuilderFeePct     string    `json:"max_builder_fee_pct"`
+	EnrolledAt           time.Time `json:"enrolled_at"`
+}
+
+func (r keyRecord) key() (Key, error) {
+	priv, err := hex.DecodeString(r.PrivateKeyHex)
+	if err != nil || len(priv) != ed25519.PrivateKeySize {
+		return Key{}, fmt.Errorf("key for %s: bad private key", r.Address)
+	}
+	return Key{
+		Address: normalize(r.Address), APIKey: r.APIKey, PrivateKey: ed25519.PrivateKey(priv), Label: r.Label,
+		BuilderID: r.BuilderID, MaxBuilderFeePer100K: r.MaxBuilderFeePer100K, MaxBuilderFeePct: r.MaxBuilderFeePct,
+		EnrolledAt: r.EnrolledAt,
+	}, nil
+}
+
+// saveLocked rewrites the file atomically; callers hold s.mu.
+func (s *Store) saveLocked() error {
+	if s.file == "" {
+		return nil
+	}
+	recs := make([]keyRecord, 0, len(s.keys))
+	for _, k := range s.keys {
+		recs = append(recs, keyRecord{
+			Address: k.Address, APIKey: k.APIKey, PrivateKeyHex: hex.EncodeToString(k.PrivateKey), Label: k.Label,
+			BuilderID: k.BuilderID, MaxBuilderFeePer100K: k.MaxBuilderFeePer100K, MaxBuilderFeePct: k.MaxBuilderFeePct,
+			EnrolledAt: k.EnrolledAt,
+		})
+	}
+	b, err := json.MarshalIndent(recs, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := filepath.Join(filepath.Dir(s.file), "."+filepath.Base(s.file)+".tmp")
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+		return fmt.Errorf("keys: write %s: %w", tmp, err)
+	}
+	if err := os.Rename(tmp, s.file); err != nil {
+		return fmt.Errorf("keys: replace %s: %w", s.file, err)
+	}
+	return nil
 }
 
 // PreparePending generates the key pair before the venue is asked for a
@@ -129,11 +221,12 @@ func (s *Store) TakePending(handle string) (Pending, error) {
 }
 
 // Put stores an enrolled key, replacing any earlier key for the address.
-func (s *Store) Put(k Key) {
+func (s *Store) Put(k Key) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	k.Address = normalize(k.Address)
 	s.keys[k.Address] = k
+	return s.saveLocked()
 }
 
 // Get returns the key for an address.
@@ -149,10 +242,11 @@ func (s *Store) Get(address string) (Key, error) {
 
 // Delete forgets a key. It does not revoke it at the venue; that is done from
 // the venue's own key page, by the user.
-func (s *Store) Delete(address string) {
+func (s *Store) Delete(address string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.keys, normalize(address))
+	return s.saveLocked()
 }
 
 func (s *Store) gcLocked() {

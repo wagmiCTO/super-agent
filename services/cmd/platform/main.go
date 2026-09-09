@@ -31,7 +31,11 @@ import (
 )
 
 func main() {
-	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	level := slog.LevelInfo
+	if os.Getenv("PLATFORM_LOG") == "debug" {
+		level = slog.LevelDebug
+	}
+	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 	if err := run(log); err != nil {
 		log.Error("platform exited", "err", err)
 		os.Exit(1)
@@ -82,7 +86,16 @@ func run(log *slog.Logger) error {
 	// endpoints answer 503 and the platform trades with its own key only.
 	handlerOpts := []platform.Option{}
 	if cfg.BuilderID > 0 {
+		// PLATFORM_KEYS_FILE keeps enrolled keys across restarts. Plain JSON
+		// with 0600 permissions: fine for a testnet development box, not for
+		// real money — see the keys package.
 		store := keys.New()
+		if path := os.Getenv("PLATFORM_KEYS_FILE"); path != "" {
+			if store, err = keys.WithFile(path); err != nil {
+				return err
+			}
+			log.Info("enrolled keys persisted", "file", path, "keys", store.Len())
+		}
 		enrollment, err := platform.NewEnrollment(adapter, store, cfg.BuilderID, cfg.BuilderFeePer100K, log)
 		if err != nil {
 			return err

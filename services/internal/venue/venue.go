@@ -33,6 +33,10 @@ var (
 	// ErrForwardingDisabled is returned by Place when the account exists but
 	// has not authorized the venue to forward API orders on-chain.
 	ErrForwardingDisabled = errors.New("venue: order forwarding not authorized for this account")
+	// ErrUnconfirmed is returned when the venue acknowledged an order but
+	// reported no outcome in time. The order may or may not have executed:
+	// the caller must reconcile before retrying.
+	ErrUnconfirmed = errors.New("venue: order acknowledged but not confirmed in time")
 	// ErrDisconnected is returned when the venue connection dropped while a
 	// request was in flight. The outcome is unknown: the caller must re-read
 	// positions rather than assume the order was not placed.

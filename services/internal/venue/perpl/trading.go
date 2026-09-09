@@ -66,6 +66,9 @@ type tradingClient struct {
 
 	ready     chan struct{} // closed once snapshots have arrived, or on a fatal error
 	readyOnce sync.Once
+	// noAccount is set when the snapshot listed no exchange account for the
+	// wallet; the session then re-signs in periodically to discover one.
+	noAccount bool
 	startErr  error // set before ready is closed when the session cannot be established
 }
 
@@ -102,6 +105,11 @@ func (t *tradingClient) run(ctx context.Context) {
 	attempt := 0
 	for ctx.Err() == nil {
 		err := t.session(ctx)
+		if errors.Is(err, errRediscover) {
+			// A deliberate reconnect, not a failure: no backoff.
+			attempt = 0
+			continue
+		}
 		if err != nil && ctx.Err() == nil && !t.isClosing() {
 			t.log.Warn("perpl trading session ended", "err", err, "attempt", attempt)
 		}
@@ -157,14 +165,56 @@ func (t *tradingClient) session(ctx context.Context) error {
 	sessCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go t.keepAlive(sessCtx, conn)
+	rediscover := make(chan struct{}, 1)
+	go t.rediscover(sessCtx, rediscover)
 
 	for {
 		_, raw, err := conn.Read(ctx)
 		if err != nil {
+			select {
+			case <-rediscover:
+				t.log.Debug("perpl trading: session closed for rediscovery", "read_err", err)
+				return errRediscover
+			default:
+			}
+			t.log.Debug("perpl trading: session read ended", "err", err)
 			return fmt.Errorf("perpl: trading read: %w", err)
 		}
 		if err := t.handle(raw); err != nil {
 			return err
+		}
+	}
+}
+
+// errRediscover is how a session reports that it closed itself on purpose
+// to sign in again and pick up an exchange account created after it started.
+var errRediscover = errors.New("perpl: re-signing in to discover the exchange account")
+
+// rediscoverInterval is how often a session with no exchange account signs
+// in again. The venue does push an AccountUpdate when the account is created
+// on-chain (seen 10 Sep 2026: three updates within seconds of createAccount),
+// so this is a fallback for a missed frame, not the main path. Sign-in is
+// cheap: one frame, well inside the rate budget.
+const rediscoverInterval = 10 * time.Second
+
+func (t *tradingClient) rediscover(ctx context.Context, fired chan<- struct{}) {
+	ticker := time.NewTicker(rediscoverInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			t.mu.Lock()
+			conn, again := t.conn, t.noAccount && t.account.ID == 0
+			t.mu.Unlock()
+			if !again || conn == nil {
+				continue
+			}
+			fired <- struct{}{}
+			t.log.Info("perpl trading: no exchange account yet, signing in again")
+			_ = conn.Close(websocket.StatusNormalClosure, "rediscover")
+			return
 		}
 	}
 }
@@ -202,6 +252,7 @@ func (t *tradingClient) handle(raw []byte) error {
 		return nil
 	}
 
+	t.log.Debug("perpl trading frame", "mt", mt)
 	switch mt {
 	case msgWalletSnapshot:
 		var w wallet
@@ -279,12 +330,19 @@ func (t *tradingClient) applyWallet(w wallet) {
 	t.mu.Lock()
 	t.lastHB = w.Seq
 	t.account.Address = w.Address
+	t.noAccount = true
+	t.log.Debug("perpl wallet snapshot", "accounts", len(w.Accounts), "first_id", firstAccountID(w.Accounts))
 	for _, a := range w.Accounts {
+		if a.ID == 0 {
+			// The venue lists a placeholder for a wallet with no account.
+			continue
+		}
 		if t.wantAccount != 0 && a.ID != t.wantAccount {
 			continue
 		}
 		t.setAccountLocked(a)
 		t.account.Address = w.Address
+		t.noAccount = false
 		break
 	}
 	t.mu.Unlock()
@@ -298,8 +356,9 @@ func (t *tradingClient) applyWallet(w wallet) {
 
 func (t *tradingClient) applyAccount(a account) {
 	t.mu.Lock()
-	if t.account.ID == 0 || a.ID == t.account.ID {
+	if a.ID != 0 && (t.account.ID == 0 || a.ID == t.account.ID) {
 		t.setAccountLocked(a)
+		t.noAccount = false
 	}
 	t.mu.Unlock()
 }
@@ -321,6 +380,13 @@ func (t *tradingClient) setAccountLocked(a account) {
 	if a.LastReqID >= t.nextReqID {
 		t.nextReqID = a.LastReqID + 1
 	}
+}
+
+func firstAccountID(accts []account) uint64 {
+	if len(accts) == 0 {
+		return 0
+	}
+	return accts[0].ID
 }
 
 func (t *tradingClient) currentAccount() accountState {
@@ -488,7 +554,7 @@ func (t *tradingClient) submit(ctx context.Context, req orderRequest, wait time.
 		}
 		return o, nil
 	case <-timer.C:
-		return order{}, fmt.Errorf("perpl: no order update for request %d within %s", req.RequestID, wait)
+		return order{}, fmt.Errorf("perpl: no order update for request %d within %s: %w", req.RequestID, wait, venue.ErrUnconfirmed)
 	}
 }
 
