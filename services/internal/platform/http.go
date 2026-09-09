@@ -90,7 +90,9 @@ func cors(next http.Handler, allowed []string) http.Handler {
 			h.Set("Access-Control-Allow-Origin", origin)
 			h.Set("Vary", "Origin")
 			h.Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-			h.Set("Access-Control-Allow-Headers", "Content-Type, "+AccountHeader)
+			// Bypass-Tunnel-Reminder is what the app sends when the platform
+			// sits behind a localtunnel during phone testing; harmless otherwise.
+			h.Set("Access-Control-Allow-Headers", "Content-Type, "+AccountHeader+", Bypass-Tunnel-Reminder")
 			h.Set("Access-Control-Max-Age", "600")
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(http.StatusNoContent)

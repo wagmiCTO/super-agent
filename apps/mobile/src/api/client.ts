@@ -94,6 +94,10 @@ export async function request<T>(path: keyof Paths | string, init?: RequestInit)
       headers: {
         'Content-Type': 'application/json',
         ...(accountAddress ? { 'X-Account-Address': accountAddress } : {}),
+        // A localtunnel in front of the platform shows browsers a reminder
+        // page unless asked not to; only relevant when testing a phone
+        // against a laptop, and only sent to that host.
+        ...(API_URL.endsWith('.loca.lt') ? { 'Bypass-Tunnel-Reminder': '1' } : {}),
         ...(init?.headers ?? {}),
       },
     });
