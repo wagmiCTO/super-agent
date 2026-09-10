@@ -175,15 +175,17 @@
     chart.getAllShapes().forEach(function (sh) { try { chart.removeEntity(sh.id); } catch (e) {} });
     var now = Math.floor(Date.now() / 1000);
     if (drawn.box) { line(chart, now, Number(drawn.box.top), MA, 0); line(chart, now, Number(drawn.box.bottom), MA, 0); }
-    drawn.trades.forEach(function (t) {
+    // The last twenty round trips: an arrow at the entry, an arrow with the
+    // result at the exit. Older ones would only pile up on the same bars.
+    drawn.trades.slice(0, 20).forEach(function (t) {
       // Rows journaled before prices were kept have nothing to draw.
       if (!Number(t.entry_price)) return;
       var long = t.side === 'long';
       try {
-        arrow(chart, Math.floor(Date.parse(t.opened_at) / 1000), Number(t.entry_price), long, long ? UP : DOWN, long ? 'Up' : 'Down');
+        arrow(chart, Math.floor(Date.parse(t.opened_at) / 1000), Number(t.entry_price), long, long ? UP : DOWN, '');
         if (t.closed_at && Number(t.exit_price)) {
-          var won = Number(t.pnl || 0) >= 0;
-          arrow(chart, Math.floor(Date.parse(t.closed_at) / 1000), Number(t.exit_price), !long, won ? UP : DOWN, (won ? '+' : '') + Number(t.pnl || 0).toFixed(4));
+          var pnl = Number(t.pnl || 0), won = pnl >= 0;
+          arrow(chart, Math.floor(Date.parse(t.closed_at) / 1000), Number(t.exit_price), !long, won ? UP : DOWN, (won ? '+' : '') + pnl.toFixed(3));
         }
       } catch (e) { console.warn('tv: trade mark', e && e.message); }
     });

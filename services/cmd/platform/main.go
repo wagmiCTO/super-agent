@@ -181,6 +181,10 @@ func run(log *slog.Logger) error {
 	// Bind to loopback unless told otherwise: this API places orders and has
 	// no authentication yet.
 	addr := envOr("PLATFORM_ADDR", "127.0.0.1:8080")
+	if port := os.Getenv("PORT"); port != "" && os.Getenv("PLATFORM_ADDR") == "" {
+		// A hosted process is told its port and must listen on every interface.
+		addr = "0.0.0.0:" + port
+	}
 	// Only the web build of the app needs CORS; the defaults cover Expo's
 	// dev server. The native app talks to the API directly.
 	corsOrigins := splitList(envOr("PLATFORM_CORS_ORIGINS", "http://localhost:8081,http://localhost:19006"))
