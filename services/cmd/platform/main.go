@@ -116,6 +116,24 @@ func run(log *slog.Logger) error {
 	go signals.Run(ctx, limits.AllowedSymbols)
 	handlerOpts = append(handlerOpts, platform.WithSignals(signals), platform.WithLedger(ledger))
 
+	// On-chain settlement: every closed round trip lands on the
+	// StrategyLeaderboard contract, and the leaderboard is read from it.
+	if key := os.Getenv("PLATFORM_SETTLER_KEY"); key != "" {
+		settler, err := platform.NewSettler(ctx, platform.SettlerConfig{
+			RPCURL:     envOr("PLATFORM_CHAIN_RPC", "https://testnet-rpc.monad.xyz"),
+			PrivateKey: key,
+			Contract:   os.Getenv("PLATFORM_LEADERBOARD_ADDRESS"),
+		}, log)
+		if err != nil {
+			return err
+		}
+		ledger.OnClosed(settler.Enqueue)
+		go settler.Run(ctx)
+		handlerOpts = append(handlerOpts, platform.WithSettler(settler))
+	} else {
+		log.Warn("on-chain settlement disabled: PLATFORM_SETTLER_KEY is not set")
+	}
+
 	// Bind to loopback unless told otherwise: this API places orders and has
 	// no authentication yet.
 	addr := envOr("PLATFORM_ADDR", "127.0.0.1:8080")

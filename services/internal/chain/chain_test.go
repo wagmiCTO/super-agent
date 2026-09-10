@@ -1,0 +1,101 @@
+package chain
+
+import (
+	"encoding/hex"
+	"math/big"
+	"testing"
+)
+
+// Reference vectors come from Foundry's cast (1.2.3): `cast wallet address`,
+// `cast mktx`, `cast calldata`, `cast abi-encode`.
+
+const testKey = "0x0000000000000000000000000000000000000000000000000000000000000001"
+
+func mustHex(t *testing.T, s string) []byte {
+	t.Helper()
+	b, err := hex.DecodeString(s[2:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+func TestAddressFromKey(t *testing.T) {
+	k, err := ParseKey(testKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := "0x" + hex.EncodeToString(k.Address[:]); got != "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf" {
+		t.Fatalf("address = %s", got)
+	}
+}
+
+// The signed transaction must match cast byte for byte: same fields, same
+// deterministic (RFC 6979) signature.
+func TestSignedTxMatchesCast(t *testing.T) {
+	k, _ := ParseKey(testKey)
+	to, _ := ParseAddress("0x8C7E11a4ed1a7bd7212DdE5fAafA5C4EAC14d21e")
+	tx := Tx{
+		ChainID: 10143, Nonce: 7,
+		TipCap: big.NewInt(1_000_000_000), FeeCap: big.NewInt(200_000_000_000),
+		Gas: 100_000, To: &to, Value: new(big.Int),
+		Data: Encode("weekOf(uint64)", uint64(1789041600)),
+	}
+	raw, err := k.Sign(tx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "0x02f89282279f07843b9aca00852e90edd000830186a0948c7e11a4ed1a7bd7212dde5faafa5c4eac14d21e80a4dadc5996000000000000000000000000000000000000000000000000000000006aa29bc0c080a00adfee4cafeb94f5ad918c6eefd07c1395d7baf0cab47fca1d5730370af72b70a028b6780644f6a21adf8ab5e573e70358d10eedf7e3058f2299be06cdd39e2285"
+	if got := "0x" + hex.EncodeToString(raw); got != want {
+		t.Fatalf("raw tx\n got %s\nwant %s", got, want)
+	}
+}
+
+func TestCalldataMatchesCast(t *testing.T) {
+	var strategy, ref [32]byte
+	strategy[31] = 1
+	ref[31] = 2
+	wallet, _ := ParseAddress("0x000000000000000000000000000000000000000a")
+	got := Encode("recordTrade(bytes32,address,int128,uint64,bytes32)", strategy, wallet, big.NewInt(1_000_000), uint64(1789041600), ref)
+	want := mustHex(t, "0xc61a18020000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000000000000000000000000000000000006aa29bc00000000000000000000000000000000000000000000000000000000000000002")
+	if hex.EncodeToString(got) != hex.EncodeToString(want) {
+		t.Fatalf("calldata\n got %x\nwant %x", got, want)
+	}
+	got = Encode("totalOf(uint64,bytes32)", uint64(2958), strategy)
+	want = mustHex(t, "0x4bba6f4e0000000000000000000000000000000000000000000000000000000000000b8e0000000000000000000000000000000000000000000000000000000000000001")
+	if hex.EncodeToString(got) != hex.EncodeToString(want) {
+		t.Fatalf("calldata\n got %x\nwant %x", got, want)
+	}
+}
+
+func TestNegativeInt128RoundTrip(t *testing.T) {
+	w := Word(big.NewInt(-1))
+	if hex.EncodeToString(w[:]) != "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" {
+		t.Fatalf("word(-1) = %x", w)
+	}
+	for _, v := range []int64{-1, -1_000_000, 0, 1, 7_000_000} {
+		if got := Int128(Word(big.NewInt(v))); got.Int64() != v {
+			t.Errorf("round trip %d = %s", v, got)
+		}
+	}
+}
+
+func TestRLP(t *testing.T) {
+	cases := []struct {
+		in   any
+		want string
+	}{
+		{[]byte{}, "80"},
+		{[]byte{0x7f}, "7f"},
+		{[]byte{0x80}, "8180"},
+		{uint64(0), "80"},
+		{uint64(1024), "820400"},
+		{[]any{}, "c0"},
+		{[]any{[]byte("cat"), []byte("dog")}, "c88363617483646f67"},
+	}
+	for _, c := range cases {
+		if got := hex.EncodeToString(rlpEncode(c.in)); got != c.want {
+			t.Errorf("rlp(%v) = %s, want %s", c.in, got, c.want)
+		}
+	}
+}

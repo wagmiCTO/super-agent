@@ -251,7 +251,7 @@ func (s *Service) Open(ctx context.Context, req OpenRequest) (venue.Order, error
 	}
 	s.policy.RecordOpen(s.account, opened)
 	if s.ledger != nil {
-		s.ledger.Opened(s.account, req.Strategy, req.Symbol)
+		s.ledger.Opened(s.account, req.Strategy, req.Symbol, placed.VenueID)
 	}
 	if req.Rules.Horizon > 0 {
 		// The exit is armed the moment the entry is confirmed. It fires on
@@ -348,7 +348,7 @@ func (s *Service) close(ctx context.Context, symbol string, reason CloseReason) 
 	pnl := realizedPnL(*pos, placed)
 	s.policy.RecordClose(s.account, notional, pnl)
 	if s.ledger != nil {
-		s.ledger.Closed(s.account, symbol, pnl)
+		s.ledger.Closed(s.account, symbol, pnl, placed.VenueID)
 	}
 	s.mu.Lock()
 	s.lastClose = &CloseEvent{Symbol: symbol, Side: pos.Side, Reason: reason, Price: placed.AvgPrice, PnL: pnl, At: s.now()}

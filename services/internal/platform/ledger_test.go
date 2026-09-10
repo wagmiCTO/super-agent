@@ -16,20 +16,20 @@ func TestLeaderboardByStrategyAndWeek(t *testing.T) {
 
 	// Last week: must not count.
 	now = time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
-	l.Opened("0xaaa", "direction", "MON")
-	l.Closed("0xaaa", "MON", fixed.FromInt(100))
+	l.Opened("0xaaa", "direction", "MON", "o")
+	l.Closed("0xaaa", "MON", fixed.FromInt(100), "c")
 
 	now = time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
-	l.Opened("0xaaa", "direction", "MON")
-	l.Closed("0xaaa", "MON", fixed.FromInt(3))
-	l.Opened("0xbbb", "direction", "MON")
-	l.Closed("0xbbb", "MON", fixed.FromInt(-1))
-	l.Opened("0xbbb", "ma-cross", "MON")
-	l.Closed("0xbbb", "MON", fixed.FromInt(5))
+	l.Opened("0xaaa", "direction", "MON", "o")
+	l.Closed("0xaaa", "MON", fixed.FromInt(3), "c")
+	l.Opened("0xbbb", "direction", "MON", "o")
+	l.Closed("0xbbb", "MON", fixed.FromInt(-1), "c")
+	l.Opened("0xbbb", "ma-cross", "MON", "o")
+	l.Closed("0xbbb", "MON", fixed.FromInt(5), "c")
 	// An untagged position from before a restart counts as Direction.
-	l.Closed("0xccc", "MON", fixed.FromInt(1))
+	l.Closed("0xccc", "MON", fixed.FromInt(1), "c")
 	// Open right now under MA Cross.
-	l.Opened("0xaaa", "ma-cross", "MON")
+	l.Opened("0xaaa", "ma-cross", "MON", "o")
 
 	now = time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
 	lb := l.Leaderboard()

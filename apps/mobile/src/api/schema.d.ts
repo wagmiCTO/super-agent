@@ -696,6 +696,22 @@ export interface components {
         Leaderboard: {
             /** Format: date-time */
             week_start: string;
+            /** @description The contract's week index (weeks since epoch */
+            week: number;
+            /**
+             * @description chain when the boards were read from the StrategyLeaderboard contract; memory when from the platform's own ledger.
+             * @enum {string}
+             */
+            source: "chain" | "memory";
+            /** @description The StrategyLeaderboard address */
+            contract?: string;
+            /** @description The settlement queue, when settlement is on. */
+            settlement?: {
+                pending: number;
+                sent: number;
+                failed: number;
+                last_error?: string;
+            };
             boards: components["schemas"]["Board"][];
         };
         Board: {

@@ -9,7 +9,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAccount } from '@/account/useAccount';
-import { api, type Board } from '@/api/client';
+import { api, type Board, type Leaderboard } from '@/api/client';
 import { AccountSection } from '@/components/account';
 import { trim } from '@/components/format';
 import { ThemedText } from '@/components/themed-text';
@@ -26,7 +26,8 @@ export default function LobbyScreen() {
   const account = useAccount();
   // The account section needs the state; the lobby trades nothing itself.
   const t = useTrading('MON', 'direction');
-  const boards = useLeaderboard();
+  const lb = useLeaderboard();
+  const boards = lb?.boards ?? null;
 
   return (
     <ThemedView style={trading.root}>
@@ -50,20 +51,28 @@ export default function LobbyScreen() {
           ) : (
             boards.map((b) => <StrategyCard key={b.id} board={b} href={ROUTES[b.id] ?? '/'} />)
           )}
+
+          {lb ? (
+            <ThemedText type="small" themeColor="textSecondary" style={trading.footer} testID="leaderboard-source">
+              {lb.source === 'chain'
+                ? `Settled on Monad · contract ${short(lb.contract ?? '')} · week ${lb.week}`
+                : 'Board from the platform — not settled on-chain yet'}
+            </ThemedText>
+          ) : null}
         </ScrollView>
       </SafeAreaView>
     </ThemedView>
   );
 }
 
-function useLeaderboard(): Board[] | null {
-  const [boards, setBoards] = useState<Board[] | null>(null);
+function useLeaderboard(): Leaderboard | null {
+  const [lb, setLb] = useState<Leaderboard | null>(null);
   useEffect(() => {
     let alive = true;
     const read = () =>
       api
         .leaderboard()
-        .then((lb) => alive && setBoards(lb.boards))
+        .then((next) => alive && setLb(next))
         .catch(() => undefined);
     void read();
     const id = setInterval(read, LEADERBOARD_POLL_MS);
@@ -72,7 +81,7 @@ function useLeaderboard(): Board[] | null {
       clearInterval(id);
     };
   }, []);
-  return boards;
+  return lb;
 }
 
 /** One strategy: what it is, what it made this week, who is up, who is in. */

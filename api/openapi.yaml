@@ -369,9 +369,24 @@ components:
 
     Leaderboard:
       type: object
-      required: [week_start, boards]
+      required: [week_start, week, source, boards]
       properties:
         week_start: { type: string, format: date-time }
+        week: { type: integer, description: The contract's week index (weeks since epoch, Monday-aligned). }
+        source:
+          type: string
+          enum: [chain, memory]
+          description: chain when the boards were read from the StrategyLeaderboard contract; memory when from the platform's own ledger.
+        contract: { type: string, description: The StrategyLeaderboard address, when settlement is on. }
+        settlement:
+          type: object
+          description: The settlement queue, when settlement is on.
+          required: [pending, sent, failed]
+          properties:
+            pending: { type: integer }
+            sent: { type: integer }
+            failed: { type: integer }
+            last_error: { type: string }
         boards:
           type: array
           items: { $ref: "#/components/schemas/Board" }

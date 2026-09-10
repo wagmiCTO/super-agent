@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -29,7 +30,7 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	for _, opt := range opts {
 		opt(&o)
 	}
-	h := &handler{svc: s, log: log, enroll: o.enrollment, registry: o.registry, signals: o.signals, ledger: o.ledger}
+	h := &handler{svc: s, log: log, enroll: o.enrollment, registry: o.registry, signals: o.signals, ledger: o.ledger, settler: o.settler}
 	if o.ledger != nil {
 		s.UseLedger(o.ledger)
 	}
@@ -64,6 +65,7 @@ type options struct {
 	registry    *Registry
 	signals     *Signals
 	ledger      *Ledger
+	settler     *Settler
 }
 
 // WithRegistry routes requests carrying X-Account-Address to that wallet's
@@ -80,6 +82,11 @@ func WithSignals(s *Signals) Option {
 // WithLedger serves the leaderboard.
 func WithLedger(l *Ledger) Option {
 	return func(o *options) { o.ledger = l }
+}
+
+// WithSettler reads the leaderboard from the contract instead of memory.
+func WithSettler(s *Settler) Option {
+	return func(o *options) { o.settler = s }
 }
 
 // WithEnrollment exposes the API-key enrollment endpoints. Without it they
@@ -129,6 +136,7 @@ type handler struct {
 	registry *Registry
 	signals  *Signals
 	ledger   *Ledger
+	settler  *Settler
 }
 
 // AccountHeader names the wallet a request acts for. It is not authentication
@@ -841,9 +849,22 @@ type boardDTO struct {
 	Top       []standingDTO `json:"top"`
 }
 
+type settlementDTO struct {
+	Pending   int    `json:"pending"`
+	Sent      int    `json:"sent"`
+	Failed    int    `json:"failed"`
+	LastError string `json:"last_error,omitempty"`
+}
+
 type leaderboardDTO struct {
-	WeekStart string     `json:"week_start"`
-	Boards    []boardDTO `json:"boards"`
+	WeekStart string `json:"week_start"`
+	Week      uint64 `json:"week"`
+	// Source is "chain" when the boards were read from the contract, "memory"
+	// when from the platform's own ledger (no settler, or the chain failed).
+	Source     string         `json:"source"`
+	Contract   string         `json:"contract,omitempty"`
+	Settlement *settlementDTO `json:"settlement,omitempty"`
+	Boards     []boardDTO     `json:"boards"`
 }
 
 // leaderboard serves the week's boards: one per strategy, in lobby order.
@@ -853,7 +874,34 @@ func (h *handler) leaderboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	lb := h.ledger.Leaderboard()
-	out := leaderboardDTO{WeekStart: timeOrEmpty(lb.WeekStart), Boards: make([]boardDTO, 0, len(lb.Boards))}
+	out := leaderboardDTO{WeekStart: timeOrEmpty(lb.WeekStart), Week: WeekOf(lb.WeekStart), Source: "memory", Boards: make([]boardDTO, 0, len(lb.Boards))}
+	if h.settler != nil {
+		// The contract is the source of truth; memory only fills the gap
+		// while the chain is unreachable.
+		wallets := h.ledger.Wallets()
+		chainBoards := make([]Board, 0, len(lb.Boards))
+		var readErr error
+		for _, b := range lb.Boards {
+			cb, err := h.settler.Board(r.Context(), out.Week, b.Strategy.ID, wallets)
+			if err != nil {
+				readErr = err
+				break
+			}
+			cb.Strategy = b.Strategy
+			cb.ActiveNow = b.ActiveNow
+			sort.Slice(cb.Top, func(i, j int) bool { return cb.Top[i].PnL > cb.Top[j].PnL })
+			chainBoards = append(chainBoards, cb)
+		}
+		st := h.settler.Stats()
+		out.Contract = h.settler.Contract()
+		out.Settlement = &settlementDTO{Pending: st.Pending, Sent: st.Sent, Failed: st.Failed, LastError: st.LastError}
+		if readErr == nil {
+			out.Source = "chain"
+			lb.Boards = chainBoards
+		} else {
+			h.log.Warn("leaderboard: chain read failed, serving memory", "err", readErr)
+		}
+	}
 	for _, b := range lb.Boards {
 		d := boardDTO{
 			ID: b.Strategy.ID, Name: b.Strategy.Name, Tagline: b.Strategy.Tagline, Rhythm: b.Strategy.Rhythm,
