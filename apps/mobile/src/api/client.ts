@@ -55,6 +55,7 @@ export type ErrorCode =
   | 'context_unavailable'
   | 'deposit_unavailable'
   | 'history_unavailable'
+  | 'own_account_disabled'
   | 'partner_error'
   | 'internal'
   | 'network';
@@ -226,6 +227,8 @@ export function describeError(e: unknown): string {
       return `Total exposure would be ${e.actual}, limit is ${e.limit}`;
     case 'partner_error':
       return e.message;
+    case 'own_account_disabled':
+      return 'Sign in with your passkey first';
     case 'no_key':
       return 'Enable this strategy first — it trades with its own key';
     case 'unauthenticated':
@@ -238,6 +241,8 @@ export function describeError(e: unknown): string {
       return 'Nothing to close';
     case 'partner_error':
       return e.message;
+    case 'own_account_disabled':
+      return 'Sign in with your passkey first';
     case 'no_key':
       return 'This wallet has no exchange key yet — connect the exchange first';
     case 'enrollment_unavailable':

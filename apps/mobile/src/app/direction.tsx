@@ -48,7 +48,7 @@ export default function DirectionScreen() {
     <ThemedView style={styles.root}>
       <SafeAreaView style={styles.safe}>
         <ScrollView contentContainerStyle={styles.content}>
-          <ScreenHeader title={`DIRECTION · ${DEFAULT_SYMBOL}`} state={t.state} offline={t.offline} />
+          <ScreenHeader title={`DIRECTION · ${DEFAULT_SYMBOL}`} state={t.state} offline={t.offline} locked={t.locked} />
 
           <AccountSection account={account} state={t.state} onChange={t.refresh} strategy="direction" />
 

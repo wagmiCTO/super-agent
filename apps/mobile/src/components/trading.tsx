@@ -14,14 +14,14 @@ import type { Notice } from '@/trading/useTrading';
 import { clock, multiply, trim } from './format';
 
 /** Strategy name and balance line, at the top of every screen. */
-export function ScreenHeader({ title, state, offline }: { title: string; state: State | null; offline: boolean }) {
+export function ScreenHeader({ title, state, offline, locked = false }: { title: string; state: State | null; offline: boolean; locked?: boolean }) {
   return (
     <View style={styles.header}>
       <ThemedText type="smallBold" themeColor="textSecondary">
         {title}
       </ThemedText>
       <ThemedText type="small" themeColor="textSecondary">
-        {state ? `Balance ${trim(state.account.balance)}` : offline ? 'Server unreachable' : 'Loading…'}
+        {state ? `Balance ${trim(state.account.balance)}` : offline ? 'Server unreachable' : locked ? 'Sign in to trade' : 'Loading…'}
       </ThemedText>
     </View>
   );

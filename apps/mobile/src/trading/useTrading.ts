@@ -24,6 +24,8 @@ export function useTrading(symbol: string, strategy: string) {
   const [busy, setBusy] = useState<Busy>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [offline, setOffline] = useState(false);
+  // True when the platform serves enrolled wallets only and none is signed in.
+  const [locked, setLocked] = useState(false);
   const mounted = useRef(true);
   // The last close the screen has already explained, so a horizon close is
   // announced once and not on every poll.
@@ -35,6 +37,7 @@ export function useTrading(symbol: string, strategy: string) {
       if (!mounted.current) return;
       setState(s);
       setOffline(false);
+      setLocked(false);
       // The chart marks and the history list this strategy's round trips;
       // they change only on a fill, so this follows the same poll.
       api
@@ -54,6 +57,10 @@ export function useTrading(symbol: string, strategy: string) {
     } catch (e) {
       if (!mounted.current) return;
       if (e instanceof ApiError && e.code === 'network') setOffline(true);
+      if (e instanceof ApiError && (e.code === 'own_account_disabled' || e.code === 'no_key')) {
+        setLocked(true);
+        setState(null);
+      }
     }
   }, [symbol, strategy]);
 
@@ -108,5 +115,5 @@ export function useTrading(symbol: string, strategy: string) {
     }
   }, [refresh, symbol, strategy]);
 
-  return { state, market, position, trades, busy, notice, offline, refresh, open, close };
+  return { state, market, position, trades, busy, notice, offline, locked, refresh, open, close };
 }

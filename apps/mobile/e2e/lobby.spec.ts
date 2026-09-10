@@ -24,3 +24,14 @@ test('the lobby shows each strategy with its week and opens it', async ({ page }
   await expect(page.getByText(/^DIRECTION · MON$/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Up', exact: true })).toBeVisible();
 });
+
+// The chain's record of the prize pools, from the indexer, sits under the
+// strategies: before the first settlement it says so.
+test('the lobby shows the on-chain prize pools from the indexer', async ({ page }) => {
+  await page.goto('/');
+  const past = page.getByTestId('past-weeks');
+  await expect(past).toBeVisible({ timeout: 20_000 });
+  await expect(past).toContainText(/PRIZE POOLS/);
+  await expect(past).toContainText(/pools · [\d.]+ AUSD funded/);
+  await expect(past).toContainText(/Indexed by Envio/);
+});
