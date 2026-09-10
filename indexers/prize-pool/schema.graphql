@@ -1,0 +1,62 @@
+# The weekly prize pools of TradeAgent's StrategyPrizePool on Monad, as
+# the chain saw them: one Pool per (week, strategy) with what went in,
+# how it was split and who has claimed; one Prize per winner.
+
+type Pool {
+  id: ID! # "<week>-<strategy key>"
+  week: BigInt!
+  strategy: String! # bytes32 keccak of the strategy id
+  funded: BigInt! # total funded, token units
+  fundings: Int!
+  settled: Boolean!
+  settledAt: BigInt # block timestamp
+  carried: BigInt! # carried into next week when nobody won
+  winners: Int!
+  claimed: BigInt! # sum of claims
+  prizes: [Prize!]! @derivedFrom(field: "pool")
+}
+
+type Prize {
+  id: ID! # "<week>-<strategy key>-<wallet>"
+  pool: Pool!
+  week: BigInt!
+  strategy: String!
+  wallet: String!
+  rank: Int! # 1..3
+  amount: BigInt!
+  pnl: BigInt! # collateral micros, signed
+  claimed: Boolean!
+  claimedAt: BigInt
+  claimTx: String
+}
+
+type Funding {
+  id: ID! # "<chain>_<block>_<log>"
+  pool: Pool!
+  week: BigInt!
+  strategy: String!
+  from: String!
+  amount: BigInt!
+  total: BigInt!
+  timestamp: BigInt!
+  tx: String!
+}
+
+type Claim {
+  id: ID!
+  prize: Prize!
+  wallet: String!
+  amount: BigInt!
+  timestamp: BigInt!
+  tx: String!
+}
+
+# One row: the totals across every week, for a dashboard's first line.
+type Totals {
+  id: ID! # "all"
+  funded: BigInt!
+  paid: BigInt! # sum of settled prizes
+  claimed: BigInt!
+  pools: Int!
+  settledPools: Int!
+}
