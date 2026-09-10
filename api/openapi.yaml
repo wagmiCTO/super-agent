@@ -368,6 +368,95 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/Trade" }
 
+  /v1/context:
+    get:
+      summary: What the crowd on-chain is doing with the market's asset — the card before an entry
+      description: |
+        Built from Nansen: the asset's day (price, move, buy and sell
+        volume, net flow, liquidity), the biggest net buyers and sellers of
+        the last day, the last hours of holder flows, and one sentence that
+        says it. Refreshed lazily every few hours — the source meters
+        credits — and served stale, flagged, when a refresh fails.
+      parameters:
+        - in: query
+          name: symbol
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MarketContext" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "502":
+          description: The source refused or failed and there is no card yet.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "503":
+          description: Market context is not configured.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /v1/deposit/options:
+    get:
+      summary: What can be deposited from other chains, and what arrives
+      description: |
+        Any-chain deposits over Aurora Intents. Origin assets are on EVM
+        chains only, because the wallet's own address is the refund address.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DepositOptions" }
+        "503":
+          description: Deposits are not configured.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /v1/deposit/quote:
+    post:
+      summary: Quote a deposit into the requesting wallet and get a one-time deposit address
+      description: |
+        The recipient and the refund address are the wallet in
+        X-Account-Address. Send `amount` of `origin_asset` (in its smallest
+        unit) to `deposit_address` before `deadline`; Aurora swaps and
+        delivers the destination asset to the wallet on Monad. A `dry`
+        quote previews without reserving an address.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [origin_asset, amount]
+              properties:
+                origin_asset: { type: string }
+                amount: { type: string, description: Smallest units of the origin asset. }
+                dry: { type: boolean }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DepositQuote" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "502":
+          description: Aurora refused, in its own words (a minimum amount, an unsupported pair).
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /v1/deposit/status:
+    get:
+      summary: Where a deposit stands
+      parameters:
+        - in: query
+          name: deposit_address
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DepositStatus" }
+        "502":
+          description: Aurora does not know this deposit, or failed.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
   /v1/leaderboard:
     get:
       summary: This week's board for every strategy
@@ -847,6 +936,105 @@ components:
         max_builder_fee_pct: { type: string, example: "0.050%" }
         enrolled_at: { type: string, format: date-time }
 
+    MarketContext:
+      type: object
+      required: [symbol, chain, token_address, token_symbol, price_usd, change_24h_pct, volume_24h_usd, buy_volume_usd, sell_volume_usd, netflow_usd, liquidity_usd, market_cap_usd, lean, headline, hours, top_buyers, top_sellers, source, updated_at, stale]
+      properties:
+        symbol: { type: string }
+        chain: { type: string }
+        token_address: { type: string }
+        token_symbol: { type: string }
+        price_usd: { $ref: "#/components/schemas/Decimal" }
+        change_24h_pct: { $ref: "#/components/schemas/Decimal" }
+        volume_24h_usd: { $ref: "#/components/schemas/Decimal" }
+        buy_volume_usd: { $ref: "#/components/schemas/Decimal" }
+        sell_volume_usd: { $ref: "#/components/schemas/Decimal" }
+        netflow_usd: { $ref: "#/components/schemas/Decimal" }
+        liquidity_usd: { $ref: "#/components/schemas/Decimal" }
+        market_cap_usd: { $ref: "#/components/schemas/Decimal" }
+        lean: { type: string, enum: [buyers, sellers, balanced] }
+        headline: { type: string }
+        hours:
+          type: array
+          items:
+            type: object
+            required: [at, inflow_usd, outflow_usd, complete]
+            properties:
+              at: { type: string, format: date-time }
+              inflow_usd: { $ref: "#/components/schemas/Decimal" }
+              outflow_usd: { $ref: "#/components/schemas/Decimal" }
+              complete: { type: boolean }
+        top_buyers:
+          type: array
+          items: { $ref: "#/components/schemas/ContextTrader" }
+        top_sellers:
+          type: array
+          items: { $ref: "#/components/schemas/ContextTrader" }
+        source: { type: string, example: nansen }
+        updated_at: { type: string, format: date-time }
+        stale: { type: boolean }
+
+    ContextTrader:
+      type: object
+      required: [address, bought_usd, sold_usd]
+      properties:
+        address: { type: string }
+        label: { type: string }
+        bought_usd: { $ref: "#/components/schemas/Decimal" }
+        sold_usd: { $ref: "#/components/schemas/Decimal" }
+
+    DepositOptions:
+      type: object
+      required: [destination, options]
+      properties:
+        destination:
+          type: object
+          required: [asset_id, chain, symbol, decimals]
+          properties:
+            asset_id: { type: string }
+            chain: { type: string }
+            symbol: { type: string }
+            decimals: { type: integer }
+        options:
+          type: array
+          items:
+            type: object
+            required: [asset_id, chain, chain_name, symbol, decimals, price_usd]
+            properties:
+              asset_id: { type: string }
+              chain: { type: string }
+              chain_name: { type: string }
+              symbol: { type: string }
+              decimals: { type: integer }
+              price_usd: { $ref: "#/components/schemas/Decimal" }
+
+    DepositQuote:
+      type: object
+      required: [origin_asset, amount_in, amount_in_usd, amount_out, amount_out_usd, min_amount_out, time_estimate_seconds, deadline, dry]
+      properties:
+        deposit_address: { type: string, description: Absent on a dry quote. }
+        origin_asset: { type: string }
+        amount_in: { $ref: "#/components/schemas/Decimal" }
+        amount_in_usd: { $ref: "#/components/schemas/Decimal" }
+        amount_out: { $ref: "#/components/schemas/Decimal" }
+        amount_out_usd: { $ref: "#/components/schemas/Decimal" }
+        min_amount_out: { type: string, description: Smallest units of the destination asset. }
+        time_estimate_seconds: { type: integer }
+        deadline: { type: string, format: date-time }
+        dry: { type: boolean }
+
+    DepositStatus:
+      type: object
+      required: [status, updated_at, tx_hashes]
+      properties:
+        status: { type: string, enum: [PENDING_DEPOSIT, KNOWN_DEPOSIT_TX, INCOMPLETE_DEPOSIT, PROCESSING, SUCCESS, REFUNDED, FAILED] }
+        updated_at: { type: string, format: date-time }
+        amount_in: { type: string }
+        amount_out: { type: string }
+        tx_hashes:
+          type: array
+          items: { type: string }
+
     Error:
       type: object
       required: [error, message]
@@ -864,7 +1052,9 @@ components:
             venue_unconfirmed (504: acknowledged, outcome unknown — reconcile then retry),
             unknown, re-read state and retry), unknown_market, no_position,
             no_credentials, unauthenticated (401: the wallet registered a
-            request-signing key and this request is not signed by it), internal.
+            request-signing key and this request is not signed by it),
+            context_unavailable and deposit_unavailable (503: not configured),
+            partner_error (502: Nansen or Aurora refused, message is theirs), internal.
         message: { type: string, description: For a person. }
         limit: { $ref: "#/components/schemas/Decimal" }
         actual: { $ref: "#/components/schemas/Decimal" }

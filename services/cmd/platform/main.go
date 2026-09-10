@@ -23,8 +23,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/wagmiCTO/super-agent/services/internal/deposit"
 	"github.com/wagmiCTO/super-agent/services/internal/envfile"
 	"github.com/wagmiCTO/super-agent/services/internal/fixed"
+	"github.com/wagmiCTO/super-agent/services/internal/insight"
 	"github.com/wagmiCTO/super-agent/services/internal/keys"
 	"github.com/wagmiCTO/super-agent/services/internal/platform"
 	"github.com/wagmiCTO/super-agent/services/internal/policy"
@@ -170,6 +172,41 @@ func run(log *slog.Logger) error {
 	go signals.Run(ctx, limits.AllowedSymbols)
 	handlerOpts = append(handlerOpts, platform.WithSignals(signals), platform.WithLedger(ledger))
 
+	// The market context card (Nansen) and any-chain deposits (Aurora)
+	// are partner integrations: each is on when its key is set and absent
+	// from the API otherwise.
+	if key := os.Getenv("NANSEN_API_KEY"); key != "" {
+		n, err := insight.NewNansen(key, os.Getenv("NANSEN_API_URL"))
+		if err != nil {
+			return err
+		}
+		tokens, err := contextTokens(envOr("NANSEN_TOKENS", "MON=monad:0x3bd359c1119da7da1d913d1c4d2b7c461115433a"))
+		if err != nil {
+			return err
+		}
+		ttl, err := time.ParseDuration(envOr("NANSEN_CACHE", "4h"))
+		if err != nil {
+			return fmt.Errorf("NANSEN_CACHE: %w", err)
+		}
+		handlerOpts = append(handlerOpts, platform.WithMarketContext(platform.NewMarketContext(n, tokens, ttl, log)))
+		log.Info("market context enabled", "source", "nansen", "markets", len(tokens), "cache", ttl)
+	} else {
+		log.Warn("market context disabled: NANSEN_API_KEY is not set")
+	}
+	if key := os.Getenv("AURORA_API_KEY"); key != "" {
+		a, err := deposit.NewAurora(key, os.Getenv("AURORA_API_URL"))
+		if err != nil {
+			return err
+		}
+		feeBps, _ := strconv.Atoi(envOr("AURORA_FEE_BPS", "0"))
+		handlerOpts = append(handlerOpts, platform.WithDeposits(platform.NewDeposits(a, platform.DepositConfig{
+			DestinationAsset: os.Getenv("AURORA_DESTINATION_ASSET"), FeeRecipient: os.Getenv("AURORA_FEE_RECIPIENT"), FeeBps: feeBps,
+		}, log)))
+		log.Info("any-chain deposits enabled", "source", "aurora")
+	} else {
+		log.Warn("any-chain deposits disabled: AURORA_API_KEY is not set")
+	}
+
 	// The weekly prize: every closed round trip adds to its strategy's pool
 	// on-chain, and last week's winners are published once the week is over.
 	if key, pool := os.Getenv("PLATFORM_SETTLER_KEY"), os.Getenv("PLATFORM_PRIZE_POOL_ADDRESS"); key != "" && pool != "" {
@@ -285,6 +322,21 @@ func decimalEnv(key, def string) (fixed.D, error) {
 		return 0, fmt.Errorf("%s: %w", key, err)
 	}
 	return d, nil
+}
+
+// contextTokens parses "MON=monad:0xabc...,ETH=ethereum:0xdef..." into the
+// on-chain references the market context reads.
+func contextTokens(spec string) (map[string]platform.TokenRef, error) {
+	out := make(map[string]platform.TokenRef)
+	for _, item := range splitList(spec) {
+		sym, ref, ok := strings.Cut(item, "=")
+		chain, addr, ok2 := strings.Cut(ref, ":")
+		if !ok || !ok2 || sym == "" || chain == "" || !strings.HasPrefix(addr, "0x") {
+			return nil, fmt.Errorf("NANSEN_TOKENS: expected SYMBOL=chain:0xaddress, got %q", item)
+		}
+		out[strings.ToUpper(sym)] = platform.TokenRef{Chain: chain, Address: addr, Symbol: sym}
+	}
+	return out, nil
 }
 
 func envOr(key, def string) string {

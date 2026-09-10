@@ -12,7 +12,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/wagmiCTO/super-agent/services/internal/deposit"
 	"github.com/wagmiCTO/super-agent/services/internal/fixed"
+	"github.com/wagmiCTO/super-agent/services/internal/insight"
 	"github.com/wagmiCTO/super-agent/services/internal/keys"
 	"github.com/wagmiCTO/super-agent/services/internal/policy"
 	"github.com/wagmiCTO/super-agent/services/internal/store"
@@ -37,7 +39,7 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	if authKeys == nil {
 		authKeys = NewMemAuthKeys()
 	}
-	h := &handler{svc: s, log: log, enroll: o.enrollment, registry: o.registry, signals: o.signals, ledger: o.ledger, prize: o.prize, auth: newAuthenticator(authKeys)}
+	h := &handler{svc: s, log: log, enroll: o.enrollment, registry: o.registry, signals: o.signals, ledger: o.ledger, prize: o.prize, auth: newAuthenticator(authKeys), context: o.context, deposits: o.deposits}
 	if o.ledger != nil {
 		s.UseLedger(o.ledger)
 	}
@@ -54,6 +56,10 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /v1/prizes", h.prizes)
 	mux.HandleFunc("GET /v1/candles", h.candles)
 	mux.HandleFunc("GET /v1/trades", h.trades)
+	mux.HandleFunc("GET /v1/context", h.marketContext)
+	mux.HandleFunc("GET /v1/deposit/options", h.depositOptions)
+	mux.HandleFunc("POST /v1/deposit/quote", h.depositQuote)
+	mux.HandleFunc("GET /v1/deposit/status", h.depositStatus)
 	mux.HandleFunc("GET /v1/health", h.health)
 	mux.HandleFunc("GET /v1/markets", h.markets)
 	mux.HandleFunc("GET /v1/state", h.state)
@@ -79,6 +85,19 @@ type options struct {
 	ledger      *Ledger
 	prize       *Prize
 	authKeys    AuthKeys
+	context     *MarketContext
+	deposits    *Deposits
+}
+
+// WithMarketContext serves the Nansen card; without it /v1/context answers 503.
+func WithMarketContext(m *MarketContext) Option {
+	return func(o *options) { o.context = m }
+}
+
+// WithDeposits serves any-chain deposits over Aurora; without it the
+// deposit endpoints answer 503.
+func WithDeposits(d *Deposits) Option {
+	return func(o *options) { o.deposits = d }
 }
 
 // WithAuthKeys persists request-signing keys (ADR 0005). Without it they
@@ -157,6 +176,8 @@ type handler struct {
 	ledger   *Ledger
 	prize    *Prize
 	auth     *authenticator
+	context  *MarketContext
+	deposits *Deposits
 }
 
 // AccountHeader names the wallet a request acts for. On its own it is
@@ -503,6 +524,10 @@ func (h *handler) fail(w http.ResponseWriter, err error) {
 		// Not a refusal: the venue link dropped mid-request and the outcome is
 		// unknown. The app re-reads state on its next poll; the player retries.
 		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "venue_disconnected", Message: "lost the exchange connection while placing the order — check the position and retry"})
+	case isPartnerError(err):
+		// Nansen or Aurora refused or failed: not ours, and their text is
+		// written for people (a minimum amount, an unsupported pair).
+		writeJSON(w, http.StatusBadGateway, errorDTO{Error: "partner_error", Message: partnerMessage(err)})
 	case errors.Is(err, venue.ErrNoCredentials):
 		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "no_credentials", Message: "the service has no venue credentials"})
 	default:
@@ -1268,4 +1293,210 @@ type statusRecorder struct {
 func (r *statusRecorder) WriteHeader(code int) {
 	r.status = code
 	r.ResponseWriter.WriteHeader(code)
+}
+
+// --- market context and deposits ---
+
+func isPartnerError(err error) bool {
+	var n *insight.APIError
+	var a *deposit.APIError
+	return errors.As(err, &n) || errors.As(err, &a)
+}
+
+func partnerMessage(err error) string {
+	var n *insight.APIError
+	var a *deposit.APIError
+	switch {
+	case errors.As(err, &a):
+		return a.Message
+	case errors.As(err, &n):
+		return n.Message
+	}
+	return err.Error()
+}
+
+type contextTraderDTO struct {
+	Address   string `json:"address"`
+	Label     string `json:"label,omitempty"`
+	BoughtUSD string `json:"bought_usd"`
+	SoldUSD   string `json:"sold_usd"`
+}
+
+type contextHourDTO struct {
+	At         string `json:"at"`
+	InflowUSD  string `json:"inflow_usd"`
+	OutflowUSD string `json:"outflow_usd"`
+	Complete   bool   `json:"complete"`
+}
+
+type contextDTO struct {
+	Symbol        string             `json:"symbol"`
+	Chain         string             `json:"chain"`
+	TokenAddress  string             `json:"token_address"`
+	TokenSymbol   string             `json:"token_symbol"`
+	PriceUSD      string             `json:"price_usd"`
+	Change24hPct  string             `json:"change_24h_pct"`
+	Volume24hUSD  string             `json:"volume_24h_usd"`
+	BuyVolumeUSD  string             `json:"buy_volume_usd"`
+	SellVolumeUSD string             `json:"sell_volume_usd"`
+	NetflowUSD    string             `json:"netflow_usd"`
+	LiquidityUSD  string             `json:"liquidity_usd"`
+	MarketCapUSD  string             `json:"market_cap_usd"`
+	Lean          string             `json:"lean"`
+	Headline      string             `json:"headline"`
+	Hours         []contextHourDTO   `json:"hours"`
+	TopBuyers     []contextTraderDTO `json:"top_buyers"`
+	TopSellers    []contextTraderDTO `json:"top_sellers"`
+	Source        string             `json:"source"`
+	UpdatedAt     string             `json:"updated_at"`
+	Stale         bool               `json:"stale"`
+}
+
+func usd(v float64) string { return strconv.FormatFloat(v, 'f', 2, 64) }
+
+func toContextDTO(c Card) contextDTO {
+	out := contextDTO{
+		Symbol: c.Symbol, Chain: c.Chain, TokenAddress: c.TokenAddress, TokenSymbol: c.TokenSymbol,
+		PriceUSD: strconv.FormatFloat(c.PriceUSD, 'f', -1, 64), Change24hPct: strconv.FormatFloat(c.Change24h*100, 'f', 2, 64),
+		Volume24hUSD: usd(c.Volume24hUSD), BuyVolumeUSD: usd(c.BuyVolumeUSD), SellVolumeUSD: usd(c.SellVolumeUSD), NetflowUSD: usd(c.NetflowUSD),
+		LiquidityUSD: usd(c.LiquidityUSD), MarketCapUSD: usd(c.MarketCapUSD), Lean: c.Lean, Headline: c.Headline,
+		Hours: []contextHourDTO{}, TopBuyers: []contextTraderDTO{}, TopSellers: []contextTraderDTO{},
+		Source: c.Source, UpdatedAt: timeOrEmpty(c.UpdatedAt), Stale: c.Stale,
+	}
+	for _, h := range c.Hours {
+		out.Hours = append(out.Hours, contextHourDTO{At: timeOrEmpty(h.At), InflowUSD: usd(h.InflowUSD), OutflowUSD: usd(h.OutflowUSD), Complete: h.Complete})
+	}
+	for _, t := range c.TopBuyers {
+		out.TopBuyers = append(out.TopBuyers, contextTraderDTO{Address: t.Address, Label: t.Label, BoughtUSD: usd(t.BoughtUSD), SoldUSD: usd(t.SoldUSD)})
+	}
+	for _, t := range c.TopSellers {
+		out.TopSellers = append(out.TopSellers, contextTraderDTO{Address: t.Address, Label: t.Label, BoughtUSD: usd(t.BoughtUSD), SoldUSD: usd(t.SoldUSD)})
+	}
+	return out
+}
+
+// marketContext serves the Nansen card for a market. Public: the same
+// card for everyone, and it is about the asset, not the wallet.
+func (h *handler) marketContext(w http.ResponseWriter, r *http.Request) {
+	if h.context == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "context_unavailable", Message: "market context is not configured"})
+		return
+	}
+	card, err := h.context.Card(r.Context(), r.URL.Query().Get("symbol"))
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toContextDTO(card))
+}
+
+type depositOptionDTO struct {
+	AssetID   string `json:"asset_id"`
+	Chain     string `json:"chain"`
+	ChainName string `json:"chain_name"`
+	Symbol    string `json:"symbol"`
+	Decimals  int    `json:"decimals"`
+	PriceUSD  string `json:"price_usd"`
+}
+
+type depositOptionsDTO struct {
+	Destination struct {
+		AssetID  string `json:"asset_id"`
+		Chain    string `json:"chain"`
+		Symbol   string `json:"symbol"`
+		Decimals int    `json:"decimals"`
+	} `json:"destination"`
+	Options []depositOptionDTO `json:"options"`
+}
+
+func (h *handler) depositOptions(w http.ResponseWriter, r *http.Request) {
+	if h.deposits == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "deposit_unavailable", Message: "any-chain deposits are not configured"})
+		return
+	}
+	opts, dest, err := h.deposits.Options(r.Context())
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	var out depositOptionsDTO
+	out.Destination.AssetID, out.Destination.Chain, out.Destination.Symbol, out.Destination.Decimals = dest.AssetID, dest.Chain, dest.Symbol, dest.Decimals
+	out.Options = make([]depositOptionDTO, 0, len(opts))
+	for _, o := range opts {
+		out.Options = append(out.Options, depositOptionDTO{AssetID: o.AssetID, Chain: o.Chain, ChainName: o.ChainName, Symbol: o.Symbol, Decimals: o.Decimals, PriceUSD: strconv.FormatFloat(o.PriceUSD, 'f', -1, 64)})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+type depositQuoteReqDTO struct {
+	OriginAsset string `json:"origin_asset"`
+	Amount      string `json:"amount"`
+	Dry         bool   `json:"dry,omitempty"`
+}
+
+type depositQuoteDTO struct {
+	DepositAddress  string `json:"deposit_address,omitempty"`
+	OriginAsset     string `json:"origin_asset"`
+	AmountIn        string `json:"amount_in"`
+	AmountInUSD     string `json:"amount_in_usd"`
+	AmountOut       string `json:"amount_out"`
+	AmountOutUSD    string `json:"amount_out_usd"`
+	MinAmountOut    string `json:"min_amount_out"`
+	TimeEstimateSec int    `json:"time_estimate_seconds"`
+	Deadline        string `json:"deadline"`
+	Dry             bool   `json:"dry"`
+}
+
+// depositQuote quotes a deposit into the requesting wallet: the recipient
+// and the refund address are the wallet in X-Account-Address, never a
+// body field, so a quote cannot be made to pay someone else.
+func (h *handler) depositQuote(w http.ResponseWriter, r *http.Request) {
+	if h.deposits == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "deposit_unavailable", Message: "any-chain deposits are not configured"})
+		return
+	}
+	wallet := strings.TrimSpace(r.Header.Get(AccountHeader))
+	if wallet == "" {
+		h.fail(w, fmt.Errorf("%w: a deposit needs the wallet in %s", ErrInvalid, AccountHeader))
+		return
+	}
+	var in depositQuoteReqDTO
+	if err := decode(r, &in); err != nil {
+		h.fail(w, err)
+		return
+	}
+	q, err := h.deposits.Quote(r.Context(), in.OriginAsset, in.Amount, wallet, in.Dry)
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, depositQuoteDTO{
+		DepositAddress: q.DepositAddress, OriginAsset: q.OriginAsset, AmountIn: q.AmountIn, AmountInUSD: q.AmountInUSD,
+		AmountOut: q.AmountOut, AmountOutUSD: q.AmountOutUSD, MinAmountOut: q.MinAmountOut,
+		TimeEstimateSec: q.TimeEstimateSec, Deadline: timeOrEmpty(q.Deadline), Dry: q.Dry,
+	})
+}
+
+type depositStatusDTO struct {
+	Status    string   `json:"status"`
+	UpdatedAt string   `json:"updated_at"`
+	AmountIn  string   `json:"amount_in,omitempty"`
+	AmountOut string   `json:"amount_out,omitempty"`
+	TxHashes  []string `json:"tx_hashes"`
+}
+
+func (h *handler) depositStatus(w http.ResponseWriter, r *http.Request) {
+	if h.deposits == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "deposit_unavailable", Message: "any-chain deposits are not configured"})
+		return
+	}
+	s, err := h.deposits.Status(r.Context(), r.URL.Query().Get("deposit_address"))
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	if s.TxHashes == nil {
+		s.TxHashes = []string{}
+	}
+	writeJSON(w, http.StatusOK, depositStatusDTO{Status: s.Status, UpdatedAt: timeOrEmpty(s.UpdatedAt), AmountIn: s.AmountIn, AmountOut: s.AmountOut, TxHashes: s.TxHashes})
 }
