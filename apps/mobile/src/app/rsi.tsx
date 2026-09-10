@@ -62,7 +62,7 @@ export default function RSIScreen() {
         <ScrollView contentContainerStyle={styles.content}>
           <ScreenHeader title={`RSI BOUNCE · ${DEFAULT_SYMBOL}`} state={t.state} offline={t.offline} />
 
-          <AccountSection account={account} state={t.state} onChange={t.refresh} />
+          <AccountSection account={account} state={t.state} onChange={t.refresh} strategy="rsi" />
 
           <View
             testID="signal-card"

@@ -8,6 +8,8 @@
  * of the engine's reasons, with the limit that was hit and the value that hit
  * it, so a screen can say "maximum is 50" instead of "request failed".
  */
+import { sha256 } from '@noble/hashes/sha2.js';
+
 import type { components, paths } from './schema';
 import { API_URL } from '@/config';
 
@@ -44,6 +46,7 @@ export type ErrorCode =
   | 'enrollment_unavailable'
   | 'no_key'
   | 'no_credentials'
+  | 'unauthenticated'
   | 'internal'
   | 'network';
 
@@ -74,14 +77,25 @@ type Paths = paths;
 
 /**
  * The wallet requests act for. While set, every call carries it in
- * X-Account-Address and the platform routes to that wallet's own exchange
- * key, limits and positions. Unset, requests use the platform's own account
- * — the pre-passkey path the trading tests exercise.
+ * X-Account-Address and, with a strategy, X-Strategy: the platform routes
+ * to that wallet's key for the strategy, its limits and positions. Unset,
+ * requests use the platform's own account — the pre-passkey path the
+ * trading tests exercise.
  *
- * This is routing, not authentication; signed requests from the wallet are
- * the next step, and until then the platform binds to loopback only.
+ * With a signer set, every such request is also signed: X-Auth-Key,
+ * X-Auth-Time and X-Auth-Signature over the method, path, time and body
+ * hash, by the request-signing key the passkey derives. The platform
+ * refuses unsigned requests for a wallet once its key is registered.
  */
 let accountAddress: string | null = null;
+
+export type RequestSigner = {
+  /** Ed25519 public key, hex. */
+  publicKey: string;
+  sign: (message: Uint8Array) => Promise<Uint8Array>;
+};
+
+let signer: RequestSigner | null = null;
 
 export function setAccountAddress(address: string | null): void {
   accountAddress = address;
@@ -91,14 +105,41 @@ export function currentAccountAddress(): string | null {
   return accountAddress;
 }
 
-export async function request<T>(path: keyof Paths | string, init?: RequestInit): Promise<T> {
+export function setRequestSigner(s: RequestSigner | null): void {
+  signer = s;
+}
+
+/** Per-call options beyond fetch's: which strategy the request is for. */
+export type RequestOptions = { strategy?: string };
+
+const hex = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+
+/** What the request key signs: the platform builds the same string. */
+export function signingString(method: string, path: string, time: string, body: string): Uint8Array {
+  return new TextEncoder().encode(`${method}\n${path}\n${time}\n${hex(sha256(new TextEncoder().encode(body)))}`);
+}
+
+async function authHeaders(method: string, path: string, body: string): Promise<Record<string, string>> {
+  if (!accountAddress || !signer) return {};
+  const time = String(Math.floor(Date.now() / 1000));
+  const signature = await signer.sign(signingString(method, path, time, body));
+  return { 'X-Auth-Key': signer.publicKey, 'X-Auth-Time': time, 'X-Auth-Signature': hex(signature) };
+}
+
+export async function request<T>(path: keyof Paths | string, init?: RequestInit, opts?: RequestOptions): Promise<T> {
   let res: Response;
+  const method = (init?.method ?? 'GET').toUpperCase();
+  const payload = typeof init?.body === 'string' ? init.body : '';
+  const signed = await authHeaders(method, path, payload);
   try {
     res = await fetch(`${API_URL}${path}`, {
       ...init,
+      method,
       headers: {
         'Content-Type': 'application/json',
         ...(accountAddress ? { 'X-Account-Address': accountAddress } : {}),
+        ...(accountAddress && opts?.strategy ? { 'X-Strategy': opts.strategy } : {}),
+        ...signed,
         // A localtunnel in front of the platform shows browsers a reminder
         // page unless asked not to; only relevant when testing a phone
         // against a laptop, and only sent to that host.
@@ -126,17 +167,24 @@ export async function request<T>(path: keyof Paths | string, init?: RequestInit)
 
 export const api = {
   markets: () => request<Market[]>('/v1/markets'),
-  state: () => request<State>('/v1/state'),
+  state: (strategy: string) => request<State>('/v1/state', undefined, { strategy }),
   open: (body: OpenRequest) =>
-    request<Order>('/v1/orders/open', { method: 'POST', body: JSON.stringify(body) }),
+    request<Order>('/v1/orders/open', { method: 'POST', body: JSON.stringify(body) }, { strategy: body.strategy }),
   close: (body: CloseRequest) =>
-    request<Order>('/v1/orders/close', { method: 'POST', body: JSON.stringify(body) }),
+    request<Order>('/v1/orders/close', { method: 'POST', body: JSON.stringify(body) }, { strategy: body.strategy }),
   maCross: (symbol: string) => request<MACrossSignal>(`/v1/signals/ma-cross?symbol=${encodeURIComponent(symbol)}`),
   trades: (symbol: string, strategy: string) =>
-    request<Trade[]>(`/v1/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&limit=50`),
+    request<Trade[]>(`/v1/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&limit=50`, undefined, { strategy }),
   rsi: (symbol: string) => request<RSISignal>(`/v1/signals/rsi?symbol=${encodeURIComponent(symbol)}`),
   leaderboard: () => request<Leaderboard>('/v1/leaderboard'),
 };
+
+// The browser tests read the wallet's state through the app, since only the
+// app holds the request-signing key. Read-only, and nothing a page could
+// not already see on screen.
+if (typeof window !== 'undefined') {
+  (window as unknown as { __tradeagent?: unknown }).__tradeagent = { state: (strategy: string) => api.state(strategy) };
+}
 
 /**
  * A message a person can act on. Policy denials carry the numbers, so the
@@ -160,6 +208,10 @@ export function describeError(e: unknown): string {
       return `At most ${e.limit} positions at once`;
     case 'total_exposure_too_large':
       return `Total exposure would be ${e.actual}, limit is ${e.limit}`;
+    case 'no_key':
+      return 'Enable this strategy first — it trades with its own key';
+    case 'unauthenticated':
+      return 'Sign in again — the platform could not verify this request';
     case 'kill_switch':
       return `Trading is paused: ${e.message}`;
     case 'symbol_not_allowed':

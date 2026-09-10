@@ -31,7 +31,7 @@ export function useTrading(symbol: string, strategy: string) {
 
   const refresh = useCallback(async () => {
     try {
-      const s = await api.state();
+      const s = await api.state(strategy);
       if (!mounted.current) return;
       setState(s);
       setOffline(false);
@@ -98,7 +98,7 @@ export function useTrading(symbol: string, strategy: string) {
     setBusy('close');
     setNotice(null);
     try {
-      const order = await api.close({ symbol });
+      const order = await api.close({ symbol, strategy });
       setNotice({ text: `Closed ${order.filled_size} @ ${order.avg_price}, fee ${order.fee}`, kind: 'info' });
       await refresh();
     } catch (e) {
@@ -106,7 +106,7 @@ export function useTrading(symbol: string, strategy: string) {
     } finally {
       setBusy(null);
     }
-  }, [refresh, symbol]);
+  }, [refresh, symbol, strategy]);
 
   return { state, market, position, trades, busy, notice, offline, refresh, open, close };
 }

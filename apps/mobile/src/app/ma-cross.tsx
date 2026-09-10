@@ -57,7 +57,7 @@ export default function MACrossScreen() {
         <ScrollView contentContainerStyle={styles.content}>
           <ScreenHeader title={`MA CROSS · ${DEFAULT_SYMBOL}`} state={t.state} offline={t.offline} />
 
-          <AccountSection account={account} state={t.state} onChange={t.refresh} />
+          <AccountSection account={account} state={t.state} onChange={t.refresh} strategy="ma-cross" />
 
           <SignalCard
             signal={signal}

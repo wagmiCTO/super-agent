@@ -36,6 +36,9 @@ const evmPath = (index: number) => `m/44'/60'/0'/0/${index}`;
 /** Domain separator for strategy keys. Part of the derivation; never change. */
 const STRATEGY_KEY_DOMAIN = new TextEncoder().encode('tradeagent/strategy-key/v1');
 
+/** Domain separator for the request-signing key. Part of the derivation; never change. */
+const AUTH_KEY_DOMAIN = new TextEncoder().encode('tradeagent/auth-key/v1');
+
 /**
  * The PRF output is used as 256 bits of BIP-39 entropy, so the same phrase
  * imported into any standard wallet reproduces the same wallet address.
@@ -68,6 +71,8 @@ export function deriveWallet(seed: Uint8Array): Wallet {
 export type StrategyKey = {
   index: number;
   publicKey: Uint8Array;
+  /** The 32-byte seed: handed to the platform at enrollment, which trades with it. */
+  privateKey: Uint8Array;
   session: Ed25519SigningSession;
 };
 
@@ -83,6 +88,63 @@ export function deriveStrategyKey(seed: Uint8Array, index: number): StrategyKey 
   data.set(STRATEGY_KEY_DOMAIN, 0);
   new DataView(data.buffer).setUint32(STRATEGY_KEY_DOMAIN.length, index, false);
   const privateKey = hmac(sha512, seed, data).slice(0, 32);
+  const session = createEd25519SigningSession({ privateKey: new Uint8Array(privateKey) });
+  return { index, publicKey: session.publicKey, privateKey, session };
+}
+
+export type AuthKey = {
+  publicKey: Uint8Array;
+  session: Ed25519SigningSession;
+};
+
+/**
+ * The request-signing key: an Ed25519 key that signs every request to the
+ * platform. It never leaves the device; the platform learns only its public
+ * key, registered once with the wallet's signature.
+ */
+export function deriveAuthKey(seed: Uint8Array): AuthKey {
+  const privateKey = hmac(sha512, seed, AUTH_KEY_DOMAIN).slice(0, 32);
   const session = createEd25519SigningSession({ privateKey });
-  return { index, publicKey: session.publicKey, session };
+  return { publicKey: session.publicKey, session };
+}
+
+/**
+ * The whole family from one seed, derived on demand: the wallet, the
+ * request-signing key, and a strategy key per index. Owns the seed for the
+ * life of the session and wipes it on `end`.
+ */
+export class KeyFamily {
+  readonly wallet: Wallet;
+  readonly auth: AuthKey;
+  private seed: Uint8Array | null;
+  private strategies = new Map<number, StrategyKey>();
+
+  constructor(seed: Uint8Array) {
+    this.seed = new Uint8Array(seed);
+    this.wallet = deriveWallet(this.seed);
+    this.auth = deriveAuthKey(this.seed);
+  }
+
+  /** The exchange API key for strategy `index`; the same object each time. */
+  strategy(index: number): StrategyKey {
+    if (!this.seed) throw new Error('key family has ended');
+    let k = this.strategies.get(index);
+    if (!k) {
+      k = deriveStrategyKey(this.seed, index);
+      this.strategies.set(index, k);
+    }
+    return k;
+  }
+
+  end(): void {
+    this.seed?.fill(0);
+    this.seed = null;
+    this.wallet.session.end();
+    this.auth.session.end();
+    for (const k of this.strategies.values()) {
+      k.privateKey.fill(0);
+      k.session.end();
+    }
+    this.strategies.clear();
+  }
 }

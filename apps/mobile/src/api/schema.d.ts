@@ -84,11 +84,23 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Account balance, open positions, limits in force and how much of them is used */
+        /**
+         * Account balance, open positions, limits in force and how much of them is used
+         * @description Per-wallet requests carry `X-Account-Address` and `X-Strategy`: the
+         *     strategy picks the wallet's key for it and the limits that key trades
+         *     under (one key per strategy, derived from the passkey). A wallet that
+         *     registered a request-signing key (POST /v1/auth/keys) must also sign
+         *     every request: `X-Auth-Key` (Ed25519 public key, hex), `X-Auth-Time`
+         *     (unix seconds) and `X-Auth-Signature` (hex) over
+         *     `METHOD\nPATH?QUERY\nTIME\nSHA256(body)`, newline-separated.
+         */
         get: {
             parameters: {
                 query?: never;
-                header?: never;
+                header?: {
+                    /** @description Which strategy's key and limits the request is for. */
+                    "X-Strategy"?: string;
+                };
                 path?: never;
                 cookie?: never;
             };
@@ -339,11 +351,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The enrolled key for a wallet, without secrets */
+        /** The enrolled key for a wallet and strategy, without secrets */
         get: {
             parameters: {
                 query: {
                     address: string;
+                    /** @description The strategy's key; empty for the wallet-wide key. */
+                    strategy?: string;
                 };
                 header?: never;
                 path?: never;
@@ -364,6 +378,114 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/exchange/keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every key enrolled for a wallet — which strategies are enabled */
+        get: {
+            parameters: {
+                query: {
+                    address: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EnrolledKey"][];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register a request-signing key for a wallet
+         * @description The device derives an Ed25519 key from the passkey and the wallet
+         *     signs, as a personal message, the text
+         *     `TradeAgent request-signing key\nWallet: <address, lowercase>\nKey: <public key hex>\nIssued: <RFC 3339, seconds>`.
+         *     From then on every request for this wallet must be signed by a
+         *     registered key (see GET /v1/state).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        address: string;
+                        /** @description Ed25519 public key */
+                        public_key: string;
+                        /**
+                         * Format: date-time
+                         * @description Seconds precision; at most ten minutes old.
+                         */
+                        issued_at: string;
+                        /** @description The wallet's EIP-191 signature */
+                        signature: string;
+                    };
+                };
+            };
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            address: string;
+                            public_key: string;
+                        };
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                /** @description The signature was not made by this wallet. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -1048,6 +1170,8 @@ export interface components {
         };
         CloseRequest: {
             symbol: string;
+            /** @description Which strategy's key closes; defaults to the X-Strategy header. */
+            strategy?: string;
         };
         Order: {
             /** @description The idempotency key the service generated. */
@@ -1091,6 +1215,10 @@ export interface components {
         EnrollPayload: {
             /** @description Single-use; identifies the pending key. */
             handle: string;
+            /** @description The strategy the key is for; absent for a wallet-wide key. */
+            strategy?: string;
+            /** @description The key being enrolled */
+            public_key: string;
             /** @description Sign-In-With-Ethereum text; sign as a personal message. */
             sign_in_message: string;
             /** @description EIP-712 document (types, primaryType, domain, message). Sign it exactly as given. */
@@ -1105,6 +1233,10 @@ export interface components {
         };
         EnrolledKey: {
             address: string;
+            /** @description The strategy this key trades for; empty for a wallet-wide key. */
+            strategy: string;
+            /** @description True when the device derived the key from the passkey. */
+            derived: boolean;
             label: string;
             builder_id: number;
             max_builder_fee_per_100k: number;
@@ -1124,7 +1256,8 @@ export interface components {
              *     activate the wallet's exchange account), forwarding_disabled (409),
              *     venue_unconfirmed (504: acknowledged, outcome unknown — reconcile then retry),
              *     unknown, re-read state and retry), unknown_market, no_position,
-             *     no_credentials, internal.
+             *     no_credentials, unauthenticated (401: the wallet registered a
+             *     request-signing key and this request is not signed by it), internal.
              */
             error: string;
             /** @description For a person. */

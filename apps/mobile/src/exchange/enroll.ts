@@ -1,20 +1,27 @@
 /**
- * Connecting a passkey wallet to the exchange.
+ * Connecting a passkey wallet to the exchange, one strategy at a time.
  *
- * The platform generates the exchange API key and asks the venue for an
- * EIP-712 document binding it to this wallet and to the platform's builder
- * terms. The wallet — derived from the passkey, never leaving the device —
- * signs that document; that signature is the user's consent to the fee they
- * read in `statement`. The platform then proves it holds the key and the
- * venue issues it. From then on the platform can place orders for this
- * wallet, and can never withdraw.
+ * Each strategy trades with its own exchange API key, derived on the device
+ * from the passkey (see account/derive.ts). Enabling a strategy enrolls that
+ * key: the platform asks the venue for an EIP-712 document binding the key
+ * to this wallet and to the platform's builder terms; the wallet — never
+ * leaving the device — signs it, and that signature is the user's consent
+ * to the fee they read in `statement`. The key itself goes to the platform
+ * with the enrollment, because the exit is the platform's job (it closes
+ * positions on their horizon while the phone is in a pocket); it can never
+ * withdraw, and revoking it on the venue's key page stops one strategy.
+ *
+ * The request-signing key is the other half: registered once with the
+ * wallet's signature, it signs every request the app makes for the wallet.
  */
 import { toViemAccount } from '@category-labs/mera/viem';
 import type { TypedDataDomain } from 'viem';
 
-import type { Wallet } from '@/account/derive';
+import type { KeyFamily, StrategyKey, Wallet } from '@/account/derive';
+import { toHex } from '@/account/hex';
 import { ApiError, request } from '@/api/client';
 import type { components } from '@/api/schema';
+import { STRATEGY_KEY_INDEX } from '@/config';
 
 export type EnrollPayload = components['schemas']['EnrollPayload'];
 export type EnrolledKey = components['schemas']['EnrolledKey'];
@@ -28,17 +35,24 @@ type TypedDataDocument = {
 };
 
 export const exchangeApi = {
-  payload: (address: string, label: string) =>
+  payload: (address: string, strategy: string, publicKey: string) =>
     request<EnrollPayload>('/v1/exchange/enroll/payload', {
       method: 'POST',
-      body: JSON.stringify({ address, label }),
+      body: JSON.stringify({ address, strategy, public_key: publicKey }),
     }),
-  enroll: (handle: string, signInSignature: string, signature: string) =>
+  enroll: (handle: string, signInSignature: string, signature: string, privateKey: string) =>
     request<EnrolledKey>('/v1/exchange/enroll', {
       method: 'POST',
-      body: JSON.stringify({ handle, sign_in_signature: signInSignature, signature }),
+      body: JSON.stringify({ handle, sign_in_signature: signInSignature, signature, private_key: privateKey }),
     }),
-  key: (address: string) => request<EnrolledKey>(`/v1/exchange/key?address=${encodeURIComponent(address)}`),
+  key: (address: string, strategy: string) =>
+    request<EnrolledKey>(`/v1/exchange/key?address=${encodeURIComponent(address)}&strategy=${encodeURIComponent(strategy)}`),
+  keys: (address: string) => request<EnrolledKey[]>(`/v1/exchange/keys?address=${encodeURIComponent(address)}`),
+  registerAuthKey: (address: string, publicKey: string, issuedAt: string, signature: string) =>
+    request<{ address: string; public_key: string }>('/v1/auth/keys', {
+      method: 'POST',
+      body: JSON.stringify({ address, public_key: publicKey, issued_at: issuedAt, signature }),
+    }),
 };
 
 /**
@@ -65,9 +79,17 @@ export async function signEnrollment(wallet: Wallet, doc: TypedDataDocument): Pr
   });
 }
 
+/** The strategy key for a strategy id, from the family. */
+export function strategyKeyFor(keys: KeyFamily, strategy: string): StrategyKey {
+  const index = STRATEGY_KEY_INDEX[strategy];
+  if (index === undefined) throw new Error(`no key index for strategy ${strategy}`);
+  return keys.strategy(index);
+}
+
 /**
- * Runs both steps. The wallet makes two signatures, neither of which prompts
- * the user: the session key signs silently once the passkey has unlocked it.
+ * Enables a strategy: enrolls its derived key. The wallet makes two
+ * signatures, neither of which prompts the user — the session key signs
+ * silently once the passkey has unlocked it:
  *
  * - the venue's sign-in message, as a personal message — this is the user
  *   accepting the venue's terms and, on first contact, becoming a profile;
@@ -77,19 +99,21 @@ export async function signEnrollment(wallet: Wallet, doc: TypedDataDocument): Pr
  * submissions with a bare 400, deterministically for a given document
  * (measured 10 Sep 2026 on twenty fresh wallets; not the recovery byte, as
  * first thought — reported to the venue). Retrying the same body never
- * helps; a fresh payload — new API key, new timestamp — is an independent
- * draw, so the wallet signs a new one on each refusal. Silent, and five
- * draws leave under one percent of users without a key.
+ * helps; a fresh payload — new timestamp — is an independent draw, so the
+ * wallet signs a new one on each refusal. Silent, and five draws leave
+ * under one percent of users without a key.
  */
-export async function connectExchange(wallet: Wallet, label = 'TradeAgent'): Promise<EnrolledKey> {
+export async function enableStrategy(keys: KeyFamily, strategy: string): Promise<EnrolledKey> {
+  const wallet = keys.wallet;
+  const key = strategyKeyFor(keys, strategy);
   const account = toViemAccount(wallet.session);
   let last: unknown;
   for (let attempt = 0; attempt < MAX_ENROLL_ATTEMPTS; attempt++) {
-    const payload = await exchangeApi.payload(wallet.address, label);
+    const payload = await exchangeApi.payload(wallet.address, strategy, toHex(key.publicKey));
     const signature = await signEnrollment(wallet, payload.typed_data as unknown as TypedDataDocument);
     const signInSignature = await account.signMessage({ message: payload.sign_in_message });
     try {
-      return await exchangeApi.enroll(payload.handle, signInSignature, signature);
+      return await exchangeApi.enroll(payload.handle, signInSignature, signature, toHex(key.privateKey));
     } catch (e) {
       // Only the venue's refusal of this particular document is worth a
       // fresh draw; anything else (network, our own 4xx) is reported as is.
@@ -100,15 +124,36 @@ export async function connectExchange(wallet: Wallet, label = 'TradeAgent'): Pro
   throw last instanceof Error ? last : new Error('the exchange refused every enrollment attempt; try again');
 }
 
-/** Bound on fresh payloads per Connect: (2/5)^5 < 1% left without a key. */
+/** Bound on fresh payloads per attempt: (2/5)^5 < 1% left without a key. */
 const MAX_ENROLL_ATTEMPTS = 5;
 
-/** Whether a key is already enrolled for the wallet; null when the platform has none. */
-export async function enrolledKey(address: string): Promise<EnrolledKey | null> {
+/** The key enrolled for a strategy; null when the platform has none. */
+export async function strategyKey(address: string, strategy: string): Promise<EnrolledKey | null> {
   try {
-    return await exchangeApi.key(address);
+    return await exchangeApi.key(address, strategy);
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) return null;
     throw e;
   }
+}
+
+/** Every key the platform holds for a wallet: which strategies are enabled. */
+export function enrolledKeys(address: string): Promise<EnrolledKey[]> {
+  return exchangeApi.keys(address);
+}
+
+/**
+ * The text the wallet signs to register the request-signing key. The
+ * platform builds the same text; `issuedAt` is RFC 3339 at seconds.
+ */
+export function registrationMessage(address: string, publicKey: Uint8Array, issuedAt: string): string {
+  return `TradeAgent request-signing key\nWallet: ${address.toLowerCase()}\nKey: ${toHex(publicKey)}\nIssued: ${issuedAt}`;
+}
+
+/** Registers the family's request-signing key with the platform. Idempotent. */
+export async function registerAuthKey(keys: KeyFamily): Promise<void> {
+  const issuedAt = new Date(Math.floor(Date.now() / 1000) * 1000).toISOString().replace('.000Z', 'Z');
+  const account = toViemAccount(keys.wallet.session);
+  const signature = await account.signMessage({ message: registrationMessage(keys.wallet.address, keys.auth.publicKey, issuedAt) });
+  await exchangeApi.registerAuthKey(keys.wallet.address, toHex(keys.auth.publicKey), issuedAt, signature);
 }

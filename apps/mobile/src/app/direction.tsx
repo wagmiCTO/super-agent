@@ -49,7 +49,7 @@ export default function DirectionScreen() {
         <ScrollView contentContainerStyle={styles.content}>
           <ScreenHeader title={`DIRECTION · ${DEFAULT_SYMBOL}`} state={t.state} offline={t.offline} />
 
-          <AccountSection account={account} state={t.state} onChange={t.refresh} />
+          <AccountSection account={account} state={t.state} onChange={t.refresh} strategy="direction" />
 
           <View style={[styles.card, { backgroundColor: theme.backgroundElement, alignItems: 'stretch' }]} testID="signal-card">
             <TVChart
