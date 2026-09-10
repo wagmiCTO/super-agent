@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAccount } from '@/account/useAccount';
 import { AccountSection } from '@/components/account';
+import { ContextCard } from '@/components/context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import {
@@ -64,6 +65,8 @@ export default function DirectionScreen() {
               height={260}
             />
           </View>
+
+          <ContextCard symbol={DEFAULT_SYMBOL} />
 
           <PositionCard position={t.position} market={t.market} notional={notional} />
 

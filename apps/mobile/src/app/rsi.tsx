@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAccount } from '@/account/useAccount';
 import { api, type RSISignal } from '@/api/client';
 import { AccountSection } from '@/components/account';
+import { ContextCard } from '@/components/context';
 import { trim } from '@/components/format';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -103,6 +104,8 @@ export default function RSIScreen() {
             </View>
             <PresetRow label="Chart" options={CHART_MODES} value={mode} onChange={setMode} />
           </View>
+
+          <ContextCard symbol={DEFAULT_SYMBOL} />
 
           <PositionCard position={t.position} market={t.market} notional={notional} />
 

@@ -29,6 +29,9 @@ export const STATE_POLL_MS = 2000;
 /** How often a strategy screen re-reads its signal, in milliseconds. */
 export const SIGNAL_POLL_MS = 5000;
 
+/** How often a strategy screen re-reads the market context card, in milliseconds. */
+export const CONTEXT_POLL_MS = 5 * 60_000;
+
 /** How often the lobby re-reads the leaderboard, in milliseconds. */
 export const LEADERBOARD_POLL_MS = 10_000;
 

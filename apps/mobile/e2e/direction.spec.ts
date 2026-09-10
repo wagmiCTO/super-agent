@@ -31,6 +31,15 @@ test.describe('Direction screen', () => {
     await expect(page.getByText(/^Balance /)).toBeVisible();
   });
 
+  test('shows what the crowd on-chain is doing with the asset', async ({ page }) => {
+    await page.goto('/direction');
+    const card = page.getByTestId('context-card');
+    await expect(card).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId('context-headline')).toHaveText(/WMON is .* on \$[\d.]+[kMB]? of volume in 24h\./);
+    await expect(page.getByTestId('context-lean')).toHaveText(/buyers ahead|sellers ahead|even/);
+    await expect(card).toContainText(/Nansen ·/);
+  });
+
   test('shows the cost of a round trip before any position exists', async ({ page }) => {
     await ensureFlat(page);
     // Fee line comes from the venue's live schedule, not a constant in the app.

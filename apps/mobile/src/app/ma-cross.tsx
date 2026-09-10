@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAccount } from '@/account/useAccount';
 import { api, type MACrossSignal, type Position, type Trade } from '@/api/client';
 import { AccountSection } from '@/components/account';
+import { ContextCard } from '@/components/context';
 import { TVChart } from '@/components/TVChart';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -67,6 +68,8 @@ export default function MACrossScreen() {
             trades={t.trades}
             position={t.position}
           />
+
+          <ContextCard symbol={DEFAULT_SYMBOL} />
 
           <PositionCard position={t.position} market={t.market} notional={notional} />
 

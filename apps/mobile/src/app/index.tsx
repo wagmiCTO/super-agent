@@ -36,6 +36,7 @@ function factionLine(boards: Board[]): string | null {
 
 export default function LobbyScreen() {
   const account = useAccount();
+  const theme = useTheme();
   // The account section needs the state; the lobby trades nothing itself.
   const t = useTrading('MON', 'direction');
   const lb = useLeaderboard();
@@ -75,6 +76,19 @@ export default function LobbyScreen() {
           {account.state.status === 'unlocked' && lb?.prize ? (
             <MyPrizes wallet={account.state.wallet} address={account.state.stored.address} contract={lb.prize.contract} />
           ) : null}
+
+          <Link href="/deposit" asChild>
+            <Pressable accessibilityRole="button" accessibilityLabel="Deposit from any chain" testID="deposit-link">
+              {({ pressed }) => (
+                <View style={[styles.card, { backgroundColor: theme.backgroundElement, opacity: pressed ? 0.7 : 1 }]}>
+                  <ThemedText type="smallBold">Deposit from any chain →</ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    Send USDC, ETH or a stable from Base, Arbitrum, Ethereum and more; it lands in this wallet on Monad.
+                  </ThemedText>
+                </View>
+              )}
+            </Pressable>
+          </Link>
 
           {lb ? (
             <ThemedText type="small" themeColor="textSecondary" style={trading.footer} testID="leaderboard-source">

@@ -26,6 +26,10 @@ export type RSISignal = components['schemas']['RSISignal'];
 export type Trade = components['schemas']['Trade'];
 export type Leaderboard = components['schemas']['Leaderboard'];
 export type Board = components['schemas']['Board'];
+export type MarketContext = components['schemas']['MarketContext'];
+export type DepositOptions = components['schemas']['DepositOptions'];
+export type DepositQuote = components['schemas']['DepositQuote'];
+export type DepositStatus = components['schemas']['DepositStatus'];
 
 /** Stable machine codes the server returns. Policy reasons come first. */
 export type ErrorCode =
@@ -47,6 +51,9 @@ export type ErrorCode =
   | 'no_key'
   | 'no_credentials'
   | 'unauthenticated'
+  | 'context_unavailable'
+  | 'deposit_unavailable'
+  | 'partner_error'
   | 'internal'
   | 'network';
 
@@ -177,6 +184,12 @@ export const api = {
     request<Trade[]>(`/v1/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&limit=50`, undefined, { strategy }),
   rsi: (symbol: string) => request<RSISignal>(`/v1/signals/rsi?symbol=${encodeURIComponent(symbol)}`),
   leaderboard: () => request<Leaderboard>('/v1/leaderboard'),
+  context: (symbol: string) => request<MarketContext>(`/v1/context?symbol=${encodeURIComponent(symbol)}`),
+  depositOptions: () => request<DepositOptions>('/v1/deposit/options'),
+  depositQuote: (body: { origin_asset: string; amount: string; dry?: boolean }) =>
+    request<DepositQuote>('/v1/deposit/quote', { method: 'POST', body: JSON.stringify(body) }),
+  depositStatus: (depositAddress: string) =>
+    request<DepositStatus>(`/v1/deposit/status?deposit_address=${encodeURIComponent(depositAddress)}`),
 };
 
 // The browser tests read the wallet's state through the app, since only the
@@ -208,6 +221,8 @@ export function describeError(e: unknown): string {
       return `At most ${e.limit} positions at once`;
     case 'total_exposure_too_large':
       return `Total exposure would be ${e.actual}, limit is ${e.limit}`;
+    case 'partner_error':
+      return e.message;
     case 'no_key':
       return 'Enable this strategy first — it trades with its own key';
     case 'unauthenticated':
@@ -218,6 +233,8 @@ export function describeError(e: unknown): string {
       return 'This market is not enabled';
     case 'no_position':
       return 'Nothing to close';
+    case 'partner_error':
+      return e.message;
     case 'no_key':
       return 'This wallet has no exchange key yet — connect the exchange first';
     case 'enrollment_unavailable':

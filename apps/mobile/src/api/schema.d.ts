@@ -766,6 +766,224 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What the crowd on-chain is doing with the market's asset — the card before an entry
+         * @description Built from Nansen: the asset's day (price, move, buy and sell
+         *     volume, net flow, liquidity), the biggest net buyers and sellers of
+         *     the last day, the last hours of holder flows, and one sentence that
+         *     says it. Refreshed lazily every few hours — the source meters
+         *     credits — and served stale, flagged, when a refresh fails.
+         */
+        get: {
+            parameters: {
+                query: {
+                    symbol: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MarketContext"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                /** @description The source refused or failed and there is no card yet. */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Market context is not configured. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/deposit/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What can be deposited from other chains, and what arrives
+         * @description Any-chain deposits over Aurora Intents. Origin assets are on EVM
+         *     chains only, because the wallet's own address is the refund address.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DepositOptions"];
+                    };
+                };
+                /** @description Deposits are not configured. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/deposit/quote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Quote a deposit into the requesting wallet and get a one-time deposit address
+         * @description The recipient and the refund address are the wallet in
+         *     X-Account-Address. Send `amount` of `origin_asset` (in its smallest
+         *     unit) to `deposit_address` before `deadline`; Aurora swaps and
+         *     delivers the destination asset to the wallet on Monad. A `dry`
+         *     quote previews without reserving an address.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        origin_asset: string;
+                        /** @description Smallest units of the origin asset. */
+                        amount: string;
+                        dry?: boolean;
+                    };
+                };
+            };
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DepositQuote"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                /** @description Aurora refused, in its own words (a minimum amount, an unsupported pair). */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/deposit/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Where a deposit stands */
+        get: {
+            parameters: {
+                query: {
+                    deposit_address: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DepositStatus"];
+                    };
+                };
+                /** @description Aurora does not know this deposit, or failed. */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/leaderboard": {
         parameters: {
             query?: never;
@@ -1245,6 +1463,83 @@ export interface components {
             /** Format: date-time */
             enrolled_at: string;
         };
+        MarketContext: {
+            symbol: string;
+            chain: string;
+            token_address: string;
+            token_symbol: string;
+            price_usd: components["schemas"]["Decimal"];
+            change_24h_pct: components["schemas"]["Decimal"];
+            volume_24h_usd: components["schemas"]["Decimal"];
+            buy_volume_usd: components["schemas"]["Decimal"];
+            sell_volume_usd: components["schemas"]["Decimal"];
+            netflow_usd: components["schemas"]["Decimal"];
+            liquidity_usd: components["schemas"]["Decimal"];
+            market_cap_usd: components["schemas"]["Decimal"];
+            /** @enum {string} */
+            lean: "buyers" | "sellers" | "balanced";
+            headline: string;
+            hours: {
+                /** Format: date-time */
+                at: string;
+                inflow_usd: components["schemas"]["Decimal"];
+                outflow_usd: components["schemas"]["Decimal"];
+                complete: boolean;
+            }[];
+            top_buyers: components["schemas"]["ContextTrader"][];
+            top_sellers: components["schemas"]["ContextTrader"][];
+            /** @example nansen */
+            source: string;
+            /** Format: date-time */
+            updated_at: string;
+            stale: boolean;
+        };
+        ContextTrader: {
+            address: string;
+            label?: string;
+            bought_usd: components["schemas"]["Decimal"];
+            sold_usd: components["schemas"]["Decimal"];
+        };
+        DepositOptions: {
+            destination: {
+                asset_id: string;
+                chain: string;
+                symbol: string;
+                decimals: number;
+            };
+            options: {
+                asset_id: string;
+                chain: string;
+                chain_name: string;
+                symbol: string;
+                decimals: number;
+                price_usd: components["schemas"]["Decimal"];
+            }[];
+        };
+        DepositQuote: {
+            /** @description Absent on a dry quote. */
+            deposit_address?: string;
+            origin_asset: string;
+            amount_in: components["schemas"]["Decimal"];
+            amount_in_usd: components["schemas"]["Decimal"];
+            amount_out: components["schemas"]["Decimal"];
+            amount_out_usd: components["schemas"]["Decimal"];
+            /** @description Smallest units of the destination asset. */
+            min_amount_out: string;
+            time_estimate_seconds: number;
+            /** Format: date-time */
+            deadline: string;
+            dry: boolean;
+        };
+        DepositStatus: {
+            /** @enum {string} */
+            status: "PENDING_DEPOSIT" | "KNOWN_DEPOSIT_TX" | "INCOMPLETE_DEPOSIT" | "PROCESSING" | "SUCCESS" | "REFUNDED" | "FAILED";
+            /** Format: date-time */
+            updated_at: string;
+            amount_in?: string;
+            amount_out?: string;
+            tx_hashes: string[];
+        };
         Error: {
             /**
              * @description Stable machine code. Policy denials use the engine's reasons:
@@ -1257,7 +1552,9 @@ export interface components {
              *     venue_unconfirmed (504: acknowledged, outcome unknown — reconcile then retry),
              *     unknown, re-read state and retry), unknown_market, no_position,
              *     no_credentials, unauthenticated (401: the wallet registered a
-             *     request-signing key and this request is not signed by it), internal.
+             *     request-signing key and this request is not signed by it),
+             *     context_unavailable and deposit_unavailable (503: not configured),
+             *     partner_error (502: Nansen or Aurora refused, message is theirs), internal.
              */
             error: string;
             /** @description For a person. */
