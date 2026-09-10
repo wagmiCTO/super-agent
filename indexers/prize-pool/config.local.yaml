@@ -1,0 +1,27 @@
+# Local run without an Envio API token: historical sync over the public RPC
+# instead of HyperSync. Same contract, same handlers. Use with
+#   pnpm envio start --config config.local.yaml
+# Every closed round trip funds its strategy's weekly pool; the platform
+# settles the previous week; winners claim. See ../../docs/adr/0004.
+# yaml-language-server: $schema=./node_modules/envio/evm.schema.json
+name: prize-pool
+field_selection:
+  transaction_fields:
+    - hash
+disable_default_cross_chain: true
+chains:
+- id: 10143
+  start_block: 61410716
+  rpc:
+    - url: https://testnet-rpc.monad.xyz
+      for: sync
+  contracts:
+  - name: StrategyPrizePool
+    address:
+    - "0x19952068Ce2D25C672d71cD48775A9f43438f4E6"
+    events:
+      # Only what the leaderboard and dashboard read; ownership and settler
+      # changes are admin events and not indexed.
+    - event: Claimed(uint64 indexed week, bytes32 indexed strategy, address indexed wallet, uint256 amount)
+    - event: Funded(uint64 indexed week, bytes32 indexed strategy, address indexed from, uint256 amount, uint256 total)
+    - event: Settled(uint64 indexed week, bytes32 indexed strategy, address[] winners, uint256[] amounts, int128[] pnls, uint256 carried)

@@ -20,9 +20,13 @@ Needs Docker and Node 22+.
 
 ```sh
 pnpm install
-cp .env.local.example .env.local   # ports that do not collide with the platform's Postgres
-pnpm dev                           # codegen, Postgres + Hasura in Docker, indexer
+pnpm envio local docker up         # Postgres + Hasura; set ENVIO_PG_PORT / HASURA_EXTERNAL_PORT if 5433 or 8080 are taken
+pnpm envio start --config config.local.yaml
 ```
+
+`config.local.yaml` syncs over Monad's public RPC (100-block `eth_getLogs`
+windows, so the first sync takes a while); `config.yaml` is the hosted
+configuration and uses HyperSync, which needs `ENVIO_API_TOKEN`.
 
 Hasura is then on http://localhost:8085 (console password `testing`):
 
