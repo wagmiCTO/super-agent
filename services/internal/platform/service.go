@@ -19,6 +19,7 @@ import (
 
 	"github.com/wagmiCTO/super-agent/services/internal/fixed"
 	"github.com/wagmiCTO/super-agent/services/internal/policy"
+	"github.com/wagmiCTO/super-agent/services/internal/store"
 	"github.com/wagmiCTO/super-agent/services/internal/strategy"
 	"github.com/wagmiCTO/super-agent/services/internal/venue"
 )
@@ -78,6 +79,8 @@ type Service struct {
 	now     func() time.Time
 	// ledger is shared across wallets; nil keeps no leaderboard.
 	ledger *Ledger
+	// store, when set, keeps pending horizons across restarts.
+	store *store.Store
 
 	mu        sync.Mutex
 	lastClose *CloseEvent
@@ -113,6 +116,22 @@ func New(ctx context.Context, v venue.Adapter, p *policy.Engine, accountKey stri
 
 // UseLedger records this service's round trips on a shared ledger.
 func (s *Service) UseLedger(l *Ledger) { s.ledger = l }
+
+// Restore attaches durable storage and re-arms the horizons it holds for
+// this account. A horizon already past is closed now.
+func (s *Service) Restore(ctx context.Context, st *store.Store) error {
+	s.store = st
+	hs, err := st.Horizons(ctx, s.account)
+	if err != nil {
+		return fmt.Errorf("platform: restore horizons: %w", err)
+	}
+	for _, h := range hs {
+		symbol := h.Symbol
+		s.timers.Schedule(symbol, h.ClosesAt, func() { s.closeOnHorizon(symbol) })
+		s.log.Info("horizon restored", "symbol", symbol, "closes_at", h.ClosesAt)
+	}
+	return nil
+}
 
 // Shutdown releases the service's timers. Positions stay as they are on
 // the venue; a horizon pending at shutdown is lost — see the strategy ADR.
@@ -257,7 +276,13 @@ func (s *Service) Open(ctx context.Context, req OpenRequest) (venue.Order, error
 		// The exit is armed the moment the entry is confirmed. It fires on
 		// its own goroutine and goes through the same Close as a tap would.
 		symbol := req.Symbol
-		s.timers.Schedule(symbol, s.now().Add(req.Rules.Horizon), func() { s.closeOnHorizon(symbol) })
+		closesAt := s.now().Add(req.Rules.Horizon)
+		s.timers.Schedule(symbol, closesAt, func() { s.closeOnHorizon(symbol) })
+		if s.store != nil {
+			if err := s.store.SaveHorizon(ctx, store.Horizon{Account: s.account, Symbol: symbol, ClosesAt: closesAt}); err != nil {
+				s.log.Warn("horizon not persisted", "symbol", symbol, "err", err)
+			}
+		}
 	}
 	s.log.Info("opened", "symbol", req.Symbol, "side", req.Side, "notional", req.Notional,
 		"leverage", req.Leverage, "horizon", req.Rules.Horizon, "strategy", req.Strategy, "order", placed.VenueID, "status", placed.Status, "fee", placed.Fee)
@@ -306,6 +331,11 @@ func (s *Service) Close(ctx context.Context, req CloseRequest) (venue.Order, err
 // twice, which on a venue would mean opening the opposite side.
 func (s *Service) close(ctx context.Context, symbol string, reason CloseReason) (venue.Order, error) {
 	s.timers.Cancel(symbol)
+	if s.store != nil {
+		if err := s.store.DeleteHorizon(ctx, s.account, symbol); err != nil {
+			s.log.Warn("horizon not cleared", "symbol", symbol, "err", err)
+		}
+	}
 
 	positions, err := s.venue.Positions(ctx)
 	if err != nil {

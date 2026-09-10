@@ -27,6 +27,7 @@ import (
 	"github.com/wagmiCTO/super-agent/services/internal/keys"
 	"github.com/wagmiCTO/super-agent/services/internal/platform"
 	"github.com/wagmiCTO/super-agent/services/internal/policy"
+	"github.com/wagmiCTO/super-agent/services/internal/store"
 	"github.com/wagmiCTO/super-agent/services/internal/venue/perpl"
 )
 
@@ -77,11 +78,38 @@ func run(log *slog.Logger) error {
 	if ownKey == "" {
 		ownKey = "platform"
 	}
-	// One ledger for everyone: the leaderboard is a single table.
+	// One policy engine and one ledger for everyone: accounts are keyed by
+	// wallet, and the leaderboard is a single table.
+	eng := policy.New()
 	ledger := platform.NewLedger()
-	svc, err := platform.New(ctx, adapter, policy.New(), ownKey, limits, log)
+	var keyStore *keys.Store
+	var db *store.Store
+	if url := os.Getenv("DATABASE_URL"); url != "" {
+		// Postgres is the system of record: keys, policy state, horizons and
+		// the journal of round trips all live there and survive restarts.
+		if db, err = store.Open(ctx, url); err != nil {
+			return err
+		}
+		defer db.Close()
+		if err := restorePolicy(ctx, eng, db); err != nil {
+			return fmt.Errorf("restore policy state: %w", err)
+		}
+		ledger = platform.NewJournaledLedger(db)
+		if keyStore, err = keys.WithBackend(ctx, keyBackend{db}); err != nil {
+			return err
+		}
+		log.Info("database connected", "keys", keyStore.Len())
+	} else {
+		log.Warn("DATABASE_URL is not set: state lives in memory and is lost on restart")
+	}
+	svc, err := platform.New(ctx, adapter, eng, ownKey, limits, log)
 	if err != nil {
 		return err
+	}
+	if db != nil {
+		if err := svc.Restore(ctx, db); err != nil {
+			return err
+		}
 	}
 
 	// Enrollment of user wallets needs our builder code; without one the
@@ -91,18 +119,24 @@ func run(log *slog.Logger) error {
 		// PLATFORM_KEYS_FILE keeps enrolled keys across restarts. Plain JSON
 		// with 0600 permissions: fine for a testnet development box, not for
 		// real money — see the keys package.
-		store := keys.New()
-		if path := os.Getenv("PLATFORM_KEYS_FILE"); path != "" {
-			if store, err = keys.WithFile(path); err != nil {
-				return err
+		store := keyStore
+		if store == nil {
+			store = keys.New()
+			if path := os.Getenv("PLATFORM_KEYS_FILE"); path != "" {
+				if store, err = keys.WithFile(path); err != nil {
+					return err
+				}
+				log.Info("enrolled keys persisted", "file", path, "keys", store.Len())
 			}
-			log.Info("enrolled keys persisted", "file", path, "keys", store.Len())
 		}
 		enrollment, err := platform.NewEnrollment(adapter, store, cfg.BuilderID, cfg.BuilderFeePer100K, log)
 		if err != nil {
 			return err
 		}
-		registry := platform.NewRegistry(store, platform.PerplFactory(cfg, log), limits, ledger, log)
+		registry := platform.NewRegistry(store, platform.PerplFactory(cfg, log), limits, ledger, eng, log)
+		if db != nil {
+			registry.OnConnect = func(s *platform.Service) error { return s.Restore(ctx, db) }
+		}
 		defer registry.Close()
 		handlerOpts = append(handlerOpts, platform.WithEnrollment(enrollment), platform.WithRegistry(registry))
 		log.Info("enrollment enabled", "builder_id", cfg.BuilderID, "max_fee_per_100k", cfg.BuilderFeePer100K)
@@ -115,24 +149,6 @@ func run(log *slog.Logger) error {
 	signals := platform.NewSignals(adapter, log)
 	go signals.Run(ctx, limits.AllowedSymbols)
 	handlerOpts = append(handlerOpts, platform.WithSignals(signals), platform.WithLedger(ledger))
-
-	// On-chain settlement: every closed round trip lands on the
-	// StrategyLeaderboard contract, and the leaderboard is read from it.
-	if key := os.Getenv("PLATFORM_SETTLER_KEY"); key != "" {
-		settler, err := platform.NewSettler(ctx, platform.SettlerConfig{
-			RPCURL:     envOr("PLATFORM_CHAIN_RPC", "https://testnet-rpc.monad.xyz"),
-			PrivateKey: key,
-			Contract:   os.Getenv("PLATFORM_LEADERBOARD_ADDRESS"),
-		}, log)
-		if err != nil {
-			return err
-		}
-		ledger.OnClosed(settler.Enqueue)
-		go settler.Run(ctx)
-		handlerOpts = append(handlerOpts, platform.WithSettler(settler))
-	} else {
-		log.Warn("on-chain settlement disabled: PLATFORM_SETTLER_KEY is not set")
-	}
 
 	// Bind to loopback unless told otherwise: this API places orders and has
 	// no authentication yet.

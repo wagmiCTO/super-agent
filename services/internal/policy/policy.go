@@ -11,8 +11,10 @@
 package policy
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 	"sync"
@@ -149,6 +151,23 @@ type accountState struct {
 	exposure      fixed.D
 }
 
+// AccountState is the engine's state for one account, as persisted.
+type AccountState struct {
+	Account       string
+	DayStart      time.Time
+	RealizedLoss  fixed.D
+	LastOpen      time.Time
+	OpenPositions int
+	Exposure      fixed.D
+}
+
+// Persister writes state through to durable storage. Errors are logged, not
+// returned: the decision has already been made from memory.
+type Persister interface {
+	SaveAccount(ctx context.Context, a AccountState) error
+	SaveKill(ctx context.Context, killed bool, note string) error
+}
+
 // Engine authorizes actions against per-account limits.
 type Engine struct {
 	now func() time.Time
@@ -158,6 +177,7 @@ type Engine struct {
 	killReason string
 	limits     map[string]Limits
 	state      map[string]*accountState
+	persist    Persister
 }
 
 // New builds an engine with no accounts configured. An account with no limits
@@ -167,6 +187,45 @@ func New() *Engine {
 		now:    time.Now,
 		limits: make(map[string]Limits),
 		state:  make(map[string]*accountState),
+	}
+}
+
+// Persist writes every change through to p from now on.
+func (e *Engine) Persist(p Persister) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.persist = p
+}
+
+// Restore loads persisted state; a day that has rolled over since is reset.
+func (e *Engine) Restore(states []AccountState, killed bool, note string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for _, a := range states {
+		st := &accountState{lastOpen: a.LastOpen, dayStart: a.DayStart, realizedLoss: a.RealizedLoss, openPositions: a.OpenPositions, exposure: a.Exposure}
+		e.rollDayLocked(st)
+		e.state[a.Account] = st
+	}
+	e.killSwitch, e.killReason = killed, note
+}
+
+func (e *Engine) persistAccountLocked(account string) {
+	if e.persist == nil {
+		return
+	}
+	st := e.stateLocked(account)
+	a := AccountState{Account: account, DayStart: st.dayStart, RealizedLoss: st.realizedLoss, LastOpen: st.lastOpen, OpenPositions: st.openPositions, Exposure: st.exposure}
+	if err := e.persist.SaveAccount(context.Background(), a); err != nil {
+		slog.Warn("policy: state not persisted", "account", account, "err", err)
+	}
+}
+
+func (e *Engine) persistKillLocked() {
+	if e.persist == nil {
+		return
+	}
+	if err := e.persist.SaveKill(context.Background(), e.killSwitch, e.killReason); err != nil {
+		slog.Warn("policy: kill switch not persisted", "err", err)
 	}
 }
 
@@ -198,6 +257,7 @@ func (e *Engine) Kill(reason string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.killSwitch, e.killReason = true, reason
+	e.persistKillLocked()
 }
 
 // Revive clears the kill switch.
@@ -205,6 +265,7 @@ func (e *Engine) Revive() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.killSwitch, e.killReason = false, ""
+	e.persistKillLocked()
 }
 
 // Killed reports whether the kill switch is engaged, and why.
@@ -323,6 +384,7 @@ func (e *Engine) RecordOpen(account string, notional fixed.D) {
 	st.lastOpen = e.now()
 	st.openPositions++
 	st.exposure = st.exposure.Add(notional)
+	e.persistAccountLocked(account)
 }
 
 // RecordClose notes a position closing with its realized profit or loss.
@@ -345,6 +407,7 @@ func (e *Engine) RecordClose(account string, notional, pnl fixed.D) {
 	if pnl.IsNeg() {
 		st.realizedLoss = st.realizedLoss.Add(pnl.Abs())
 	}
+	e.persistAccountLocked(account)
 }
 
 // Reconcile replaces the engine's view of open exposure with the venue's. It is
@@ -363,6 +426,7 @@ func (e *Engine) Reconcile(account string, positions []venue.Position) {
 	}
 	st.openPositions = len(positions)
 	st.exposure = exposure
+	e.persistAccountLocked(account)
 }
 
 // Snapshot reports the state behind the limits, for the API and for operators.

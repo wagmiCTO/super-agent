@@ -1,0 +1,15 @@
+# Local Postgres for the platform. `docker compose up -d`, then
+# DATABASE_URL=postgres://tradeagent:tradeagent@localhost:5433/tradeagent?sslmode=disable
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: tradeagent
+      POSTGRES_PASSWORD: tradeagent
+      POSTGRES_DB: tradeagent
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+volumes:
+  pgdata:

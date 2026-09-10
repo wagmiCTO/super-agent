@@ -35,7 +35,7 @@ func TestRegistryBuildsOneServicePerWallet(t *testing.T) {
 		}
 		return &fakeVenue{}, nil
 	}
-	r := NewRegistry(storeWithKey(t, addr), factory, testLimits(), nil, nil)
+	r := NewRegistry(storeWithKey(t, addr), factory, testLimits(), nil, nil, nil)
 
 	// Twenty concurrent first calls share one connection.
 	var wg sync.WaitGroup
@@ -71,7 +71,7 @@ func TestRegistryUnknownWallet(t *testing.T) {
 	r := NewRegistry(keys.New(), func(context.Context, keys.Key) (venue.Adapter, error) {
 		t.Fatal("factory must not run for a wallet with no key")
 		return nil, nil
-	}, testLimits(), nil, nil)
+	}, testLimits(), nil, nil, nil)
 	if _, err := r.Get(context.Background(), "0x00000000000000000000000000000000000000bb"); !errors.Is(err, ErrNoKey) {
 		t.Errorf("err = %v, want ErrNoKey", err)
 	}
@@ -90,7 +90,7 @@ func TestRegistryRetriesAfterFailedConnect(t *testing.T) {
 		}
 		return &fakeVenue{}, nil
 	}
-	r := NewRegistry(storeWithKey(t, addr), factory, testLimits(), nil, nil)
+	r := NewRegistry(storeWithKey(t, addr), factory, testLimits(), nil, nil, nil)
 	if _, err := r.Get(context.Background(), addr); err == nil {
 		t.Fatal("first Get should fail")
 	}
@@ -104,7 +104,7 @@ func TestHeaderRouting(t *testing.T) {
 	const addr = "0x00000000000000000000000000000000000000dd"
 	r := NewRegistry(storeWithKey(t, addr), func(context.Context, keys.Key) (venue.Adapter, error) {
 		return &fakeVenue{}, nil
-	}, testLimits(), nil, nil)
+	}, testLimits(), nil, nil, nil)
 	h := Handler(own, nil, WithRegistry(r))
 
 	get := func(header string) int {
@@ -146,7 +146,7 @@ func TestRegistryConnectionOutlivesRequest(t *testing.T) {
 	r := NewRegistry(storeWithKey(t, addr), func(ctx context.Context, _ keys.Key) (venue.Adapter, error) {
 		captured = ctx
 		return &fakeVenue{}, nil
-	}, testLimits(), nil, nil)
+	}, testLimits(), nil, nil, nil)
 	defer r.Close()
 
 	reqCtx, cancel := context.WithCancel(context.Background())

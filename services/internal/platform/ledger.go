@@ -1,11 +1,15 @@
 package platform
 
 import (
+	"context"
+	"log/slog"
 	"sort"
 	"sync"
 	"time"
 
+	"github.com/wagmiCTO/super-agent/services/internal/eip712"
 	"github.com/wagmiCTO/super-agent/services/internal/fixed"
+	"github.com/wagmiCTO/super-agent/services/internal/store"
 	"github.com/wagmiCTO/super-agent/services/internal/strategy"
 )
 
@@ -17,6 +21,9 @@ import (
 // tracked as debt and must land before a leaderboard is settled on-chain.
 type Ledger struct {
 	now func() time.Time
+	// journal, when set, is the system of record; memory is a write-through
+	// cache that also answers while the database is unreachable.
+	journal *store.Store
 
 	mu       sync.Mutex
 	open     map[string]openTrade // by wallet + symbol
@@ -49,6 +56,14 @@ func NewLedger() *Ledger {
 	return &Ledger{now: time.Now, open: make(map[string]openTrade), wallets: make(map[string]bool)}
 }
 
+// NewJournaledLedger writes every round trip to Postgres and computes the
+// boards from it; memory stays as a cache.
+func NewJournaledLedger(st *store.Store) *Ledger {
+	l := NewLedger()
+	l.journal = st
+	return l
+}
+
 // OnClosed registers a listener for every closed round trip — settlement
 // on-chain, for one. Listeners run synchronously; they must be quick.
 func (l *Ledger) OnClosed(fn func(Trade)) {
@@ -72,6 +87,11 @@ func (l *Ledger) Wallets() []string {
 
 func tradeKey(wallet, symbol string) string { return wallet + "/" + symbol }
 
+// TradeRef ties a round trip to the venue: the hash of its order ids.
+func TradeRef(openOrderID, closeOrderID string) [32]byte {
+	return eip712.Keccak256([]byte(openOrderID + "|" + closeOrderID))
+}
+
 // Opened notes a position taken under a strategy; orderID is the venue's id
 // of the opening order.
 func (l *Ledger) Opened(wallet, strategyID, symbol, orderID string) {
@@ -79,6 +99,11 @@ func (l *Ledger) Opened(wallet, strategyID, symbol, orderID string) {
 	defer l.mu.Unlock()
 	l.open[tradeKey(wallet, symbol)] = openTrade{Strategy: strategyID, Symbol: symbol, OrderID: orderID, OpenedAt: l.now()}
 	l.wallets[wallet] = true
+	if l.journal != nil {
+		if err := l.journal.TradeOpened(context.Background(), wallet, strategyID, symbol, orderID, l.now()); err != nil {
+			slog.Warn("ledger: open not journaled", "wallet", wallet, "err", err)
+		}
+	}
 }
 
 // Closed settles the round trip for a wallet's position in a symbol. A close
@@ -93,6 +118,15 @@ func (l *Ledger) Closed(wallet, symbol string, pnl fixed.D, closeOrderID string)
 	}
 	delete(l.open, key)
 	t := Trade{Wallet: wallet, Strategy: o.Strategy, Symbol: symbol, PnL: pnl, OpenedAt: o.OpenedAt, ClosedAt: l.now(), Ref: TradeRef(o.OrderID, closeOrderID)}
+	if l.journal != nil {
+		// The journal knows the strategy of a position opened before this
+		// process started; memory may not.
+		if ct, err := l.journal.TradeClosed(context.Background(), wallet, symbol, o.Strategy, closeOrderID, pnl, t.ClosedAt); err != nil {
+			slog.Warn("ledger: close not journaled", "wallet", wallet, "err", err)
+		} else {
+			t.Strategy, t.OpenedAt, t.Ref = ct.Strategy, ct.OpenedAt, TradeRef(ct.OpenOrderID, closeOrderID)
+		}
+	}
 	l.closed = append(l.closed, t)
 	l.wallets[wallet] = true
 	listeners := append([]func(Trade){}, l.onClosed...)
@@ -133,14 +167,41 @@ type Board struct {
 // Leaderboard is every strategy's board for the week containing now.
 type Leaderboard struct {
 	WeekStart time.Time
-	Boards    []Board
+	// Source is "journal" (Postgres) or "memory".
+	Source string
+	Boards []Board
 }
 
 // topN is how many standings a board carries.
 const topN = 10
 
 // Leaderboard computes the week's boards. Weeks start Monday 00:00 UTC.
+// With a journal the boards come from Postgres; memory answers only while
+// the database is unreachable.
 func (l *Ledger) Leaderboard() Leaderboard {
+	if l.journal != nil {
+		weekStart := weekStartOf(l.now())
+		rows, err := l.journal.Boards(context.Background(), weekStart, topN)
+		if err == nil {
+			out := Leaderboard{WeekStart: weekStart, Source: "journal"}
+			for _, s := range strategy.Catalog {
+				b := Board{Strategy: s}
+				if r := rows[s.ID]; r != nil {
+					b.PnL, b.Players, b.Trades, b.ActiveNow = r.PnL, r.Players, r.Trades, r.ActiveNow
+					for _, st := range r.Top {
+						b.Top = append(b.Top, Standing{Wallet: st.Wallet, PnL: st.PnL, Trades: st.Trades})
+					}
+				}
+				out.Boards = append(out.Boards, b)
+			}
+			return out
+		}
+		slog.Warn("ledger: boards not read from the journal, serving memory", "err", err)
+	}
+	return l.leaderboardFromMemory()
+}
+
+func (l *Ledger) leaderboardFromMemory() Leaderboard {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now().UTC()
@@ -181,7 +242,7 @@ func (l *Ledger) Leaderboard() Leaderboard {
 		active[o.Strategy][key[:len(key)-len(o.Symbol)-1]] = true
 	}
 
-	out := Leaderboard{WeekStart: weekStart}
+	out := Leaderboard{WeekStart: weekStart, Source: "memory"}
 	for _, s := range strategy.Catalog {
 		a := accs[s.ID]
 		b := Board{Strategy: s, PnL: a.pnl, Players: len(a.by), Trades: a.trades, ActiveNow: len(active[s.ID])}

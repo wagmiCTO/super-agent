@@ -93,3 +93,27 @@ func Int128(w [32]byte) *big.Int {
 func Uint64(w [32]byte) uint64 {
 	return new(big.Int).SetBytes(w[:]).Uint64()
 }
+
+// EncodeArrays builds calldata for a function whose parameters are all
+// dynamic arrays of static types (recordTrades). The head holds one offset
+// per array, relative to the start of the arguments; each array follows as
+// a length word and its elements.
+func EncodeArrays(signature string, arrays ...[][32]byte) []byte {
+	sel := Selector(signature)
+	out := append([]byte{}, sel[:]...)
+	head := make([]byte, 0, 32*len(arrays))
+	var tail []byte
+	offset := 32 * len(arrays)
+	for _, arr := range arrays {
+		w := Word(uint64(offset))
+		head = append(head, w[:]...)
+		n := Word(uint64(len(arr)))
+		tail = append(tail, n[:]...)
+		for _, e := range arr {
+			tail = append(tail, e[:]...)
+		}
+		offset += 32 * (1 + len(arr))
+	}
+	out = append(out, head...)
+	return append(out, tail...)
+}

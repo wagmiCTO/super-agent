@@ -15,6 +15,7 @@
 package keys
 
 import (
+	"context"
 	"crypto/ed25519"
 
 	"crypto/rand"
@@ -70,6 +71,14 @@ type Pending struct {
 // carries its own timestamp; ten minutes is comfortably inside it.
 const PendingTTL = 10 * time.Minute
 
+// Backend is durable storage for keys: Postgres in production, a file for
+// a development box. The Store keeps every key in memory and writes through.
+type Backend interface {
+	LoadKeys(ctx context.Context) ([]Key, error)
+	PutKey(ctx context.Context, k Key) error
+	DeleteKey(ctx context.Context, address string) error
+}
+
 // Store is safe for concurrent use.
 type Store struct {
 	now     func() time.Time
@@ -77,6 +86,22 @@ type Store struct {
 	keys    map[string]Key     // by lower-case address
 	pending map[string]Pending // by handle
 	file    string             // "" keeps the store in memory only
+	backend Backend
+}
+
+// WithBackend returns a store mirrored to a Backend, loaded now.
+func WithBackend(ctx context.Context, b Backend) (*Store, error) {
+	s := New()
+	s.backend = b
+	ks, err := b.LoadKeys(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("keys: load: %w", err)
+	}
+	for _, k := range ks {
+		k.Address = normalize(k.Address)
+		s.keys[k.Address] = k
+	}
+	return s, nil
 }
 
 func New() *Store {
@@ -226,6 +251,9 @@ func (s *Store) Put(k Key) error {
 	defer s.mu.Unlock()
 	k.Address = normalize(k.Address)
 	s.keys[k.Address] = k
+	if s.backend != nil {
+		return s.backend.PutKey(context.Background(), k)
+	}
 	return s.saveLocked()
 }
 
@@ -246,6 +274,9 @@ func (s *Store) Delete(address string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.keys, normalize(address))
+	if s.backend != nil {
+		return s.backend.DeleteKey(context.Background(), normalize(address))
+	}
 	return s.saveLocked()
 }
 

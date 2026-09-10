@@ -30,24 +30,29 @@ type VenueFactory func(ctx context.Context, k keys.Key) (venue.Adapter, error)
 type Registry struct {
 	// ctx outlives any request: a wallet's venue connection is built on it,
 	// not on the request that happened to be first. Close cancels it.
-	ctx     context.Context
-	cancel  context.CancelFunc
-	store   *keys.Store
-	build   VenueFactory
-	limits  policy.Limits
-	policy  *policy.Engine
-	log     *slog.Logger
-	ledger  *Ledger
-	mu      sync.Mutex
-	byAddr  map[string]*Service
-	pending map[string]chan struct{}
+	ctx    context.Context
+	cancel context.CancelFunc
+	store  *keys.Store
+	build  VenueFactory
+	limits policy.Limits
+	policy *policy.Engine
+	log    *slog.Logger
+	ledger *Ledger
+	// OnConnect runs for every newly built service (restoring its state).
+	OnConnect func(*Service) error
+	mu        sync.Mutex
+	byAddr    map[string]*Service
+	pending   map[string]chan struct{}
 }
 
 // NewRegistry wires a registry. limits apply to every wallet until per-wallet
 // limits exist; ledger, when given, records every wallet's round trips.
-func NewRegistry(store *keys.Store, build VenueFactory, limits policy.Limits, ledger *Ledger, log *slog.Logger) *Registry {
+func NewRegistry(store *keys.Store, build VenueFactory, limits policy.Limits, ledger *Ledger, eng *policy.Engine, log *slog.Logger) *Registry {
 	if log == nil {
 		log = slog.Default()
+	}
+	if eng == nil {
+		eng = policy.New()
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Registry{
@@ -57,7 +62,7 @@ func NewRegistry(store *keys.Store, build VenueFactory, limits policy.Limits, le
 		build:   build,
 		limits:  limits,
 		ledger:  ledger,
-		policy:  policy.New(),
+		policy:  eng,
 		log:     log,
 		byAddr:  make(map[string]*Service),
 		pending: make(map[string]chan struct{}),
@@ -122,6 +127,13 @@ func (r *Registry) connect(ctx context.Context, addr string) (*Service, error) {
 	}
 	if r.ledger != nil {
 		svc.UseLedger(r.ledger)
+	}
+	if r.OnConnect != nil {
+		if err := r.OnConnect(svc); err != nil {
+			svc.Shutdown()
+			_ = v.Close()
+			return nil, err
+		}
 	}
 	r.log.Info("wallet connected to venue", "wallet", addr, "builder", k.BuilderID, "fee_per_100k", k.MaxBuilderFeePer100K)
 	return svc, nil
