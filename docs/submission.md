@@ -37,6 +37,14 @@ three seconds.
   adds to its strategy's weekly pool; the platform settles the previous
   week from its trade journal (50/30/20 to the top three with a positive
   result); winners claim from the contract themselves.
+- **Risk**: every position carries a stop the user picks with the tap
+  (−25% / −50% of collateral, or none), judged on the venue's own mark and
+  closed by the platform; the risk screen shows what is at risk now across
+  strategies, each strategy's loss budget and exposure against its limits,
+  how its round trips went today, this week and ever (hit rate, fees,
+  drawdown, who closed), the distance to liquidation, and the market's
+  one-minute volatility against the round-trip fee. One button closes
+  everything.
 - **Context**: before an entry, a card built from Nansen — the asset's day,
   who has been buying and selling, one sentence that says it.
 - **Deposits**: collateral from any chain through Aurora Intents — a
@@ -51,6 +59,7 @@ three seconds.
 | Agora — mobile trading app | Mera passkey accounts, AUSD collateral, Perpl execution, the whole loop on a phone | `apps/mobile`, `services/internal/venue/perpl` |
 | Perpl — best use of the API | Enrollment with builder code, trading over REST+WS, reconciliation, horizon exits, fee-aware strategy parameters | `services/internal/venue/perpl`, `services/internal/platform` |
 | Mera — best UX / one passkey, many keys | Passkey → wallet + request key + per-strategy exchange keys; signed requests; no seed, no extension | `apps/mobile/src/account/derive.ts`, ADR 0005 |
+| Perpl — analytics / risk tool | Stops per tap, per-strategy limits and loss budgets, the risk screen (open risk, drawdown, liquidation distance, fee vs volatility), close-everything | `services/internal/platform/risk.go`, `apps/mobile/src/app/risk.tsx` |
 | Nansen | The on-chain context card on every strategy screen | `services/internal/insight`, `apps/mobile/src/components/context.tsx` |
 | Aurora Intents | Any-chain deposits into the wallet | `services/internal/deposit`, `apps/mobile/src/app/deposit.tsx` |
 | Envio | Prize-pool indexer, hosted; the lobby's past weeks | `indexers/prize-pool` |

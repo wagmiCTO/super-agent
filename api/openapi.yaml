@@ -368,6 +368,55 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/Trade" }
 
+  /v1/risk:
+    get:
+      summary: The wallet's risk, every strategy at once
+      description: |
+        For each strategy the wallet has a key for: the limits in force and
+        how much of them is spent (exposure, open positions, today's loss,
+        cooldown), the kill switch, the round trips today / this week / ever
+        (count, hit rate, result, fees, best, worst, drawdown, streak, who
+        closed), and the open positions with their horizon, stop, liquidation
+        distance and what they can still lose. Plus the market's own risk:
+        one-minute volatility against the round-trip fee. Routed and
+        authenticated like the rest of the account.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RiskReport" }
+        "403":
+          description: No wallet named and the platform serves enrolled wallets only.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /v1/risk/close-all:
+    post:
+      summary: Close every open position the wallet has, across strategies
+      description: |
+        The one red button. Each close goes through the same path a tap or a
+        horizon takes; one failure does not stop the rest, and every outcome
+        is reported.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [closed, results]
+                properties:
+                  closed: { type: integer }
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      required: [strategy, symbol, closed]
+                      properties:
+                        strategy: { type: string }
+                        symbol: { type: string }
+                        closed: { type: boolean }
+                        error: { type: string }
+                        pnl: { $ref: "#/components/schemas/Decimal" }
+
   /v1/context:
     get:
       summary: What the crowd on-chain is doing with the market's asset — the card before an entry
@@ -644,8 +693,8 @@ components:
         pnl: { $ref: "#/components/schemas/Decimal" }
         close_reason:
           type: string
-          enum: [manual, horizon]
-          description: Who closed the round trip; absent while open.
+          enum: [manual, horizon, stop]
+          description: Who closed the round trip — a tap, the horizon, or the stop; absent while open.
         opened_at: { type: string, format: date-time }
         closed_at: { type: string, format: date-time, description: Absent while the position is open. }
 
@@ -820,6 +869,12 @@ components:
           type: string
           format: date-time
           description: When the horizon closes this position; absent without one.
+        max_loss:
+          $ref: "#/components/schemas/Decimal"
+          description: The armed stop as a fraction of collateral; absent without one.
+        stop_pnl:
+          $ref: "#/components/schemas/Decimal"
+          description: The unrealized result at which the stop closes; absent without one.
 
     Limits:
       type: object
@@ -875,6 +930,12 @@ components:
           description: >-
             Which strategy this entry belongs to, for the leaderboard:
             direction (default), ma-cross or rsi.
+        max_loss:
+          $ref: "#/components/schemas/Decimal"
+          description: >-
+            Arms a stop: the fraction of the position's collateral it may
+            lose (0..1) before the platform closes it, judged on the venue's
+            own mark. Absent or 0 arms none.
         horizon_seconds:
           type: integer
           minimum: 0
@@ -1107,6 +1168,101 @@ components:
               claimed: { type: boolean }
               claimed_at: { type: string, format: date-time }
               claim_tx: { type: string }
+
+    RiskReport:
+      type: object
+      required: [wallet, strategies, open, totals, market, updated_at]
+      properties:
+        wallet: { type: string }
+        strategies:
+          type: array
+          items: { $ref: "#/components/schemas/RiskStrategy" }
+        open:
+          type: array
+          items: { $ref: "#/components/schemas/RiskPosition" }
+        totals:
+          type: object
+          required: [exposure, at_risk, daily_loss]
+          properties:
+            exposure: { $ref: "#/components/schemas/Decimal" }
+            at_risk: { $ref: "#/components/schemas/Decimal", description: What every open position can still lose, summed. }
+            daily_loss: { $ref: "#/components/schemas/Decimal" }
+            today: { $ref: "#/components/schemas/Perf" }
+            week: { $ref: "#/components/schemas/Perf" }
+            all: { $ref: "#/components/schemas/Perf" }
+        market:
+          type: array
+          items:
+            type: object
+            required: [symbol, vol_1m_bps, range_1m_bps, round_trip_bps, edge, bars]
+            properties:
+              symbol: { type: string }
+              vol_1m_bps: { type: number, description: Standard deviation of one-minute log returns over the last hour, in bps. }
+              range_1m_bps: { type: number, description: Mean one-minute bar range, in bps. }
+              round_trip_bps: { type: number, description: Taker fee in and out. }
+              edge: { type: number, description: vol_1m_bps over round_trip_bps; the strategies were sized for 5 and above. }
+              bars: { type: integer }
+        updated_at: { type: string, format: date-time }
+
+    RiskStrategy:
+      type: object
+      required: [id, name, enabled, killed, open]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        enabled: { type: boolean, description: The wallet has a key for this strategy. }
+        limits: { $ref: "#/components/schemas/Limits" }
+        usage:
+          type: object
+          required: [exposure, exposure_pct, open_positions, daily_loss, daily_loss_pct, daily_loss_left, cooldown_left_seconds]
+          properties:
+            exposure: { $ref: "#/components/schemas/Decimal" }
+            exposure_pct: { type: number }
+            open_positions: { type: integer }
+            daily_loss: { $ref: "#/components/schemas/Decimal" }
+            daily_loss_pct: { type: number }
+            daily_loss_left: { $ref: "#/components/schemas/Decimal" }
+            cooldown_left_seconds: { type: number }
+        killed: { type: boolean }
+        kill_note: { type: string }
+        today: { $ref: "#/components/schemas/Perf" }
+        week: { $ref: "#/components/schemas/Perf" }
+        all: { $ref: "#/components/schemas/Perf" }
+        open:
+          type: array
+          items: { $ref: "#/components/schemas/RiskPosition" }
+
+    RiskPosition:
+      allOf:
+        - $ref: "#/components/schemas/Position"
+        - type: object
+          required: [strategy, at_risk]
+          properties:
+            strategy: { type: string }
+            liquidation_price: { $ref: "#/components/schemas/Decimal" }
+            distance_to_liquidation_pct: { $ref: "#/components/schemas/Decimal" }
+            at_risk: { $ref: "#/components/schemas/Decimal", description: What the position can still lose — to its stop when armed, to its collateral otherwise. }
+
+    Perf:
+      type: object
+      required: [trades, wins, losses, win_rate, pnl, fees, best, worst, avg_win, avg_loss, max_drawdown, avg_hold_seconds, streak, by_reason]
+      properties:
+        trades: { type: integer }
+        wins: { type: integer }
+        losses: { type: integer }
+        win_rate: { type: number, description: 0..1 }
+        pnl: { $ref: "#/components/schemas/Decimal" }
+        fees: { $ref: "#/components/schemas/Decimal" }
+        best: { $ref: "#/components/schemas/Decimal" }
+        worst: { $ref: "#/components/schemas/Decimal" }
+        avg_win: { $ref: "#/components/schemas/Decimal" }
+        avg_loss: { $ref: "#/components/schemas/Decimal" }
+        max_drawdown: { $ref: "#/components/schemas/Decimal" }
+        avg_hold_seconds: { type: number }
+        streak: { type: integer, description: Wins in a row (positive) or losses in a row (negative), by closing time. }
+        by_reason:
+          type: object
+          additionalProperties: { type: integer }
 
     Error:
       type: object

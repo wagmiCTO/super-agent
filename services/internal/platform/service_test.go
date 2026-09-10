@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 // It exists so the one path an order takes — policy, then venue, then policy
 // again — can be checked without a network.
 type fakeVenue struct {
+	mu        sync.Mutex
 	placed    []venue.OrderRequest
 	positions []venue.Position
 	placeErr  error
@@ -53,6 +55,8 @@ func (f *fakeVenue) Account(context.Context) (venue.Account, error) {
 	return venue.Account{VenueID: "480", Balance: fixed.FromInt(1000), CanTrade: true}, nil
 }
 func (f *fakeVenue) Place(_ context.Context, req venue.OrderRequest) (venue.Order, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.placed = append(f.placed, req)
 	if f.placeErr != nil {
 		return venue.Order{}, f.placeErr
@@ -76,14 +80,31 @@ func (f *fakeVenue) Place(_ context.Context, req venue.OrderRequest) (venue.Orde
 		}
 		f.positions = kept
 	} else {
-		f.positions = append(f.positions, venue.Position{Symbol: req.Symbol, Side: req.Side, Size: size, EntryPrice: price, Leverage: req.Leverage})
+		collateral := size.Mul(price)
+		if req.Leverage.IsPos() {
+			collateral = collateral.Div(req.Leverage)
+		}
+		f.positions = append(f.positions, venue.Position{Symbol: req.Symbol, Side: req.Side, Size: size, EntryPrice: price, Leverage: req.Leverage, Collateral: collateral})
 	}
 	return venue.Order{ClientID: req.ClientID, VenueID: "1", Symbol: req.Symbol, Side: req.Side,
 		Status: venue.StatusFilled, FilledSize: size, AvgPrice: price}, nil
 }
 func (f *fakeVenue) Cancel(context.Context, string) error { return nil }
 func (f *fakeVenue) Positions(context.Context) ([]venue.Position, error) {
-	return f.positions, nil
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]venue.Position(nil), f.positions...), nil
+}
+
+// mark moves a position's unrealized result, as the venue's mark would.
+func (f *fakeVenue) mark(symbol string, unrealized fixed.D) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := range f.positions {
+		if f.positions[i].Symbol == symbol {
+			f.positions[i].UnrealizedPnL = unrealized
+		}
+	}
 }
 func (f *fakeVenue) StreamOrders(context.Context) (<-chan venue.Order, error) {
 	return nil, venue.ErrNotSupported
@@ -400,4 +421,54 @@ func (f *fakeAfter) after(_ time.Duration, fn func()) strategy.Stopper {
 	ft := &fakeTimer{fn: fn}
 	f.calls = append(f.calls, ft)
 	return ft
+}
+
+// A stop is the fraction of collateral a position may lose. Below it the
+// position is left alone; at it the platform closes, through the one close
+// path, and the journal says who closed.
+func TestStopClosesALosingPosition(t *testing.T) {
+	fv := &fakeVenue{}
+	svc, _ := newService(t, fv)
+	svc.stopEvery = 10 * time.Millisecond
+	ctx := context.Background()
+	if _, err := svc.Open(ctx, OpenRequest{Symbol: "MON", Side: venue.Long, Notional: fixed.FromInt(10), Leverage: fixed.FromInt(2), MaxLoss: fixed.MustParse("0.5")}); err != nil {
+		t.Fatal(err)
+	}
+	st, _ := svc.State(ctx)
+	if len(st.Positions) != 1 || st.Stops["MON"] != fixed.MustParse("0.5") {
+		t.Fatalf("state after open = %+v", st)
+	}
+	collateral := st.Positions[0].Collateral // 5
+	// Down 40% of collateral: within the allowance.
+	fv.mark("MON", collateral.Mul(fixed.MustParse("-0.4")))
+	time.Sleep(60 * time.Millisecond)
+	if ps, _ := fv.Positions(ctx); len(ps) != 1 {
+		t.Fatal("closed before the allowance was spent")
+	}
+	// Down 60%: the stop fires.
+	fv.mark("MON", collateral.Mul(fixed.MustParse("-0.6")))
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if ps, _ := fv.Positions(ctx); len(ps) == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the stop never closed the position")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	st, _ = svc.State(ctx)
+	if st.LastClose == nil || st.LastClose.Reason != CloseStop || len(st.Stops) != 0 {
+		t.Fatalf("after stop: %+v", st)
+	}
+	// A manual close disarms the stop; a new open with no stop arms none.
+	if _, err := svc.Open(ctx, OpenRequest{Symbol: "MON", Side: venue.Long, Notional: fixed.FromInt(10), Leverage: fixed.FromInt(2), Rules: strategy.Rules{Horizon: time.Hour}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := svc.stopFor("MON"); ok {
+		t.Fatal("a stop was armed without max_loss")
+	}
+	if _, err := svc.Open(ctx, OpenRequest{Symbol: "MON", Side: venue.Long, Notional: fixed.FromInt(10), Leverage: fixed.FromInt(2), MaxLoss: fixed.MustParse("1.5")}); err == nil {
+		t.Fatal("max_loss above 1 accepted")
+	}
 }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"math/rand/v2"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -255,7 +256,7 @@ func TestPrizeSettlesLastWeekFromTheJournal(t *testing.T) {
 	p := newTestPrize(t, rpc, st, 100_000)
 	// A week nobody else's test writes into, and no earlier run of this one:
 	// the journal persists between runs.
-	now := time.Date(2035, 3, 10, 12, 0, 0, 0, time.UTC).Add(time.Duration(time.Now().UnixNano()%20000) * 7 * 24 * time.Hour)
+	now := time.Date(2035, 3, 10, 12, 0, 0, 0, time.UTC).Add(time.Duration(rand.IntN(20000)) * 7 * 24 * time.Hour)
 	p.now = func() time.Time { return now }
 	last := WeekOf(now) - 1
 	closedAt := WeekStart(last).Add(time.Hour)
@@ -287,7 +288,8 @@ func TestPrizeSettlesLastWeekFromTheJournal(t *testing.T) {
 			{chain.Word(big.NewInt(3_000_000)), chain.Word(big.NewInt(2_000_000)), chain.Word(big.NewInt(500_000))},
 		})
 	if rpc.sentWith(want) != 1 {
-		t.Fatalf("settle calldata not found in the sent transaction:\nwant %x", want)
+		rows, _ := st.Boards(context.Background(), WeekStart(last), WeekStart(last+1), 10)
+		t.Fatalf("settle calldata not found in the sent transaction:\nwant %x\nsent %x\nboard %+v", want, rpc.sent, rows["direction"])
 	}
 	recs, err := st.PrizesFor(context.Background(), w[1])
 	if err != nil {
@@ -313,7 +315,7 @@ func TestPrizeSkipsEmptyPools(t *testing.T) {
 	st := testStoreForPrize(t)
 	rpc := newFakeRPC()
 	p := newTestPrize(t, rpc, st, 100_000)
-	now := time.Date(2036, 1, 20, 12, 0, 0, 0, time.UTC).Add(time.Duration(time.Now().UnixNano()%20000) * 7 * 24 * time.Hour)
+	now := time.Date(2036, 1, 20, 12, 0, 0, 0, time.UTC).Add(time.Duration(rand.IntN(20000)) * 7 * 24 * time.Hour)
 	p.now = func() time.Time { return now }
 	journalRoundTrip(t, st, testWallet(t, 1), "rsi", fixed.MustParse("2"), WeekStart(WeekOf(now)-1).Add(time.Hour))
 	p.settleDue(context.Background())

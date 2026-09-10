@@ -42,6 +42,10 @@ type OpenRequest struct {
 	// Strategy tags the round trip for the leaderboard; empty means the
 	// default strategy.
 	Strategy string
+	// MaxLoss is the stop: the fraction of the position's collateral it may
+	// lose before the platform closes it. Zero means no stop — the horizon,
+	// or the venue's liquidation, is the only exit.
+	MaxLoss fixed.D
 }
 
 // CloseReason says who closed a position.
@@ -50,7 +54,12 @@ type CloseReason string
 const (
 	CloseManual  CloseReason = "manual"
 	CloseHorizon CloseReason = "horizon"
+	// CloseStop is the platform closing a position that lost its allowance.
+	CloseStop CloseReason = "stop"
 )
+
+// defaultStopEvery is how often an armed stop reads the position's mark.
+const defaultStopEvery = 3 * time.Second
 
 // CloseEvent is the last round trip's outcome, kept so the screen can tell
 // the user their position was closed while they were not looking.
@@ -84,6 +93,8 @@ type Service struct {
 
 	mu        sync.Mutex
 	lastClose *CloseEvent
+	stops     map[string]*stop // armed stops by symbol; guarded by mu
+	stopEvery time.Duration    // zero means defaultStopEvery
 }
 
 // New wires the service and reconciles the policy engine against the venue's
@@ -127,8 +138,13 @@ func (s *Service) Restore(ctx context.Context, st *store.Store) error {
 	}
 	for _, h := range hs {
 		symbol := h.Symbol
-		s.timers.Schedule(symbol, h.ClosesAt, func() { s.closeOnHorizon(symbol) })
-		s.log.Info("horizon restored", "symbol", symbol, "closes_at", h.ClosesAt)
+		if !h.ClosesAt.IsZero() {
+			s.timers.Schedule(symbol, h.ClosesAt, func() { s.closeOnHorizon(symbol) })
+		}
+		if h.MaxLoss.IsPos() {
+			s.armStop(symbol, h.MaxLoss)
+		}
+		s.log.Info("horizon restored", "symbol", symbol, "closes_at", h.ClosesAt, "max_loss", h.MaxLoss)
 	}
 	return nil
 }
@@ -171,6 +187,9 @@ type State struct {
 	Positions []venue.Position
 	// Deadlines is when each position's horizon closes it, by symbol.
 	Deadlines map[string]time.Time
+	// Stops is each position's armed stop, by symbol: the fraction of
+	// collateral it may lose.
+	Stops     map[string]fixed.D
 	LastClose *CloseEvent
 	Limits    policy.Limits
 	Risk      policy.Snapshot
@@ -192,9 +211,13 @@ func (s *Service) State(ctx context.Context) (State, error) {
 	limits, _ := s.policy.Limits(s.account)
 	killed, note := s.policy.Killed()
 	deadlines := make(map[string]time.Time, len(positions))
+	stops := make(map[string]fixed.D, len(positions))
 	for _, p := range positions {
 		if at, ok := s.timers.Deadline(p.Symbol); ok {
 			deadlines[p.Symbol] = at
+		}
+		if ml, ok := s.stopFor(p.Symbol); ok {
+			stops[p.Symbol] = ml
 		}
 	}
 	s.mu.Lock()
@@ -205,6 +228,7 @@ func (s *Service) State(ctx context.Context) (State, error) {
 		Account:   acct,
 		Positions: positions,
 		Deadlines: deadlines,
+		Stops:     stops,
 		LastClose: last,
 		Limits:    limits,
 		Risk:      s.policy.Snapshot(s.account),
@@ -226,6 +250,9 @@ func (s *Service) Open(ctx context.Context, req OpenRequest) (venue.Order, error
 	}
 	if !req.Notional.IsPos() {
 		return venue.Order{}, fmt.Errorf("%w: notional must be positive", ErrInvalid)
+	}
+	if req.MaxLoss.IsNeg() || req.MaxLoss.Cmp(fixed.FromInt(1)) > 0 {
+		return venue.Order{}, fmt.Errorf("%w: max_loss must be between 0 and 1", ErrInvalid)
 	}
 	if req.Leverage.IsZero() {
 		req.Leverage = fixed.FromInt(1)
@@ -272,21 +299,120 @@ func (s *Service) Open(ctx context.Context, req OpenRequest) (venue.Order, error
 	if s.ledger != nil {
 		s.ledger.Opened(s.account, req.Strategy, req.Symbol, placed.VenueID, store.Fill{Side: req.Side.String(), Size: placed.FilledSize, Price: placed.AvgPrice, Fee: placed.Fee})
 	}
+	var closesAt time.Time
 	if req.Rules.Horizon > 0 {
 		// The exit is armed the moment the entry is confirmed. It fires on
 		// its own goroutine and goes through the same Close as a tap would.
 		symbol := req.Symbol
-		closesAt := s.now().Add(req.Rules.Horizon)
+		closesAt = s.now().Add(req.Rules.Horizon)
 		s.timers.Schedule(symbol, closesAt, func() { s.closeOnHorizon(symbol) })
-		if s.store != nil {
-			if err := s.store.SaveHorizon(ctx, store.Horizon{Account: s.account, Symbol: symbol, ClosesAt: closesAt}); err != nil {
-				s.log.Warn("horizon not persisted", "symbol", symbol, "err", err)
-			}
+	}
+	if req.MaxLoss.IsPos() {
+		s.armStop(req.Symbol, req.MaxLoss)
+	}
+	if s.store != nil && (req.Rules.Horizon > 0 || req.MaxLoss.IsPos()) {
+		if err := s.store.SaveHorizon(ctx, store.Horizon{Account: s.account, Symbol: req.Symbol, ClosesAt: closesAt, MaxLoss: req.MaxLoss}); err != nil {
+			s.log.Warn("horizon not persisted", "symbol", req.Symbol, "err", err)
 		}
 	}
 	s.log.Info("opened", "symbol", req.Symbol, "side", req.Side, "notional", req.Notional,
-		"leverage", req.Leverage, "horizon", req.Rules.Horizon, "strategy", req.Strategy, "order", placed.VenueID, "status", placed.Status, "fee", placed.Fee)
+		"leverage", req.Leverage, "horizon", req.Rules.Horizon, "max_loss", req.MaxLoss, "strategy", req.Strategy, "order", placed.VenueID, "status", placed.Status, "fee", placed.Fee)
 	return placed, nil
+}
+
+// armStop watches a position and closes it once its unrealized loss
+// reaches maxLoss of its collateral. One watcher per symbol; arming again
+// replaces it. It reads the venue's own mark, so the stop is the venue's
+// number, not a price the app guessed.
+func (s *Service) armStop(symbol string, maxLoss fixed.D) {
+	s.mu.Lock()
+	if s.stops == nil {
+		s.stops = make(map[string]*stop)
+	}
+	if old := s.stops[symbol]; old != nil {
+		close(old.done)
+	}
+	st := &stop{maxLoss: maxLoss, done: make(chan struct{})}
+	s.stops[symbol] = st
+	s.mu.Unlock()
+	go s.watchStop(symbol, st)
+}
+
+type stop struct {
+	maxLoss fixed.D
+	done    chan struct{}
+}
+
+func (s *Service) stopFor(symbol string) (fixed.D, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.stops[symbol]
+	if st == nil {
+		return 0, false
+	}
+	return st.maxLoss, true
+}
+
+// disarmStop forgets a symbol's stop; the close path calls it so a tap or
+// a horizon does not race the stop into a second close.
+func (s *Service) disarmStop(symbol string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if st := s.stops[symbol]; st != nil {
+		close(st.done)
+		delete(s.stops, symbol)
+	}
+}
+
+func (s *Service) watchStop(symbol string, st *stop) {
+	every := s.stopEvery
+	if every <= 0 {
+		every = defaultStopEvery
+	}
+	tick := time.NewTicker(every)
+	defer tick.Stop()
+	for {
+		select {
+		case <-st.done:
+			return
+		case <-tick.C:
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), defaultStopEvery)
+		positions, err := s.venue.Positions(ctx)
+		cancel()
+		if err != nil {
+			continue
+		}
+		var pos *venue.Position
+		for i := range positions {
+			if positions[i].Symbol == symbol {
+				pos = &positions[i]
+				break
+			}
+		}
+		if pos == nil {
+			// Gone by another exit: nothing left to guard.
+			s.disarmStop(symbol)
+			return
+		}
+		allowance := pos.Collateral.Mul(st.maxLoss)
+		if !allowance.IsPos() || pos.UnrealizedPnL.Neg().Cmp(allowance) < 0 {
+			continue
+		}
+		s.log.Warn("stop hit", "symbol", symbol, "unrealized", pos.UnrealizedPnL, "allowance", allowance.Neg())
+		for attempt := 1; attempt <= horizonCloseAttempts; attempt++ {
+			ctx, cancel := context.WithTimeout(context.Background(), horizonCloseTimeout)
+			_, err := s.close(ctx, symbol, CloseStop)
+			cancel()
+			if err == nil || errors.Is(err, ErrNoPosition) {
+				return
+			}
+			s.log.Warn("stop close failed", "symbol", symbol, "attempt", attempt, "err", err)
+			time.Sleep(time.Second)
+		}
+		s.log.Error("stop close gave up", "symbol", symbol)
+		return
+	}
 }
 
 // closeOnHorizon is the horizon timer's callback. Closing must not depend on
@@ -331,6 +457,7 @@ func (s *Service) Close(ctx context.Context, req CloseRequest) (venue.Order, err
 // twice, which on a venue would mean opening the opposite side.
 func (s *Service) close(ctx context.Context, symbol string, reason CloseReason) (venue.Order, error) {
 	s.timers.Cancel(symbol)
+	s.disarmStop(symbol)
 	if s.store != nil {
 		if err := s.store.DeleteHorizon(ctx, s.account, symbol); err != nil {
 			s.log.Warn("horizon not cleared", "symbol", symbol, "err", err)

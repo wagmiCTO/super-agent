@@ -13,6 +13,10 @@ strategy and funds an on-chain prize pool that pays the top three.
 - The account is a passkey. From its PRF output the device derives a
   wallet, a request-signing key and one exchange API key per strategy.
   The platform never holds the wallet ([ADR 0005](docs/adr/0005-one-passkey-many-keys.md)).
+- Every tap carries a stop, judged on the venue's own mark; the risk screen
+  shows what is at risk across strategies, each one's loss budget, its
+  record, and the market's volatility against the fee. One button closes
+  everything.
 - Before an entry, a card shows what the crowd on-chain has been doing with
   the asset (Nansen). Collateral can arrive from any chain (Aurora Intents).
 - The prize pools are a contract on Monad; an Envio indexer serves their

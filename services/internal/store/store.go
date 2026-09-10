@@ -294,11 +294,14 @@ type Horizon struct {
 	Account  string
 	Symbol   string
 	ClosesAt time.Time
+	// MaxLoss is the stop as a fraction of collateral; zero means none.
+	MaxLoss fixed.D
 }
 
 func (s *Store) SaveHorizon(ctx context.Context, h Horizon) error {
-	_, err := s.pool.Exec(ctx, `insert into horizons (account, symbol, closes_at) values ($1, $2, $3)
-		on conflict (account, symbol) do update set closes_at = excluded.closes_at`, h.Account, h.Symbol, h.ClosesAt)
+	_, err := s.pool.Exec(ctx, `insert into horizons (account, symbol, closes_at, max_loss) values ($1, $2, $3, $4)
+		on conflict (account, symbol) do update set closes_at = excluded.closes_at, max_loss = excluded.max_loss`,
+		h.Account, h.Symbol, h.ClosesAt, h.MaxLoss.String())
 	return err
 }
 
@@ -308,7 +311,7 @@ func (s *Store) DeleteHorizon(ctx context.Context, account, symbol string) error
 }
 
 func (s *Store) Horizons(ctx context.Context, account string) ([]Horizon, error) {
-	rows, err := s.pool.Query(ctx, `select account, symbol, closes_at from horizons where account = $1`, account)
+	rows, err := s.pool.Query(ctx, `select account, symbol, closes_at, max_loss::text from horizons where account = $1`, account)
 	if err != nil {
 		return nil, err
 	}
@@ -316,8 +319,12 @@ func (s *Store) Horizons(ctx context.Context, account string) ([]Horizon, error)
 	var out []Horizon
 	for rows.Next() {
 		var h Horizon
-		if err := rows.Scan(&h.Account, &h.Symbol, &h.ClosesAt); err != nil {
+		var maxLoss string
+		if err := rows.Scan(&h.Account, &h.Symbol, &h.ClosesAt, &maxLoss); err != nil {
 			return nil, err
+		}
+		if h.MaxLoss, err = fixed.Parse(maxLoss); err != nil {
+			return nil, fmt.Errorf("store: horizon %s/%s max_loss %q: %w", h.Account, h.Symbol, maxLoss, err)
 		}
 		out = append(out, h)
 	}
@@ -392,7 +399,7 @@ func (s *Store) TradeClosed(ctx context.Context, wallet, symbol, fallbackStrateg
 func (s *Store) Trades(ctx context.Context, wallet, symbol, strategy string, limit int) ([]ClosedTrade, error) {
 	rows, err := s.pool.Query(ctx, `select wallet, strategy, symbol, open_order_id, coalesce(close_order_id, ''), side, size::text, entry_price::text,
 		coalesce(exit_price::text, ''), entry_fee::text, coalesce(exit_fee::text, ''), coalesce(pnl::text, ''), coalesce(close_reason, ''), opened_at, closed_at
-		from trades where wallet = $1 and symbol = $2 and ($3 = '' or strategy = $3) order by opened_at desc limit $4`, wallet, symbol, strategy, limit)
+		from trades where wallet = $1 and ($2 = '' or symbol = $2) and ($3 = '' or strategy = $3) order by opened_at desc limit $4`, wallet, symbol, strategy, limit)
 	if err != nil {
 		return nil, err
 	}

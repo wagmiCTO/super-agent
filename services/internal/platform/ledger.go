@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -152,13 +153,17 @@ func (l *Ledger) Trades(ctx context.Context, wallet, symbol, strategyID string, 
 	var out []store.ClosedTrade
 	for i := len(l.closed) - 1; i >= 0 && len(out) < limit; i-- {
 		t := l.closed[i]
-		if t.Wallet != wallet || t.Symbol != symbol || (strategyID != "" && t.Strategy != strategyID) {
+		if t.Wallet != wallet || (symbol != "" && t.Symbol != symbol) || (strategyID != "" && t.Strategy != strategyID) {
 			continue
 		}
 		out = append(out, store.ClosedTrade{Wallet: t.Wallet, Strategy: t.Strategy, Symbol: t.Symbol, Side: t.Entry.Side, Size: t.Entry.Size, EntryPrice: t.Entry.Price, ExitPrice: t.Exit.Price, EntryFee: t.Entry.Fee, ExitFee: t.Exit.Fee, PnL: t.PnL, CloseReason: t.Reason, OpenedAt: t.OpenedAt, ClosedAt: t.ClosedAt})
 	}
-	if o, ok := l.open[tradeKey(wallet, symbol)]; ok && len(out) < limit && (strategyID == "" || o.Strategy == strategyID) {
-		out = append([]store.ClosedTrade{{Wallet: wallet, Strategy: o.Strategy, Symbol: symbol, Side: o.Fill.Side, Size: o.Fill.Size, EntryPrice: o.Fill.Price, EntryFee: o.Fill.Fee, OpenedAt: o.OpenedAt}}, out...)
+	for key, o := range l.open {
+		w, sym, _ := strings.Cut(key, "/")
+		if w != wallet || (symbol != "" && sym != symbol) || (strategyID != "" && o.Strategy != strategyID) || len(out) >= limit {
+			continue
+		}
+		out = append([]store.ClosedTrade{{Wallet: wallet, Strategy: o.Strategy, Symbol: sym, Side: o.Fill.Side, Size: o.Fill.Size, EntryPrice: o.Fill.Price, EntryFee: o.Fill.Fee, OpenedAt: o.OpenedAt}}, out...)
 	}
 	return out, nil
 }

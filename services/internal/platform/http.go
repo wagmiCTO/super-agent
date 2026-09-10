@@ -57,6 +57,8 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /v1/prizes/history", h.prizeHistory)
 	mux.HandleFunc("GET /v1/candles", h.candles)
 	mux.HandleFunc("GET /v1/trades", h.trades)
+	mux.HandleFunc("GET /v1/risk", h.risk)
+	mux.HandleFunc("POST /v1/risk/close-all", h.closeAll)
 	mux.HandleFunc("GET /v1/context", h.marketContext)
 	mux.HandleFunc("GET /v1/deposit/options", h.depositOptions)
 	mux.HandleFunc("POST /v1/deposit/quote", h.depositQuote)
@@ -320,6 +322,10 @@ type positionDTO struct {
 	OpenedAt      string `json:"opened_at,omitempty"`
 	// ClosesAt is when the horizon closes this position; absent without one.
 	ClosesAt string `json:"closes_at,omitempty"`
+	// MaxLoss is the armed stop as a fraction of collateral, and StopPnL the
+	// unrealized result at which it closes; absent without a stop.
+	MaxLoss string `json:"max_loss,omitempty"`
+	StopPnL string `json:"stop_pnl,omitempty"`
 }
 
 type limitsDTO struct {
@@ -361,6 +367,9 @@ type openReqDTO struct {
 	HorizonSeconds int `json:"horizon_seconds"`
 	// Strategy tags the round trip for the leaderboard.
 	Strategy string `json:"strategy"`
+	// MaxLoss arms a stop: the fraction of collateral the position may
+	// lose before the platform closes it. Absent or "0" arms none.
+	MaxLoss string `json:"max_loss,omitempty"`
 }
 
 type lastCloseDTO struct {
@@ -592,7 +601,13 @@ func parseOpen(in openReqDTO) (OpenRequest, error) {
 		return OpenRequest{}, fmt.Errorf("%w: horizon_seconds must not be negative", ErrInvalid)
 	}
 	rules := strategy.Rules{Horizon: time.Duration(in.HorizonSeconds) * time.Second}
-	return OpenRequest{Symbol: in.Symbol, Side: side, Notional: notional, Leverage: leverage, Rules: rules, Strategy: strings.TrimSpace(in.Strategy)}, nil
+	var maxLoss fixed.D
+	if strings.TrimSpace(in.MaxLoss) != "" {
+		if maxLoss, err = fixed.Parse(in.MaxLoss); err != nil {
+			return OpenRequest{}, fmt.Errorf("%w: max_loss: %v", ErrInvalid, err)
+		}
+	}
+	return OpenRequest{Symbol: in.Symbol, Side: side, Notional: notional, Leverage: leverage, Rules: rules, Strategy: strings.TrimSpace(in.Strategy), MaxLoss: maxLoss}, nil
 }
 
 func toMarketDTO(m venue.Market) marketDTO {
@@ -620,7 +635,7 @@ func toMarketDTO(m venue.Market) marketDTO {
 func toStateDTO(st State) stateDTO {
 	positions := make([]positionDTO, 0, len(st.Positions))
 	for _, p := range st.Positions {
-		positions = append(positions, positionDTO{
+		d := positionDTO{
 			ID:            p.VenueID,
 			Symbol:        p.Symbol,
 			Side:          p.Side.String(),
@@ -633,7 +648,12 @@ func toStateDTO(st State) stateDTO {
 			FeesPaid:      p.FeesPaid.String(),
 			OpenedAt:      timeOrEmpty(p.OpenedAt),
 			ClosesAt:      timeOrEmpty(st.Deadlines[p.Symbol]),
-		})
+		}
+		if ml, ok := st.Stops[p.Symbol]; ok && ml.IsPos() {
+			d.MaxLoss = ml.String()
+			d.StopPnL = p.Collateral.Mul(ml).Neg().String()
+		}
+		positions = append(positions, d)
 	}
 	var last *lastCloseDTO
 	if st.LastClose != nil {
