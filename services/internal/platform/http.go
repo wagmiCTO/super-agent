@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/wagmiCTO/super-agent/services/internal/fixed"
@@ -995,8 +996,36 @@ func tokenDecimal(units string) string {
 	return d.Div(fixed.FromInt(1_000_000)).String()
 }
 
+// prizeCache keeps the last prize block for a short while: the lobby polls
+// every few seconds and each read is several calls to the chain.
+var prizeCache struct {
+	mu   sync.Mutex
+	week uint64
+	at   time.Time
+	dto  *prizeDTO
+}
+
+const prizeCacheTTL = 30 * time.Second
+
 // prizeBlock reads this week's pools and last week's winners.
 func (h *handler) prizeBlock(r *http.Request, week uint64) *prizeDTO {
+	prizeCache.mu.Lock()
+	if prizeCache.dto != nil && prizeCache.week == week && time.Since(prizeCache.at) < prizeCacheTTL {
+		dto := prizeCache.dto
+		prizeCache.mu.Unlock()
+		return dto
+	}
+	prizeCache.mu.Unlock()
+	dto := h.readPrizeBlock(r, week)
+	if dto != nil {
+		prizeCache.mu.Lock()
+		prizeCache.week, prizeCache.at, prizeCache.dto = week, time.Now(), dto
+		prizeCache.mu.Unlock()
+	}
+	return dto
+}
+
+func (h *handler) readPrizeBlock(r *http.Request, week uint64) *prizeDTO {
 	pools, err := h.prize.Pools(r.Context(), week)
 	if err != nil {
 		h.log.Warn("prize pools not read", "err", err)
