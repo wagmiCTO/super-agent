@@ -43,6 +43,20 @@ paths:
   /v1/state:
     get:
       summary: Account balance, open positions, limits in force and how much of them is used
+      description: |
+        Per-wallet requests carry `X-Account-Address` and `X-Strategy`: the
+        strategy picks the wallet's key for it and the limits that key trades
+        under (one key per strategy, derived from the passkey). A wallet that
+        registered a request-signing key (POST /v1/auth/keys) must also sign
+        every request: `X-Auth-Key` (Ed25519 public key, hex), `X-Auth-Time`
+        (unix seconds) and `X-Auth-Signature` (hex) over
+        `METHOD\nPATH?QUERY\nTIME\nSHA256(body)`, newline-separated.
+      parameters:
+        - in: header
+          name: X-Strategy
+          required: false
+          schema: { type: string }
+          description: Which strategy's key and limits the request is for.
       responses:
         "200":
           content:
@@ -163,7 +177,27 @@ paths:
 
   /v1/exchange/key:
     get:
-      summary: The enrolled key for a wallet, without secrets
+      summary: The enrolled key for a wallet and strategy, without secrets
+      parameters:
+        - in: query
+          name: address
+          required: true
+          schema: { type: string }
+        - in: query
+          name: strategy
+          required: false
+          schema: { type: string }
+          description: The strategy's key; empty for the wallet-wide key.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnrolledKey" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/exchange/keys:
+    get:
+      summary: Every key enrolled for a wallet — which strategies are enabled
       parameters:
         - in: query
           name: address
@@ -173,8 +207,46 @@ paths:
         "200":
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/EnrolledKey" }
-        "404": { $ref: "#/components/responses/NotFound" }
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/EnrolledKey" }
+        "400": { $ref: "#/components/responses/Invalid" }
+
+  /v1/auth/keys:
+    post:
+      summary: Register a request-signing key for a wallet
+      description: |
+        The device derives an Ed25519 key from the passkey and the wallet
+        signs, as a personal message, the text
+        `TradeAgent request-signing key\nWallet: <address, lowercase>\nKey: <public key hex>\nIssued: <RFC 3339, seconds>`.
+        From then on every request for this wallet must be signed by a
+        registered key (see GET /v1/state).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [address, public_key, issued_at, signature]
+              properties:
+                address: { type: string }
+                public_key: { type: string, description: Ed25519 public key, hex. }
+                issued_at: { type: string, format: date-time, description: Seconds precision; at most ten minutes old. }
+                signature: { type: string, description: The wallet's EIP-191 signature, 0x-hex, 65 bytes. }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [address, public_key]
+                properties:
+                  address: { type: string }
+                  public_key: { type: string }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401":
+          description: The signature was not made by this wallet.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
   /v1/exchange/network:
     get:
@@ -701,6 +773,7 @@ components:
       required: [symbol]
       properties:
         symbol: { type: string }
+        strategy: { type: string, description: Which strategy's key closes; defaults to the X-Strategy header. }
 
     Order:
       type: object
@@ -747,9 +820,11 @@ components:
 
     EnrollPayload:
       type: object
-      required: [handle, sign_in_message, typed_data, statement, builder_id, max_builder_fee_per_100k, expires_at]
+      required: [handle, public_key, sign_in_message, typed_data, statement, builder_id, max_builder_fee_per_100k, expires_at]
       properties:
         handle: { type: string, description: Single-use; identifies the pending key. }
+        strategy: { type: string, description: The strategy the key is for; absent for a wallet-wide key. }
+        public_key: { type: string, description: The key being enrolled, 0x-hex. }
         sign_in_message: { type: string, description: Sign-In-With-Ethereum text; sign as a personal message. }
         typed_data:
           type: object
@@ -761,9 +836,11 @@ components:
 
     EnrolledKey:
       type: object
-      required: [address, label, builder_id, max_builder_fee_per_100k, enrolled_at]
+      required: [address, strategy, derived, label, builder_id, max_builder_fee_per_100k, enrolled_at]
       properties:
         address: { type: string }
+        strategy: { type: string, description: The strategy this key trades for; empty for a wallet-wide key. }
+        derived: { type: boolean, description: True when the device derived the key from the passkey. }
         label: { type: string }
         builder_id: { type: integer }
         max_builder_fee_per_100k: { type: integer }
@@ -786,7 +863,8 @@ components:
             activate the wallet's exchange account), forwarding_disabled (409),
             venue_unconfirmed (504: acknowledged, outcome unknown — reconcile then retry),
             unknown, re-read state and retry), unknown_market, no_position,
-            no_credentials, internal.
+            no_credentials, unauthenticated (401: the wallet registered a
+            request-signing key and this request is not signed by it), internal.
         message: { type: string, description: For a person. }
         limit: { $ref: "#/components/schemas/Decimal" }
         actual: { $ref: "#/components/schemas/Decimal" }

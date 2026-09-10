@@ -253,8 +253,9 @@ func TestPrizeSettlesLastWeekFromTheJournal(t *testing.T) {
 	st := testStoreForPrize(t)
 	rpc := newFakeRPC()
 	p := newTestPrize(t, rpc, st, 100_000)
-	// A week nobody else's test writes into.
-	now := time.Date(2035, 3, 10, 12, 0, 0, 0, time.UTC)
+	// A week nobody else's test writes into, and no earlier run of this one:
+	// the journal persists between runs.
+	now := time.Date(2035, 3, 10, 12, 0, 0, 0, time.UTC).Add(time.Duration(time.Now().UnixNano()%20000) * 7 * 24 * time.Hour)
 	p.now = func() time.Time { return now }
 	last := WeekOf(now) - 1
 	closedAt := WeekStart(last).Add(time.Hour)
@@ -312,7 +313,7 @@ func TestPrizeSkipsEmptyPools(t *testing.T) {
 	st := testStoreForPrize(t)
 	rpc := newFakeRPC()
 	p := newTestPrize(t, rpc, st, 100_000)
-	now := time.Date(2036, 1, 20, 12, 0, 0, 0, time.UTC)
+	now := time.Date(2036, 1, 20, 12, 0, 0, 0, time.UTC).Add(time.Duration(time.Now().UnixNano()%20000) * 7 * 24 * time.Hour)
 	p.now = func() time.Time { return now }
 	journalRoundTrip(t, st, testWallet(t, 1), "rsi", fixed.MustParse("2"), WeekStart(WeekOf(now)-1).Add(time.Hour))
 	p.settleDue(context.Background())

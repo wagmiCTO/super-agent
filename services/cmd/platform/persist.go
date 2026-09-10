@@ -19,8 +19,9 @@ func (b keyBackend) LoadKeys(ctx context.Context) ([]keys.Key, error) {
 	out := make([]keys.Key, 0, len(recs))
 	for _, r := range recs {
 		out = append(out, keys.Key{
-			Address: r.Address, APIKey: r.APIKey, PrivateKey: r.PrivateKey, Label: r.Label,
-			BuilderID: r.BuilderID, MaxBuilderFeePer100K: r.MaxBuilderFeePer100K, MaxBuilderFeePct: r.MaxBuilderFeePct, EnrolledAt: r.EnrolledAt,
+			Address: r.Address, Strategy: r.Strategy, APIKey: r.APIKey, PrivateKey: r.PrivateKey, Label: r.Label,
+			BuilderID: r.BuilderID, MaxBuilderFeePer100K: r.MaxBuilderFeePer100K, MaxBuilderFeePct: r.MaxBuilderFeePct,
+			Derived: r.Derived, EnrolledAt: r.EnrolledAt,
 		})
 	}
 	return out, nil
@@ -28,13 +29,14 @@ func (b keyBackend) LoadKeys(ctx context.Context) ([]keys.Key, error) {
 
 func (b keyBackend) PutKey(ctx context.Context, k keys.Key) error {
 	return b.st.PutKey(ctx, store.KeyRecord{
-		Address: k.Address, APIKey: k.APIKey, PrivateKey: k.PrivateKey, Label: k.Label,
-		BuilderID: k.BuilderID, MaxBuilderFeePer100K: k.MaxBuilderFeePer100K, MaxBuilderFeePct: k.MaxBuilderFeePct, EnrolledAt: k.EnrolledAt,
+		Address: k.Address, Strategy: k.Strategy, APIKey: k.APIKey, PrivateKey: k.PrivateKey, Label: k.Label,
+		BuilderID: k.BuilderID, MaxBuilderFeePer100K: k.MaxBuilderFeePer100K, MaxBuilderFeePct: k.MaxBuilderFeePct,
+		Derived: k.Derived, EnrolledAt: k.EnrolledAt,
 	})
 }
 
-func (b keyBackend) DeleteKey(ctx context.Context, address string) error {
-	return b.st.DeleteKey(ctx, address)
+func (b keyBackend) DeleteKey(ctx context.Context, address, strategy string) error {
+	return b.st.DeleteKey(ctx, address, strategy)
 }
 
 // policyPersister adapts the store to the policy engine's Persister.

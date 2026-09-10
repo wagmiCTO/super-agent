@@ -122,7 +122,7 @@ func TestEnrollmentRoundTrip(t *testing.T) {
 	}
 	addr := "0x000000000000000000000000000000000000dEaD"
 
-	res, err := e.Payload(context.Background(), addr, "phone")
+	res, err := e.Payload(context.Background(), PayloadRequest{Address: addr, Label: "phone"})
 	if err != nil {
 		t.Fatalf("Payload: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestEnrollmentRoundTrip(t *testing.T) {
 	if res.SignInMessage == "" {
 		t.Error("payload carries no sign-in message")
 	}
-	k, err := e.Enroll(context.Background(), res.Handle, walletSig, walletSig)
+	k, err := e.Enroll(context.Background(), res.Handle, walletSig, walletSig, "")
 	if err != nil {
 		t.Fatalf("Enroll: %v", err)
 	}
@@ -153,12 +153,12 @@ func TestEnrollmentRoundTrip(t *testing.T) {
 	if k.APIKey != "pk_enrolled" || k.BuilderID != 18 || k.MaxBuilderFeePer100K != 50 {
 		t.Errorf("stored key = %+v", k)
 	}
-	got, err := store.Get(addr)
+	got, err := store.Get(addr, "")
 	if err != nil || got.APIKey != "pk_enrolled" {
 		t.Errorf("store.Get = %+v, %v", got, err)
 	}
 	// A handle is single-use.
-	if _, err := e.Enroll(context.Background(), res.Handle, walletSig, walletSig); !errors.Is(err, ErrInvalid) {
+	if _, err := e.Enroll(context.Background(), res.Handle, walletSig, walletSig, ""); !errors.Is(err, ErrInvalid) {
 		t.Errorf("second enroll with the same handle: %v", err)
 	}
 }
@@ -168,7 +168,7 @@ func TestEnrollmentRoundTrip(t *testing.T) {
 func TestPayloadRefusesForeignBuilderTerms(t *testing.T) {
 	fake := &fakeEnroller{t: t, typedData: fixtureTypedData(t), builderID: 7, maxFee: 50}
 	e, _ := NewEnrollment(fake, keys.New(), 18, 50, nil)
-	if _, err := e.Payload(context.Background(), "0x000000000000000000000000000000000000dEaD", ""); err == nil {
+	if _, err := e.Payload(context.Background(), PayloadRequest{Address: "0x000000000000000000000000000000000000dEaD"}); err == nil {
 		t.Error("payload with builder 7 was accepted for builder 18")
 	}
 }
@@ -177,14 +177,14 @@ func TestEnrollValidation(t *testing.T) {
 	fake := &fakeEnroller{t: t, typedData: fixtureTypedData(t), builderID: 18, maxFee: 50}
 	e, _ := NewEnrollment(fake, keys.New(), 18, 50, nil)
 
-	if _, err := e.Payload(context.Background(), "not-an-address", ""); !errors.Is(err, ErrInvalid) {
+	if _, err := e.Payload(context.Background(), PayloadRequest{Address: "not-an-address"}); !errors.Is(err, ErrInvalid) {
 		t.Errorf("bad address: %v", err)
 	}
-	if _, err := e.Enroll(context.Background(), "nope", walletSig, walletSig); !errors.Is(err, ErrInvalid) {
+	if _, err := e.Enroll(context.Background(), "nope", walletSig, walletSig, ""); !errors.Is(err, ErrInvalid) {
 		t.Errorf("unknown handle: %v", err)
 	}
-	res, _ := e.Payload(context.Background(), "0x000000000000000000000000000000000000dEaD", "")
-	if _, err := e.Enroll(context.Background(), res.Handle, walletSig, "0xdeadbeef"); !errors.Is(err, ErrInvalid) {
+	res, _ := e.Payload(context.Background(), PayloadRequest{Address: "0x000000000000000000000000000000000000dEaD"})
+	if _, err := e.Enroll(context.Background(), res.Handle, walletSig, "0xdeadbeef", ""); !errors.Is(err, ErrInvalid) {
 		t.Errorf("malformed signature: %v", err)
 	}
 	if _, err := NewEnrollment(fake, keys.New(), 0, 50, nil); err == nil {
@@ -192,5 +192,67 @@ func TestEnrollValidation(t *testing.T) {
 	}
 	if _, err := NewEnrollment(fake, keys.New(), 18, 101, nil); err == nil {
 		t.Error("fee above the protocol ceiling accepted")
+	}
+}
+
+// A device-derived key: the app sends the public key with the payload
+// request and the private key with the enrollment; the platform proves
+// possession with it, stores it under the strategy, and refuses a private
+// key that does not match.
+func TestEnrollmentOfDerivedStrategyKey(t *testing.T) {
+	fake := &fakeEnroller{t: t, typedData: fixtureTypedData(t), builderID: 18, maxFee: 50}
+	store := keys.New()
+	e, err := NewEnrollment(fake, store, 18, 50, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const addr = "0x00000000000000000000000000000000000000Ab"
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	res, err := e.Payload(context.Background(), PayloadRequest{Address: addr, Strategy: "rsi", PublicKey: pub})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Strategy != "rsi" || res.PublicKey != "0x"+hex.EncodeToString(pub) || !fake.payloadReq.PublicKey.Equal(pub) || fake.payloadReq.Label != "TradeAgent · RSI Bounce" {
+		t.Fatalf("payload = %+v, venue asked for %+v", res, fake.payloadReq)
+	}
+	// Without the private key, or with the wrong one, nothing is enrolled.
+	if _, err := e.Enroll(context.Background(), res.Handle, walletSig, walletSig, ""); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("missing private key: %v", err)
+	}
+	res, _ = e.Payload(context.Background(), PayloadRequest{Address: addr, Strategy: "rsi", PublicKey: pub})
+	_, other, _ := ed25519.GenerateKey(nil)
+	if _, err := e.Enroll(context.Background(), res.Handle, walletSig, walletSig, "0x"+hex.EncodeToString(other.Seed())); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("mismatched private key: %v", err)
+	}
+	if fake.enrolled != nil {
+		t.Fatal("the venue was asked to enroll before the key was verified")
+	}
+	res, _ = e.Payload(context.Background(), PayloadRequest{Address: addr, Strategy: "rsi", PublicKey: pub})
+	k, err := e.Enroll(context.Background(), res.Handle, walletSig, walletSig, hex.EncodeToString(priv.Seed()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fake.popOK {
+		t.Fatal("proof of possession did not verify against the derived key")
+	}
+	if k.Strategy != "rsi" || !k.Derived || !k.PrivateKey.Equal(priv) {
+		t.Fatalf("stored key = %+v", k)
+	}
+	if _, err := store.Get(addr, "rsi"); err != nil {
+		t.Fatal("key not stored under the strategy")
+	}
+	if _, err := store.Get(addr, ""); err == nil {
+		t.Fatal("a strategy key was stored as wallet-wide")
+	}
+	if list := e.Keys(addr); len(list) != 1 || list[0].Strategy != "rsi" {
+		t.Fatalf("Keys = %+v", list)
+	}
+	// A platform-generated enrollment refuses a private key.
+	res, _ = e.Payload(context.Background(), PayloadRequest{Address: addr})
+	if _, err := e.Enroll(context.Background(), res.Handle, walletSig, walletSig, hex.EncodeToString(priv.Seed())); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("generated key with a private key: %v", err)
+	}
+	if _, err := e.Payload(context.Background(), PayloadRequest{Address: addr, Strategy: "nope", PublicKey: pub}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("unknown strategy: %v", err)
 	}
 }

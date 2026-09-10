@@ -44,7 +44,7 @@ func TestRegistryBuildsOneServicePerWallet(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			s, err := r.Get(context.Background(), addr)
+			s, err := r.Get(context.Background(), addr, "direction")
 			if err != nil {
 				t.Errorf("Get: %v", err)
 			}
@@ -61,7 +61,7 @@ func TestRegistryBuildsOneServicePerWallet(t *testing.T) {
 		}
 	}
 	// Address matching is case-insensitive: a checksummed address is the same wallet.
-	again, err := r.Get(context.Background(), "0x00000000000000000000000000000000000000AA")
+	again, err := r.Get(context.Background(), "0x00000000000000000000000000000000000000AA", "direction")
 	if err != nil || again != svcs[0] {
 		t.Errorf("checksummed lookup: %v, same=%v", err, again == svcs[0])
 	}
@@ -72,10 +72,10 @@ func TestRegistryUnknownWallet(t *testing.T) {
 		t.Fatal("factory must not run for a wallet with no key")
 		return nil, nil
 	}, testLimits(), nil, nil, nil)
-	if _, err := r.Get(context.Background(), "0x00000000000000000000000000000000000000bb"); !errors.Is(err, ErrNoKey) {
+	if _, err := r.Get(context.Background(), "0x00000000000000000000000000000000000000bb", "direction"); !errors.Is(err, ErrNoKey) {
 		t.Errorf("err = %v, want ErrNoKey", err)
 	}
-	if _, err := r.Get(context.Background(), ""); !errors.Is(err, ErrInvalid) {
+	if _, err := r.Get(context.Background(), "", "direction"); !errors.Is(err, ErrInvalid) {
 		t.Errorf("empty address: %v", err)
 	}
 }
@@ -91,10 +91,10 @@ func TestRegistryRetriesAfterFailedConnect(t *testing.T) {
 		return &fakeVenue{}, nil
 	}
 	r := NewRegistry(storeWithKey(t, addr), factory, testLimits(), nil, nil, nil)
-	if _, err := r.Get(context.Background(), addr); err == nil {
+	if _, err := r.Get(context.Background(), addr, "direction"); err == nil {
 		t.Fatal("first Get should fail")
 	}
-	if _, err := r.Get(context.Background(), addr); err != nil {
+	if _, err := r.Get(context.Background(), addr, "direction"); err != nil {
 		t.Fatalf("second Get: %v", err)
 	}
 }
@@ -150,7 +150,7 @@ func TestRegistryConnectionOutlivesRequest(t *testing.T) {
 	defer r.Close()
 
 	reqCtx, cancel := context.WithCancel(context.Background())
-	if _, err := r.Get(reqCtx, addr); err != nil {
+	if _, err := r.Get(reqCtx, addr, "direction"); err != nil {
 		t.Fatal(err)
 	}
 	cancel()
@@ -160,5 +160,50 @@ func TestRegistryConnectionOutlivesRequest(t *testing.T) {
 	r.Close()
 	if captured.Err() == nil {
 		t.Fatal("Close must end the venue connection context")
+	}
+}
+
+// A strategy with its own key gets its own service under "<wallet>/<strategy>"
+// with the strategy's cap; strategies without one share the wallet-wide
+// key's service under the wallet's address.
+func TestRegistryOneServicePerStrategyKey(t *testing.T) {
+	const addr = "0x00000000000000000000000000000000000000cc"
+	_, priv, _ := ed25519.GenerateKey(nil)
+	s := keys.New()
+	_ = s.Put(keys.Key{Address: addr, APIKey: "wide", PrivateKey: priv})
+	_ = s.Put(keys.Key{Address: addr, Strategy: "rsi", APIKey: "rsi", PrivateKey: priv, Derived: true})
+	var built []string
+	r := NewRegistry(s, func(_ context.Context, k keys.Key) (venue.Adapter, error) {
+		built = append(built, k.APIKey)
+		return &fakeVenue{}, nil
+	}, testLimits(), nil, nil, nil)
+	direction, err := r.Get(context.Background(), addr, "direction")
+	if err != nil {
+		t.Fatal(err)
+	}
+	maCross, _ := r.Get(context.Background(), addr, "ma-cross")
+	rsi, err := r.Get(context.Background(), addr, "rsi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if direction != maCross {
+		t.Fatal("two strategies on the wallet-wide key got two services")
+	}
+	if rsi == direction {
+		t.Fatal("the strategy's own key shares the wallet-wide service")
+	}
+	if len(built) != 2 || built[0] != "wide" || built[1] != "rsi" {
+		t.Fatalf("venue connections built = %v", built)
+	}
+	if direction.account != addr || rsi.account != addr+"/rsi" {
+		t.Fatalf("policy accounts = %q, %q", direction.account, rsi.account)
+	}
+	wide, _ := r.policy.Limits(addr)
+	own, _ := r.policy.Limits(addr + "/rsi")
+	if own.MaxNotional.Cmp(wide.MaxNotional) >= 0 {
+		t.Fatalf("rsi cap %s is not below the platform limit %s", own.MaxNotional, wide.MaxNotional)
+	}
+	if _, err := r.Get(context.Background(), addr, "nope"); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("unknown strategy: %v", err)
 	}
 }

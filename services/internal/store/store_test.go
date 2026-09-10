@@ -1,14 +1,17 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/wagmiCTO/super-agent/services/internal/fixed"
+	"github.com/wagmiCTO/super-agent/services/internal/seal"
 )
 
 // These run against a real Postgres: TEST_DATABASE_URL (or DATABASE_URL).
@@ -55,9 +58,76 @@ func TestKeysRoundTrip(t *testing.T) {
 	if found == nil || found.APIKey != "tok" || !found.PrivateKey.Equal(priv) || found.BuilderID != 18 || !found.EnrolledAt.Equal(k.EnrolledAt) {
 		t.Fatalf("key = %+v", found)
 	}
-	if err := s.DeleteKey(ctx, addr); err != nil {
+	if err := s.DeleteKey(ctx, addr, ""); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// Keys are one per (wallet, strategy); with a sealer the private key is
+// encrypted at rest, rows written in the clear are re-sealed, and the
+// wrong sealer cannot read them.
+func TestStrategyKeysSealedAtRest(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	_, priv, _ := ed25519.GenerateKey(rand.Reader)
+	addr := unique("0xSEAL")
+	put := func(strategy, token string) {
+		t.Helper()
+		if err := s.PutKey(ctx, KeyRecord{Address: addr, Strategy: strategy, APIKey: token, PrivateKey: priv, BuilderID: 18, MaxBuilderFeePer100K: 50, Derived: strategy != "", EnrolledAt: time.Now()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put("", "wide")
+	put("rsi", "rsi")
+	t.Cleanup(func() { _ = s.DeleteKey(ctx, addr, ""); _ = s.DeleteKey(ctx, addr, "rsi") })
+	mine := func(ks []KeyRecord) map[string]KeyRecord {
+		out := map[string]KeyRecord{}
+		for _, k := range ks {
+			if k.Address == addrLower(addr) {
+				out[k.Strategy] = k
+			}
+		}
+		return out
+	}
+	ks, err := s.Keys(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := mine(ks)
+	if len(got) != 2 || got["rsi"].APIKey != "rsi" || !got["rsi"].Derived || got[""].APIKey != "wide" || got[""].sealed {
+		t.Fatalf("keys = %+v", got)
+	}
+
+	sl, _ := seal.New("0x" + strings.Repeat("ab", 32))
+	if _, err := s.UseSealer(ctx, sl); err != nil {
+		t.Fatal(err)
+	}
+	var raw []byte
+	if err := s.pool.QueryRow(ctx, `select private_key from keys where address = $1 and strategy = 'rsi'`, addrLower(addr)).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	if !seal.Sealed(raw) || bytes.Contains(raw, priv) {
+		t.Fatal("private key is not sealed in the table")
+	}
+	ks, err = s.Keys(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = mine(ks)
+	if !got["rsi"].sealed || !got["rsi"].PrivateKey.Equal(priv) || !got[""].PrivateKey.Equal(priv) {
+		t.Fatalf("after sealing: %+v", got)
+	}
+	// Another process with another key cannot read them, and says so.
+	other, _ := seal.New("0x" + strings.Repeat("cd", 32))
+	s.sealer = other
+	if _, err := s.Keys(ctx); err == nil {
+		t.Fatal("sealed keys opened under the wrong key")
+	}
+	s.sealer = nil
+	if _, err := s.Keys(ctx); err == nil {
+		t.Fatal("sealed keys read without a sealer")
+	}
+	s.sealer = sl
 }
 
 func addrLower(s string) string {

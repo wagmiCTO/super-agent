@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/wagmiCTO/super-agent/services/internal/fixed"
+	"github.com/wagmiCTO/super-agent/services/internal/keys"
 	"github.com/wagmiCTO/super-agent/services/internal/policy"
 	"github.com/wagmiCTO/super-agent/services/internal/store"
 	"github.com/wagmiCTO/super-agent/services/internal/strategy"
@@ -31,14 +33,20 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	for _, opt := range opts {
 		opt(&o)
 	}
-	h := &handler{svc: s, log: log, enroll: o.enrollment, registry: o.registry, signals: o.signals, ledger: o.ledger, prize: o.prize}
+	authKeys := o.authKeys
+	if authKeys == nil {
+		authKeys = NewMemAuthKeys()
+	}
+	h := &handler{svc: s, log: log, enroll: o.enrollment, registry: o.registry, signals: o.signals, ledger: o.ledger, prize: o.prize, auth: newAuthenticator(authKeys)}
 	if o.ledger != nil {
 		s.UseLedger(o.ledger)
 	}
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v1/auth/keys", h.registerAuthKey)
 	mux.HandleFunc("POST /v1/exchange/enroll/payload", h.enrollPayload)
 	mux.HandleFunc("POST /v1/exchange/enroll", h.enrollFinish)
 	mux.HandleFunc("GET /v1/exchange/key", h.enrolledKey)
+	mux.HandleFunc("GET /v1/exchange/keys", h.enrolledKeys)
 	mux.HandleFunc("GET /v1/exchange/network", h.exchangeNetwork)
 	mux.HandleFunc("GET /v1/signals/ma-cross", h.maCross)
 	mux.HandleFunc("GET /v1/signals/rsi", h.rsi)
@@ -53,7 +61,7 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	mux.HandleFunc("POST /v1/orders/close", h.close)
 	mux.HandleFunc("POST /v1/kill", h.kill)
 	mux.HandleFunc("POST /v1/revive", h.revive)
-	var out http.Handler = mux
+	var out http.Handler = h.auth.middleware(mux, log)
 	if len(o.corsOrigins) > 0 {
 		out = cors(out, o.corsOrigins)
 	}
@@ -70,6 +78,13 @@ type options struct {
 	signals     *Signals
 	ledger      *Ledger
 	prize       *Prize
+	authKeys    AuthKeys
+}
+
+// WithAuthKeys persists request-signing keys (ADR 0005). Without it they
+// live in memory and are forgotten on restart.
+func WithAuthKeys(k AuthKeys) Option {
+	return func(o *options) { o.authKeys = k }
 }
 
 // WithRegistry routes requests carrying X-Account-Address to that wallet's
@@ -122,7 +137,7 @@ func cors(next http.Handler, allowed []string) http.Handler {
 			h.Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 			// Bypass-Tunnel-Reminder is what the app sends when the platform
 			// sits behind a localtunnel during phone testing; harmless otherwise.
-			h.Set("Access-Control-Allow-Headers", "Content-Type, "+AccountHeader+", Bypass-Tunnel-Reminder")
+			h.Set("Access-Control-Allow-Headers", "Content-Type, "+AccountHeader+", "+StrategyHeader+", "+AuthKeyHeader+", "+AuthTimeHeader+", "+AuthSigHeader+", Bypass-Tunnel-Reminder")
 			h.Set("Access-Control-Max-Age", "600")
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(http.StatusNoContent)
@@ -141,16 +156,35 @@ type handler struct {
 	signals  *Signals
 	ledger   *Ledger
 	prize    *Prize
+	auth     *authenticator
 }
 
-// AccountHeader names the wallet a request acts for. It is not authentication
-// — that arrives with signed requests from the passkey wallet — and until it
-// does the platform must bind to loopback only.
+// AccountHeader names the wallet a request acts for. On its own it is
+// routing; a wallet that registered a request-signing key is also
+// authenticated on every request (see auth.go).
 const AccountHeader = "X-Account-Address"
+
+// StrategyHeader names the strategy a request acts for, which picks the
+// wallet's key for it (ADR 0005). The query parameter and, for orders, the
+// body field say the same thing; the header wins when both are present.
+const StrategyHeader = "X-Strategy"
+
+// strategyOf reads the request's strategy from the header or the query.
+func strategyOf(r *http.Request) string {
+	if s := strings.TrimSpace(r.Header.Get(StrategyHeader)); s != "" {
+		return s
+	}
+	return strings.TrimSpace(r.URL.Query().Get("strategy"))
+}
 
 // service picks the Service for a request: the wallet named in the header, or
 // the platform's own. ok is false when the response has already been written.
 func (h *handler) service(w http.ResponseWriter, r *http.Request) (*Service, bool) {
+	return h.serviceFor(w, r, strategyOf(r))
+}
+
+// serviceFor is service with the strategy known from the body.
+func (h *handler) serviceFor(w http.ResponseWriter, r *http.Request, strategyID string) (*Service, bool) {
 	addr := strings.TrimSpace(r.Header.Get(AccountHeader))
 	if addr == "" {
 		return h.svc, true
@@ -159,10 +193,17 @@ func (h *handler) service(w http.ResponseWriter, r *http.Request) (*Service, boo
 		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "enrollment_unavailable", Message: "per-wallet trading is not enabled"})
 		return nil, false
 	}
-	svc, err := h.registry.Get(r.Context(), addr)
+	if strategyID == "" {
+		strategyID = strategyOf(r)
+	}
+	svc, err := h.registry.Get(r.Context(), addr, strategyID)
 	if err != nil {
 		if errors.Is(err, ErrNoKey) {
-			writeJSON(w, http.StatusNotFound, errorDTO{Error: "no_key", Message: "no exchange key is enrolled for this wallet"})
+			msg := "no exchange key is enrolled for this wallet"
+			if strategyID != "" {
+				msg = "this wallet has no key for the " + strategyID + " strategy yet — enable it first"
+			}
+			writeJSON(w, http.StatusNotFound, errorDTO{Error: "no_key", Message: msg})
 			return nil, false
 		}
 		h.fail(w, err)
@@ -288,7 +329,8 @@ type lastCloseDTO struct {
 }
 
 type closeReqDTO struct {
-	Symbol string `json:"symbol"`
+	Symbol   string `json:"symbol"`
+	Strategy string `json:"strategy,omitempty"`
 }
 
 type orderDTO struct {
@@ -372,7 +414,7 @@ func (h *handler) open(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, err)
 		return
 	}
-	svc, ok := h.service(w, r)
+	svc, ok := h.serviceFor(w, r, req.Strategy)
 	if !ok {
 		return
 	}
@@ -390,7 +432,7 @@ func (h *handler) close(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, err)
 		return
 	}
-	svc, ok := h.service(w, r)
+	svc, ok := h.serviceFor(w, r, strings.TrimSpace(in.Strategy))
 	if !ok {
 		return
 	}
@@ -604,10 +646,16 @@ func toOrderDTO(o venue.Order) orderDTO {
 type enrollPayloadReqDTO struct {
 	Address string `json:"address"`
 	Label   string `json:"label"`
+	// Strategy and PublicKey enroll a device-derived key for one strategy
+	// (ADR 0005); without them the platform generates a wallet-wide key.
+	Strategy  string `json:"strategy,omitempty"`
+	PublicKey string `json:"public_key,omitempty"`
 }
 
 type enrollPayloadDTO struct {
 	Handle        string          `json:"handle"`
+	Strategy      string          `json:"strategy,omitempty"`
+	PublicKey     string          `json:"public_key"`
 	SignInMessage string          `json:"sign_in_message"`
 	TypedData     json.RawMessage `json:"typed_data"`
 	Statement     string          `json:"statement"`
@@ -620,10 +668,15 @@ type enrollReqDTO struct {
 	Handle          string `json:"handle"`
 	SignInSignature string `json:"sign_in_signature"`
 	Signature       string `json:"signature"`
+	// PrivateKey is the derived key's 32-byte seed, 0x-hex; the platform
+	// trades with it and stores it sealed.
+	PrivateKey string `json:"private_key,omitempty"`
 }
 
 type enrolledKeyDTO struct {
 	Address    string `json:"address"`
+	Strategy   string `json:"strategy"`
+	Derived    bool   `json:"derived"`
 	Label      string `json:"label"`
 	BuilderID  int    `json:"builder_id"`
 	MaxFee     int    `json:"max_builder_fee_per_100k"`
@@ -641,13 +694,23 @@ func (h *handler) enrollPayload(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, err)
 		return
 	}
-	res, err := h.enroll.Payload(r.Context(), in.Address, in.Label)
+	var pub []byte
+	if pk := strings.TrimSpace(in.PublicKey); pk != "" {
+		var err error
+		if pub, err = hex.DecodeString(strings.TrimPrefix(pk, "0x")); err != nil {
+			h.fail(w, fmt.Errorf("%w: public_key must be hex", ErrInvalid))
+			return
+		}
+	}
+	res, err := h.enroll.Payload(r.Context(), PayloadRequest{Address: in.Address, Strategy: in.Strategy, Label: in.Label, PublicKey: pub})
 	if err != nil {
 		h.fail(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, enrollPayloadDTO{
 		Handle:        res.Handle,
+		Strategy:      res.Strategy,
+		PublicKey:     res.PublicKey,
 		SignInMessage: res.SignInMessage,
 		TypedData:     res.TypedData,
 		Statement:     res.Statement,
@@ -667,15 +730,38 @@ func (h *handler) enrollFinish(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, err)
 		return
 	}
-	k, err := h.enroll.Enroll(r.Context(), in.Handle, in.SignInSignature, in.Signature)
+	k, err := h.enroll.Enroll(r.Context(), in.Handle, in.SignInSignature, in.Signature, in.PrivateKey)
 	if err != nil {
 		h.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, enrolledKeyDTO{
-		Address: k.Address, Label: k.Label, BuilderID: k.BuilderID,
+	writeJSON(w, http.StatusOK, toEnrolledKeyDTO(k))
+}
+
+func toEnrolledKeyDTO(k keys.Key) enrolledKeyDTO {
+	return enrolledKeyDTO{
+		Address: k.Address, Strategy: k.Strategy, Derived: k.Derived, Label: k.Label, BuilderID: k.BuilderID,
 		MaxFee: k.MaxBuilderFeePer100K, MaxFeePct: k.MaxBuilderFeePct, EnrolledAt: timeOrEmpty(k.EnrolledAt),
-	})
+	}
+}
+
+// enrolledKeys lists a wallet's keys: which strategies are enabled.
+func (h *handler) enrolledKeys(w http.ResponseWriter, r *http.Request) {
+	if h.enroll == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "enrollment_unavailable", Message: "no builder code is configured"})
+		return
+	}
+	address := r.URL.Query().Get("address")
+	if !isAddress(strings.TrimSpace(address)) {
+		h.fail(w, fmt.Errorf("%w: address must be 0x followed by 40 hex characters", ErrInvalid))
+		return
+	}
+	list := h.enroll.Keys(address)
+	out := make([]enrolledKeyDTO, 0, len(list))
+	for _, k := range list {
+		out = append(out, toEnrolledKeyDTO(k))
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 type exchangeNetworkDTO struct {
@@ -1118,15 +1204,12 @@ func (h *handler) enrolledKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	address := r.URL.Query().Get("address")
-	k, err := h.enroll.Key(address)
+	k, err := h.enroll.Key(address, r.URL.Query().Get("strategy"))
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, errorDTO{Error: "no_key", Message: "no exchange key is enrolled for this address"})
 		return
 	}
-	writeJSON(w, http.StatusOK, enrolledKeyDTO{
-		Address: k.Address, Label: k.Label, BuilderID: k.BuilderID,
-		MaxFee: k.MaxBuilderFeePer100K, MaxFeePct: k.MaxBuilderFeePct, EnrolledAt: timeOrEmpty(k.EnrolledAt),
-	})
+	writeJSON(w, http.StatusOK, toEnrolledKeyDTO(k))
 }
 
 // --- plumbing ---

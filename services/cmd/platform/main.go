@@ -28,6 +28,7 @@ import (
 	"github.com/wagmiCTO/super-agent/services/internal/keys"
 	"github.com/wagmiCTO/super-agent/services/internal/platform"
 	"github.com/wagmiCTO/super-agent/services/internal/policy"
+	"github.com/wagmiCTO/super-agent/services/internal/seal"
 	"github.com/wagmiCTO/super-agent/services/internal/store"
 	"github.com/wagmiCTO/super-agent/services/internal/venue/perpl"
 )
@@ -81,6 +82,7 @@ func run(log *slog.Logger) error {
 	}
 	// One policy engine and one ledger for everyone: accounts are keyed by
 	// wallet, and the leaderboard is a single table.
+	handlerOpts := []platform.Option{}
 	eng := policy.New()
 	ledger := platform.NewLedger()
 	var keyStore *keys.Store
@@ -96,9 +98,27 @@ func run(log *slog.Logger) error {
 			return fmt.Errorf("restore policy state: %w", err)
 		}
 		ledger = platform.NewJournaledLedger(db)
+		// Private keys are sealed at rest under PLATFORM_KEY_ENCRYPTION_KEY;
+		// rows written before sealing are re-sealed on the first start with one.
+		if hexKey := os.Getenv("PLATFORM_KEY_ENCRYPTION_KEY"); hexKey != "" {
+			sl, err := seal.New(hexKey)
+			if err != nil {
+				return fmt.Errorf("PLATFORM_KEY_ENCRYPTION_KEY: %w", err)
+			}
+			resealed, err := db.UseSealer(ctx, sl)
+			if err != nil {
+				return fmt.Errorf("seal keys: %w", err)
+			}
+			if resealed > 0 {
+				log.Info("keys sealed at rest", "resealed", resealed)
+			}
+		} else {
+			log.Warn("PLATFORM_KEY_ENCRYPTION_KEY is not set: exchange keys are stored in the clear")
+		}
 		if keyStore, err = keys.WithBackend(ctx, keyBackend{db}); err != nil {
 			return err
 		}
+		handlerOpts = append(handlerOpts, platform.WithAuthKeys(db))
 		log.Info("database connected", "keys", keyStore.Len())
 	} else {
 		log.Warn("DATABASE_URL is not set: state lives in memory and is lost on restart")
@@ -115,7 +135,6 @@ func run(log *slog.Logger) error {
 
 	// Enrollment of user wallets needs our builder code; without one the
 	// endpoints answer 503 and the platform trades with its own key only.
-	handlerOpts := []platform.Option{}
 	if cfg.BuilderID > 0 {
 		// PLATFORM_KEYS_FILE keeps enrolled keys across restarts. Plain JSON
 		// with 0600 permissions: fine for a testnet development box, not for

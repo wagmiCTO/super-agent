@@ -19,6 +19,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/wagmiCTO/super-agent/services/internal/fixed"
+	"github.com/wagmiCTO/super-agent/services/internal/seal"
 )
 
 //go:embed migrations/*.sql
@@ -26,7 +27,28 @@ var migrations embed.FS
 
 // Store is safe for concurrent use.
 type Store struct {
-	pool *pgxpool.Pool
+	pool   *pgxpool.Pool
+	sealer *seal.Sealer // nil stores private keys in the clear
+}
+
+// UseSealer encrypts private keys at rest from now on and re-seals any row
+// that was written in the clear.
+func (s *Store) UseSealer(ctx context.Context, sl *seal.Sealer) (resealed int, err error) {
+	s.sealer = sl
+	keys, err := s.Keys(ctx)
+	if err != nil {
+		return 0, err
+	}
+	for _, k := range keys {
+		if k.sealed {
+			continue
+		}
+		if err := s.PutKey(ctx, k); err != nil {
+			return resealed, err
+		}
+		resealed++
+	}
+	return resealed, nil
 }
 
 // Open connects and applies migrations in file order.
@@ -98,33 +120,49 @@ func (s *Store) migrate(ctx context.Context) error {
 // KeyRecord is an enrolled venue API key as stored.
 type KeyRecord struct {
 	Address              string
+	Strategy             string // "" serves every strategy
 	APIKey               string
 	PrivateKey           ed25519.PrivateKey
 	Label                string
 	BuilderID            int
 	MaxBuilderFeePer100K int
 	MaxBuilderFeePct     string
+	Derived              bool
 	EnrolledAt           time.Time
+	sealed               bool // as read: was the row encrypted at rest
 }
+
+// keyLabel binds a sealed private key to its row.
+func keyLabel(address, strategy string) string { return strings.ToLower(address) + "/" + strategy }
 
 func (s *Store) PutKey(ctx context.Context, k KeyRecord) error {
+	priv := []byte(k.PrivateKey)
+	if s.sealer != nil {
+		var err error
+		if priv, err = s.sealer.Seal(priv, keyLabel(k.Address, k.Strategy)); err != nil {
+			return err
+		}
+	}
 	_, err := s.pool.Exec(ctx, `
-		insert into keys (address, api_key, private_key, label, builder_id, max_fee_per_100k, max_fee_pct, enrolled_at)
-		values ($1, $2, $3, $4, $5, $6, $7, $8)
-		on conflict (address) do update set api_key = excluded.api_key, private_key = excluded.private_key,
+		insert into keys (address, strategy, api_key, private_key, label, builder_id, max_fee_per_100k, max_fee_pct, derived, enrolled_at)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		on conflict (address, strategy) do update set api_key = excluded.api_key, private_key = excluded.private_key,
 			label = excluded.label, builder_id = excluded.builder_id, max_fee_per_100k = excluded.max_fee_per_100k,
-			max_fee_pct = excluded.max_fee_pct, enrolled_at = excluded.enrolled_at`,
-		strings.ToLower(k.Address), k.APIKey, []byte(k.PrivateKey), k.Label, k.BuilderID, k.MaxBuilderFeePer100K, k.MaxBuilderFeePct, k.EnrolledAt)
+			max_fee_pct = excluded.max_fee_pct, derived = excluded.derived, enrolled_at = excluded.enrolled_at`,
+		strings.ToLower(k.Address), k.Strategy, k.APIKey, priv, k.Label, k.BuilderID, k.MaxBuilderFeePer100K, k.MaxBuilderFeePct, k.Derived, k.EnrolledAt)
 	return err
 }
 
-func (s *Store) DeleteKey(ctx context.Context, address string) error {
-	_, err := s.pool.Exec(ctx, `delete from keys where address = $1`, strings.ToLower(address))
+func (s *Store) DeleteKey(ctx context.Context, address, strategy string) error {
+	_, err := s.pool.Exec(ctx, `delete from keys where address = $1 and strategy = $2`, strings.ToLower(address), strategy)
 	return err
 }
 
+// Keys loads every key. Rows written before sealing are read as they are;
+// a sealed row without a sealer, or under another key, is an error rather
+// than a silently missing key.
 func (s *Store) Keys(ctx context.Context) ([]KeyRecord, error) {
-	rows, err := s.pool.Query(ctx, `select address, api_key, private_key, label, builder_id, max_fee_per_100k, max_fee_pct, enrolled_at from keys`)
+	rows, err := s.pool.Query(ctx, `select address, strategy, api_key, private_key, label, builder_id, max_fee_per_100k, max_fee_pct, derived, enrolled_at from keys`)
 	if err != nil {
 		return nil, err
 	}
@@ -133,14 +171,50 @@ func (s *Store) Keys(ctx context.Context) ([]KeyRecord, error) {
 	for rows.Next() {
 		var k KeyRecord
 		var priv []byte
-		if err := rows.Scan(&k.Address, &k.APIKey, &priv, &k.Label, &k.BuilderID, &k.MaxBuilderFeePer100K, &k.MaxBuilderFeePct, &k.EnrolledAt); err != nil {
+		if err := rows.Scan(&k.Address, &k.Strategy, &k.APIKey, &priv, &k.Label, &k.BuilderID, &k.MaxBuilderFeePer100K, &k.MaxBuilderFeePct, &k.Derived, &k.EnrolledAt); err != nil {
 			return nil, err
+		}
+		if seal.Sealed(priv) {
+			if s.sealer == nil {
+				return nil, fmt.Errorf("store: key for %s/%s is sealed but no PLATFORM_KEY_ENCRYPTION_KEY is set", k.Address, k.Strategy)
+			}
+			if priv, err = s.sealer.Open(priv, keyLabel(k.Address, k.Strategy)); err != nil {
+				return nil, fmt.Errorf("store: key for %s/%s: %w", k.Address, k.Strategy, err)
+			}
+			k.sealed = true
 		}
 		if len(priv) != ed25519.PrivateKeySize {
 			return nil, fmt.Errorf("store: key for %s has %d bytes", k.Address, len(priv))
 		}
 		k.PrivateKey = ed25519.PrivateKey(priv)
 		out = append(out, k)
+	}
+	return out, rows.Err()
+}
+
+// --- request-signing keys ---
+
+// PutAuthKey registers an Ed25519 public key a wallet signs requests with.
+func (s *Store) PutAuthKey(ctx context.Context, address string, publicKey []byte, at time.Time) error {
+	_, err := s.pool.Exec(ctx, `insert into auth_keys (address, public_key, created_at) values ($1, $2, $3) on conflict do nothing`,
+		strings.ToLower(address), publicKey, at)
+	return err
+}
+
+// AuthKeys lists a wallet's registered request-signing keys.
+func (s *Store) AuthKeys(ctx context.Context, address string) ([][]byte, error) {
+	rows, err := s.pool.Query(ctx, `select public_key from auth_keys where address = $1 order by created_at`, strings.ToLower(address))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out [][]byte
+	for rows.Next() {
+		var pk []byte
+		if err := rows.Scan(&pk); err != nil {
+			return nil, err
+		}
+		out = append(out, pk)
 	}
 	return out, rows.Err()
 }
