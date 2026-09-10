@@ -31,7 +31,7 @@ func TestSignedRequests(t *testing.T) {
 	r := NewRegistry(storeWithKey(t, addr), func(context.Context, keys.Key) (venue.Adapter, error) {
 		return &fakeVenue{}, nil
 	}, testLimits(), nil, nil, nil)
-	h := Handler(own, nil, WithRegistry(r))
+	h := Handler(own, nil, WithRegistry(r), WithOwnAccount(true))
 
 	call := func(method, uri string, body []byte, hdr http.Header) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(method, uri, bytes.NewReader(body))
@@ -120,5 +120,35 @@ func TestPersonalSignRoundTrip(t *testing.T) {
 	sig[64] -= 27
 	if got, err := chain.RecoverPersonal(msg, sig); err != nil || got != k.Address {
 		t.Fatalf("v=0/1: %x %v", got, err)
+	}
+}
+
+// Without WithOwnAccount, a request that names no wallet cannot reach the
+// platform's own account — not to read it, not to trade it, not to flip
+// its kill switch. Public endpoints stay public.
+func TestOwnAccountIsClosedByDefault(t *testing.T) {
+	own, _ := newService(t, &fakeVenue{})
+	h := Handler(own, nil)
+	for _, tc := range []struct {
+		method, path, body string
+		want               int
+	}{
+		{http.MethodGet, "/v1/state", "", http.StatusForbidden},
+		{http.MethodPost, "/v1/orders/open", `{"symbol":"MON","side":"long","notional":"10","leverage":"1"}`, http.StatusForbidden},
+		{http.MethodPost, "/v1/orders/close", `{"symbol":"MON"}`, http.StatusForbidden},
+		{http.MethodPost, "/v1/kill", `{"reason":"test"}`, http.StatusForbidden},
+		{http.MethodPost, "/v1/revive", `{}`, http.StatusForbidden},
+		{http.MethodGet, "/v1/markets", "", http.StatusOK},
+		{http.MethodGet, "/v1/health", "", http.StatusOK},
+	} {
+		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != tc.want {
+			t.Errorf("%s %s: %d, want %d (%s)", tc.method, tc.path, rec.Code, tc.want, rec.Body)
+		}
+		if tc.want == http.StatusForbidden && !strings.Contains(rec.Body.String(), "own_account_disabled") {
+			t.Errorf("%s %s: body %s", tc.method, tc.path, rec.Body)
+		}
 	}
 }

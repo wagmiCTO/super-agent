@@ -94,6 +94,10 @@ type Trader struct {
 // within a free plan's daily credits when polled all day.
 const DefaultContextTTL = 4 * time.Hour
 
+// contextRetry is how long a failed refresh with no card to fall back on
+// is remembered before the source is asked again.
+const contextRetry = time.Minute
+
 // NewMarketContext wires the card for the given markets.
 func NewMarketContext(n *insight.Nansen, tokens map[string]TokenRef, ttl time.Duration, log *slog.Logger) *MarketContext {
 	if log == nil {
@@ -122,10 +126,20 @@ func (m *MarketContext) Card(ctx context.Context, symbol string) (Card, error) {
 	for {
 		m.mu.Lock()
 		e := m.cards[symbol]
-		if e != nil && e.inflight == nil && m.now().Sub(e.fetched) < m.ttl {
-			c := e.card
-			m.mu.Unlock()
-			return c, nil
+		if e != nil && e.inflight == nil {
+			age := m.now().Sub(e.fetched)
+			switch {
+			case e.card.Symbol != "" && age < m.ttl:
+				c := e.card
+				m.mu.Unlock()
+				return c, nil
+			case e.card.Symbol == "" && e.err != nil && age < contextRetry:
+				// The last attempt failed and there is nothing to serve;
+				// do not hammer the source, and do not serve an empty card.
+				err := e.err
+				m.mu.Unlock()
+				return Card{}, err
+			}
 		}
 		if e != nil && e.inflight != nil {
 			wait := e.inflight
@@ -172,7 +186,9 @@ func (m *MarketContext) Card(ctx context.Context, symbol string) (Card, error) {
 }
 
 func (m *MarketContext) fetch(ctx context.Context, symbol string, ref TokenRef) (Card, error) {
-	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	// The refresh is shared by every reader; the request that happened to
+	// trigger it must not cancel it for the others when its page moves on.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 25*time.Second)
 	defer cancel()
 	rows, err := m.nansen.Screener(ctx, ref.Chain, "24h", 100)
 	if err != nil {

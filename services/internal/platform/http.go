@@ -39,7 +39,7 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	if authKeys == nil {
 		authKeys = NewMemAuthKeys()
 	}
-	h := &handler{svc: s, log: log, enroll: o.enrollment, registry: o.registry, signals: o.signals, ledger: o.ledger, prize: o.prize, auth: newAuthenticator(authKeys), context: o.context, deposits: o.deposits, history: o.history}
+	h := &handler{svc: s, log: log, enroll: o.enrollment, registry: o.registry, signals: o.signals, ledger: o.ledger, prize: o.prize, auth: newAuthenticator(authKeys), context: o.context, deposits: o.deposits, history: o.history, ownAccount: o.ownAccount}
 	if o.ledger != nil {
 		s.UseLedger(o.ledger)
 	}
@@ -89,6 +89,15 @@ type options struct {
 	context     *MarketContext
 	deposits    *Deposits
 	history     *PrizeHistory
+	ownAccount  bool
+}
+
+// WithOwnAccount lets requests without a wallet header trade the
+// platform's own exchange account. Off, the API serves enrolled wallets
+// only; the platform's account stays what the signals and the browser
+// tests run on, reachable from nowhere else. Keep it off in production.
+func WithOwnAccount(enabled bool) Option {
+	return func(o *options) { o.ownAccount = enabled }
 }
 
 // WithPrizeHistory serves the chain's record of the weekly prizes from the
@@ -176,17 +185,18 @@ func cors(next http.Handler, allowed []string) http.Handler {
 }
 
 type handler struct {
-	svc      *Service
-	log      *slog.Logger
-	enroll   *Enrollment
-	registry *Registry
-	signals  *Signals
-	ledger   *Ledger
-	prize    *Prize
-	auth     *authenticator
-	context  *MarketContext
-	deposits *Deposits
-	history  *PrizeHistory
+	svc        *Service
+	log        *slog.Logger
+	enroll     *Enrollment
+	registry   *Registry
+	signals    *Signals
+	ledger     *Ledger
+	prize      *Prize
+	auth       *authenticator
+	context    *MarketContext
+	deposits   *Deposits
+	history    *PrizeHistory
+	ownAccount bool
 }
 
 // AccountHeader names the wallet a request acts for. On its own it is
@@ -217,6 +227,10 @@ func (h *handler) service(w http.ResponseWriter, r *http.Request) (*Service, boo
 func (h *handler) serviceFor(w http.ResponseWriter, r *http.Request, strategyID string) (*Service, bool) {
 	addr := strings.TrimSpace(r.Header.Get(AccountHeader))
 	if addr == "" {
+		if !h.ownAccount {
+			writeJSON(w, http.StatusForbidden, errorDTO{Error: "own_account_disabled", Message: "this platform trades for enrolled wallets only — sign in with a passkey"})
+			return nil, false
+		}
 		return h.svc, true
 	}
 	if h.registry == nil {
@@ -404,10 +418,9 @@ func (h *handler) health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) markets(w http.ResponseWriter, r *http.Request) {
-	svc, ok := h.service(w, r)
-	if !ok {
-		return
-	}
+	// Markets are the venue's, not an account's: served from the platform's
+	// own connection for everyone.
+	svc := h.svc
 	ms, err := svc.Markets(r.Context())
 	if err != nil {
 		h.fail(w, err)
@@ -484,12 +497,20 @@ func (h *handler) kill(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, fmt.Errorf("%w: a reason is required to engage the kill switch", ErrInvalid))
 		return
 	}
+	if !h.ownAccount {
+		writeJSON(w, http.StatusForbidden, errorDTO{Error: "own_account_disabled", Message: "the kill switch is operated from the platform, not the API"})
+		return
+	}
 	h.svc.Kill(in.Reason)
 	h.log.Warn("kill switch engaged", "reason", in.Reason)
 	writeJSON(w, http.StatusOK, map[string]any{"killed": true, "reason": in.Reason})
 }
 
 func (h *handler) revive(w http.ResponseWriter, r *http.Request) {
+	if !h.ownAccount {
+		writeJSON(w, http.StatusForbidden, errorDTO{Error: "own_account_disabled", Message: "the kill switch is operated from the platform, not the API"})
+		return
+	}
 	h.svc.Revive()
 	h.log.Warn("kill switch released")
 	writeJSON(w, http.StatusOK, map[string]any{"killed": false})

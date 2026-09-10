@@ -49,6 +49,11 @@ func main() {
 }
 
 func run(log *slog.Logger) error {
+	// .env.local overrides .env: a second venue key for a laptop that runs
+	// beside the hosted platform, without touching the shared file.
+	if err := envfile.LoadNearest(".env.local"); err != nil {
+		return err
+	}
 	if err := envfile.LoadNearest(".env"); err != nil {
 		return err
 	}
@@ -255,6 +260,12 @@ func run(log *slog.Logger) error {
 	// Only the web build of the app needs CORS; the defaults cover Expo's
 	// dev server. The native app talks to the API directly.
 	corsOrigins := splitList(envOr("PLATFORM_CORS_ORIGINS", "http://localhost:8081,http://localhost:19006"))
+	// Trading the platform's own account through the API is for development
+	// and the browser tests; a hosted platform serves enrolled wallets only.
+	if ownAccount := envOr("PLATFORM_OWN_ACCOUNT", "0") == "1"; ownAccount {
+		handlerOpts = append(handlerOpts, platform.WithOwnAccount(true))
+		log.Warn("the platform's own account is tradable through the API (PLATFORM_OWN_ACCOUNT=1)")
+	}
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           platform.Handler(svc, log, append(handlerOpts, platform.WithCORS(corsOrigins))...),

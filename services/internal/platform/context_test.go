@@ -119,6 +119,15 @@ func TestMarketContextStaleOnFailure(t *testing.T) {
 	if _, err := m.Card(context.Background(), "mon"); err == nil {
 		t.Fatal("first read succeeded with the source down")
 	}
+	// Right after a failure with nothing cached: still an error, not an
+	// empty card, and the source is not asked again within the minute.
+	calls := fake.calls.Load()
+	if c, err := m.Card(context.Background(), "mon"); err == nil || c.Symbol != "" {
+		t.Fatalf("after failure: %v %+v", err, c)
+	}
+	if fake.calls.Load() != calls {
+		t.Fatal("source asked again within the retry window")
+	}
 	fake.fail.Store(false)
 	now = now.Add(2 * time.Hour)
 	if c, err := m.Card(context.Background(), "mon"); err != nil || c.Stale {

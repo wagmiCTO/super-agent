@@ -51,7 +51,7 @@ func TestPrizeHistory(t *testing.T) {
 	ph.now = func() time.Time { return now }
 
 	own, _ := newService(t, &fakeVenue{})
-	h := Handler(own, nil, WithPrizeHistory(ph))
+	h := Handler(own, nil, WithPrizeHistory(ph), WithOwnAccount(true))
 	get := func() (int, historyDTO) {
 		req := httptest.NewRequest(http.MethodGet, "/v1/prizes/history?limit=5", nil)
 		rec := httptest.NewRecorder()
@@ -86,7 +86,7 @@ func TestPrizeHistory(t *testing.T) {
 		t.Fatalf("after failure: %d %+v", code, out)
 	}
 	// Without a configured indexer the endpoint says so.
-	bare := Handler(own, nil)
+	bare := Handler(own, nil, WithOwnAccount(true))
 	req := httptest.NewRequest(http.MethodGet, "/v1/prizes/history", nil)
 	rec := httptest.NewRecorder()
 	bare.ServeHTTP(rec, req)

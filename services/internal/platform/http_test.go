@@ -16,7 +16,7 @@ import (
 
 func TestCORS(t *testing.T) {
 	svc, _ := newService(t, &fakeVenue{})
-	h := Handler(svc, nil, WithCORS([]string{"http://localhost:8081"}))
+	h := Handler(svc, nil, WithOwnAccount(true), WithCORS([]string{"http://localhost:8081"}))
 
 	tests := []struct {
 		name       string
@@ -51,7 +51,7 @@ func TestCORS(t *testing.T) {
 // Without the option no CORS headers are emitted at all.
 func TestNoCORSByDefault(t *testing.T) {
 	svc, _ := newService(t, &fakeVenue{})
-	h := Handler(svc, nil)
+	h := Handler(svc, nil, WithOwnAccount(true))
 	req := httptest.NewRequest(http.MethodGet, "/v1/health", nil)
 	req.Header.Set("Origin", "http://localhost:8081")
 	rec := httptest.NewRecorder()
@@ -65,7 +65,7 @@ func TestNoCORSByDefault(t *testing.T) {
 // its message from these fields.
 func TestDenialWireShape(t *testing.T) {
 	svc, _ := newService(t, &fakeVenue{})
-	h := Handler(svc, nil)
+	h := Handler(svc, nil, WithOwnAccount(true))
 	body := `{"symbol":"MON","side":"long","notional":"500","leverage":"1"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/orders/open", stringsReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -82,7 +82,7 @@ func TestDenialWireShape(t *testing.T) {
 
 func TestNoExchangeAccountIs409(t *testing.T) {
 	svc, _ := newService(t, &fakeVenue{placeErr: venue.ErrNoExchangeAccount})
-	h := Handler(svc, nil)
+	h := Handler(svc, nil, WithOwnAccount(true))
 	req := httptest.NewRequest(http.MethodPost, "/v1/orders/open", stringsReader(`{"symbol":"MON","side":"long","notional":"10","leverage":"1"}`))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -118,7 +118,7 @@ func TestAccountStatus(t *testing.T) {
 // preflight does not allow it.
 func TestCORSAllowsAccountHeader(t *testing.T) {
 	svc, _ := newService(t, &fakeVenue{})
-	h := Handler(svc, nil, WithCORS([]string{"http://localhost:8082"}))
+	h := Handler(svc, nil, WithOwnAccount(true), WithCORS([]string{"http://localhost:8082"}))
 	req := httptest.NewRequest(http.MethodOptions, "/v1/state", nil)
 	req.Header.Set("Origin", "http://localhost:8082")
 	req.Header.Set("Access-Control-Request-Headers", AccountHeader)
@@ -155,7 +155,7 @@ func TestExchangeNetwork(t *testing.T) {
 func TestLeaderboardCountsRoundTrips(t *testing.T) {
 	svc, _ := newService(t, &fakeVenue{})
 	ledger := NewLedger()
-	h := Handler(svc, nil, WithLedger(ledger))
+	h := Handler(svc, nil, WithLedger(ledger), WithOwnAccount(true))
 	post := func(path, body string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, path, stringsReader(body))
 		req.Header.Set("Content-Type", "application/json")
@@ -193,7 +193,7 @@ func TestCandlesEndpoint(t *testing.T) {
 	t0 := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
 	fv := &fakeVenue{candles: []venue.Candle{{Open: t0, Period: time.Minute, O: fixed.FromInt(1), H: fixed.FromInt(2), L: fixed.FromInt(1), C: fixed.FromInt(2)}}}
 	svc, _ := newService(t, fv)
-	h := Handler(svc, nil)
+	h := Handler(svc, nil, WithOwnAccount(true))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/candles?symbol=mon&period_seconds=60&from=1789000000&to=1789003600", nil))
 	if rec.Code != http.StatusOK {

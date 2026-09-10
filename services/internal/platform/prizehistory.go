@@ -73,7 +73,9 @@ func (p *PrizeHistory) Read(ctx context.Context, limit int) (History, error) {
 	}
 	p.mu.Unlock()
 
-	pools, totals, err := p.envio.Pools(ctx, limit)
+	fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+	defer cancel()
+	pools, totals, err := p.envio.Pools(fetchCtx, limit)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.fetched = p.now()

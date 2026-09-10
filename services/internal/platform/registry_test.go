@@ -105,7 +105,7 @@ func TestHeaderRouting(t *testing.T) {
 	r := NewRegistry(storeWithKey(t, addr), func(context.Context, keys.Key) (venue.Adapter, error) {
 		return &fakeVenue{}, nil
 	}, testLimits(), nil, nil, nil)
-	h := Handler(own, nil, WithRegistry(r))
+	h := Handler(own, nil, WithRegistry(r), WithOwnAccount(true))
 
 	get := func(header string) int {
 		req := httptest.NewRequest(http.MethodGet, "/v1/state", nil)
@@ -127,7 +127,7 @@ func TestHeaderRouting(t *testing.T) {
 	}
 
 	// Without a registry the header is refused outright.
-	bare := Handler(own, nil)
+	bare := Handler(own, nil, WithOwnAccount(true))
 	req := httptest.NewRequest(http.MethodGet, "/v1/state", nil)
 	req.Header.Set(AccountHeader, addr)
 	rec := httptest.NewRecorder()
