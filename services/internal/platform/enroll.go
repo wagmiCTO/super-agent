@@ -222,8 +222,12 @@ func isAddress(s string) bool {
 }
 
 const (
-	enrollAttempts   = 5
-	enrollRetryDelay = time.Second // doubles each attempt: 1+2+4+8 s
+	// The venue's refusal of a document is deterministic (measured 10 Sep
+	// 2026: the same body is refused every time, a fresh payload is an
+	// independent draw), so the server does not retry; the app asks for a
+	// new payload instead.
+	enrollAttempts   = 1
+	enrollRetryDelay = time.Second
 )
 
 // isVenueRefusal reports a 4xx from the venue's REST API, the only failure a

@@ -73,32 +73,35 @@ export async function signEnrollment(wallet: Wallet, doc: TypedDataDocument): Pr
  *   accepting the venue's terms and, on first contact, becoming a profile;
  * - the enrollment document, as EIP-712 — consent to our builder fee.
  *
- * The venue's enroll endpoint accepts the EIP-712 signature only when its
- * recovery byte is 27 (measured 10 Sep 2026: v=27 enrolls, v=28 is refused
- * with a bare 400, same wallet, same document otherwise valid). The byte is
- * a coin flip per document, so when it comes up 28 the wallet simply signs a
- * fresh document — a new payload carries a new API key and timestamp — until
- * it lands on 27. Silent, and two tries on average.
+ * The venue's enroll endpoint refuses roughly two in five otherwise valid
+ * submissions with a bare 400, deterministically for a given document
+ * (measured 10 Sep 2026 on twenty fresh wallets; not the recovery byte, as
+ * first thought — reported to the venue). Retrying the same body never
+ * helps; a fresh payload — new API key, new timestamp — is an independent
+ * draw, so the wallet signs a new one on each refusal. Silent, and five
+ * draws leave under one percent of users without a key.
  */
 export async function connectExchange(wallet: Wallet, label = 'TradeAgent'): Promise<EnrolledKey> {
   const account = toViemAccount(wallet.session);
-  for (let attempt = 0; attempt < MAX_SIGN_ATTEMPTS; attempt++) {
+  let last: unknown;
+  for (let attempt = 0; attempt < MAX_ENROLL_ATTEMPTS; attempt++) {
     const payload = await exchangeApi.payload(wallet.address, label);
     const signature = await signEnrollment(wallet, payload.typed_data as unknown as TypedDataDocument);
-    if (!recoversWithV27(signature)) continue;
     const signInSignature = await account.signMessage({ message: payload.sign_in_message });
-    return exchangeApi.enroll(payload.handle, signInSignature, signature);
+    try {
+      return await exchangeApi.enroll(payload.handle, signInSignature, signature);
+    } catch (e) {
+      // Only the venue's refusal of this particular document is worth a
+      // fresh draw; anything else (network, our own 4xx) is reported as is.
+      if (!(e instanceof ApiError && e.code === 'venue_rejected')) throw e;
+      last = e;
+    }
   }
-  throw new Error('could not produce a signature the exchange accepts; try again');
+  throw last instanceof Error ? last : new Error('the exchange refused every enrollment attempt; try again');
 }
 
-/** Bound on re-signing: 2^-12 chance of never seeing v=27. */
-const MAX_SIGN_ATTEMPTS = 12;
-
-/** The last byte of a 65-byte secp256k1 signature is the recovery id, 27 or 28. */
-export function recoversWithV27(signature: `0x${string}`): boolean {
-  return signature.length === 132 && signature.slice(-2).toLowerCase() === '1b';
-}
+/** Bound on fresh payloads per Connect: (2/5)^5 < 1% left without a key. */
+const MAX_ENROLL_ATTEMPTS = 5;
 
 /** Whether a key is already enrolled for the wallet; null when the platform has none. */
 export async function enrolledKey(address: string): Promise<EnrolledKey | null> {
