@@ -2,14 +2,16 @@
  * The account layer as the screens see it.
  *
  * `create` and `signIn` run a passkey ceremony, derive the wallet and hold a
- * signing session in memory. `signOut` ends the session and forgets the
- * stored record; the passkey itself stays with the platform. Nothing derived
- * from the PRF output is ever persisted.
+ * signing session in memory. The seed is also kept in the device's session
+ * store (keychain on a phone, the tab's sessionStorage on the web) so the
+ * next visit opens unlocked; `signOut` ends the session and forgets both.
+ * The passkey itself stays with the platform.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { deriveWallet, prfOutputToSeed, type Wallet } from './derive';
 import { createPasskey, signInWithPasskey } from './passkey';
+import { clearSeed, loadSeed, saveSeed } from './session';
 import { clearStoredAccount, loadStoredAccount, saveStoredAccount, type StoredAccount } from './storage';
 
 export type AccountState =
@@ -26,10 +28,29 @@ export function useAccount() {
 
   useEffect(() => {
     let cancelled = false;
-    loadStoredAccount().then((stored) => {
+    (async () => {
+      const stored = await loadStoredAccount();
       if (cancelled) return;
-      setState(stored ? { status: 'remembered', stored } : { status: 'none' });
-    });
+      if (!stored) {
+        setState({ status: 'none' });
+        return;
+      }
+      // A live session restores the wallet without a passkey prompt.
+      const seed = await loadSeed().catch(() => null);
+      if (cancelled) return;
+      if (seed) {
+        const wallet = deriveWallet(seed);
+        seed.fill(0);
+        if (wallet.address === stored.address) {
+          walletRef.current = wallet;
+          setState({ status: 'unlocked', stored, wallet });
+          return;
+        }
+        wallet.session.end();
+        await clearSeed();
+      }
+      setState({ status: 'remembered', stored });
+    })();
     return () => {
       cancelled = true;
       walletRef.current?.session.end();
@@ -45,6 +66,7 @@ export function useAccount() {
       prfOutput.fill(0);
       walletRef.current?.session.end();
       const wallet = deriveWallet(seed);
+      await saveSeed(seed);
       seed.fill(0);
       walletRef.current = wallet;
       const stored: StoredAccount = { credential, address: wallet.address, label };
@@ -70,6 +92,7 @@ export function useAccount() {
   const signOut = useCallback(async () => {
     walletRef.current?.session.end();
     walletRef.current = null;
+    await clearSeed();
     await clearStoredAccount();
     setState({ status: 'none' });
   }, []);

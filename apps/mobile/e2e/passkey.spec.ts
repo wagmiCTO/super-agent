@@ -46,9 +46,14 @@ test.describe('Passkey account', () => {
     await expect(page.getByText('Signed in with passkey')).toBeVisible();
     await expect(page.getByTestId('account-address')).toHaveText(address!);
 
-    // A reload keeps the address on screen without a prompt, locked.
+    // A reload restores the session from the tab: still signed in, no prompt.
     await page.reload();
-    await expect(page.getByText('Locked · passkey to unlock')).toBeVisible();
+    await expect(page.getByText('Signed in with passkey')).toBeVisible();
+    // A new tab has no session: the address is remembered, the wallet locked.
+    const fresh = await page.context().newPage();
+    await fresh.goto('/');
+    await expect(fresh.getByText('Locked · passkey to unlock')).toBeVisible();
+    await fresh.close();
     await expect(page.getByTestId('account-address')).toHaveText(address!);
   });
 });
