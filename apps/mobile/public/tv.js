@@ -30,7 +30,10 @@
 
   function fetchBars(from, to) {
     var url = API + '/v1/candles?symbol=' + encodeURIComponent(SYMBOL) + '&period_seconds=' + PERIOD + '&from=' + from + '&to=' + to;
-    return fetch(url).then(function (r) {
+    // A localtunnel in front of the platform shows browsers a reminder page
+    // unless asked not to; only relevant when testing a phone against a laptop.
+    var headers = /\.loca\.lt$/.test(new URL(API).hostname) ? { 'Bypass-Tunnel-Reminder': '1' } : {};
+    return fetch(url, { headers: headers }).then(function (r) {
       if (!r.ok) throw new Error('candles ' + r.status);
       return r.json();
     }).then(function (rows) {
