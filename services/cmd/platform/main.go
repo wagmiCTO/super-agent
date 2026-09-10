@@ -25,6 +25,7 @@ import (
 
 	"github.com/wagmiCTO/super-agent/services/internal/deposit"
 	"github.com/wagmiCTO/super-agent/services/internal/envfile"
+	"github.com/wagmiCTO/super-agent/services/internal/envio"
 	"github.com/wagmiCTO/super-agent/services/internal/fixed"
 	"github.com/wagmiCTO/super-agent/services/internal/insight"
 	"github.com/wagmiCTO/super-agent/services/internal/keys"
@@ -192,6 +193,16 @@ func run(log *slog.Logger) error {
 		log.Info("market context enabled", "source", "nansen", "markets", len(tokens), "cache", ttl)
 	} else {
 		log.Warn("market context disabled: NANSEN_API_KEY is not set")
+	}
+	if url := os.Getenv("ENVIO_GRAPHQL_URL"); url != "" {
+		c, err := envio.New(url)
+		if err != nil {
+			return err
+		}
+		handlerOpts = append(handlerOpts, platform.WithPrizeHistory(platform.NewPrizeHistory(c, log)))
+		log.Info("prize history enabled", "source", "envio")
+	} else {
+		log.Warn("prize history disabled: ENVIO_GRAPHQL_URL is not set")
 	}
 	if key := os.Getenv("AURORA_API_KEY"); key != "" {
 		a, err := deposit.NewAurora(key, os.Getenv("AURORA_API_URL"))

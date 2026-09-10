@@ -39,7 +39,7 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	if authKeys == nil {
 		authKeys = NewMemAuthKeys()
 	}
-	h := &handler{svc: s, log: log, enroll: o.enrollment, registry: o.registry, signals: o.signals, ledger: o.ledger, prize: o.prize, auth: newAuthenticator(authKeys), context: o.context, deposits: o.deposits}
+	h := &handler{svc: s, log: log, enroll: o.enrollment, registry: o.registry, signals: o.signals, ledger: o.ledger, prize: o.prize, auth: newAuthenticator(authKeys), context: o.context, deposits: o.deposits, history: o.history}
 	if o.ledger != nil {
 		s.UseLedger(o.ledger)
 	}
@@ -54,6 +54,7 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /v1/signals/rsi", h.rsi)
 	mux.HandleFunc("GET /v1/leaderboard", h.leaderboard)
 	mux.HandleFunc("GET /v1/prizes", h.prizes)
+	mux.HandleFunc("GET /v1/prizes/history", h.prizeHistory)
 	mux.HandleFunc("GET /v1/candles", h.candles)
 	mux.HandleFunc("GET /v1/trades", h.trades)
 	mux.HandleFunc("GET /v1/context", h.marketContext)
@@ -87,6 +88,13 @@ type options struct {
 	authKeys    AuthKeys
 	context     *MarketContext
 	deposits    *Deposits
+	history     *PrizeHistory
+}
+
+// WithPrizeHistory serves the chain's record of the weekly prizes from the
+// Envio indexer; without it /v1/prizes/history answers 503.
+func WithPrizeHistory(p *PrizeHistory) Option {
+	return func(o *options) { o.history = p }
 }
 
 // WithMarketContext serves the Nansen card; without it /v1/context answers 503.
@@ -178,6 +186,7 @@ type handler struct {
 	auth     *authenticator
 	context  *MarketContext
 	deposits *Deposits
+	history  *PrizeHistory
 }
 
 // AccountHeader names the wallet a request acts for. On its own it is
@@ -1499,4 +1508,101 @@ func (h *handler) depositStatus(w http.ResponseWriter, r *http.Request) {
 		s.TxHashes = []string{}
 	}
 	writeJSON(w, http.StatusOK, depositStatusDTO{Status: s.Status, UpdatedAt: timeOrEmpty(s.UpdatedAt), AmountIn: s.AmountIn, AmountOut: s.AmountOut, TxHashes: s.TxHashes})
+}
+
+// --- prize history from the indexer ---
+
+type historyPrizeDTO struct {
+	Wallet    string `json:"wallet"`
+	Rank      int    `json:"rank"`
+	Amount    string `json:"amount"`
+	PnL       string `json:"pnl"`
+	Claimed   bool   `json:"claimed"`
+	ClaimedAt string `json:"claimed_at,omitempty"`
+	ClaimTx   string `json:"claim_tx,omitempty"`
+}
+
+type historyPoolDTO struct {
+	Week      uint64            `json:"week"`
+	WeekStart string            `json:"week_start"`
+	Strategy  string            `json:"strategy"`
+	Funded    string            `json:"funded"`
+	Fundings  int               `json:"fundings"`
+	Settled   bool              `json:"settled"`
+	SettledAt string            `json:"settled_at,omitempty"`
+	Carried   string            `json:"carried"`
+	Claimed   string            `json:"claimed"`
+	Prizes    []historyPrizeDTO `json:"prizes"`
+}
+
+type historyDTO struct {
+	Pools  []historyPoolDTO `json:"pools"`
+	Totals struct {
+		Funded       string `json:"funded"`
+		Paid         string `json:"paid"`
+		Claimed      string `json:"claimed"`
+		Pools        int    `json:"pools"`
+		SettledPools int    `json:"settled_pools"`
+	} `json:"totals"`
+	Source    string `json:"source"`
+	Stale     bool   `json:"stale"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+// prizeHistory serves the weeks gone by as the chain recorded them. Amounts
+// are the token's smallest units, as the contract emits them. Public.
+func (h *handler) prizeHistory(w http.ResponseWriter, r *http.Request) {
+	if h.history == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "history_unavailable", Message: "the prize indexer is not configured"})
+		return
+	}
+	limit := 12
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+	hist, err := h.history.Read(r.Context(), limit)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, errorDTO{Error: "partner_error", Message: err.Error()})
+		return
+	}
+	out := historyDTO{Pools: []historyPoolDTO{}, Source: "envio", Stale: hist.Stale, UpdatedAt: timeOrEmpty(hist.UpdatedAt)}
+	out.Totals.Funded, out.Totals.Paid, out.Totals.Claimed = hist.Totals.Funded, hist.Totals.Paid, hist.Totals.Claimed
+	out.Totals.Pools, out.Totals.SettledPools = hist.Totals.Pools, hist.Totals.SettledPools
+	for _, p := range hist.Pools {
+		week, _ := strconv.ParseUint(p.Week, 10, 64)
+		d := historyPoolDTO{
+			Week: week, WeekStart: timeOrEmpty(p.WeekStart), Strategy: p.StrategyID, Funded: p.Funded, Fundings: p.Fundings,
+			Settled: p.Settled, Carried: p.Carried, Claimed: p.Claimed, Prizes: []historyPrizeDTO{},
+		}
+		if d.Strategy == "" {
+			d.Strategy = p.Strategy
+		}
+		if p.SettledAt != nil {
+			d.SettledAt = unixString(*p.SettledAt)
+		}
+		for _, pr := range p.Prizes {
+			pd := historyPrizeDTO{Wallet: pr.Wallet, Rank: pr.Rank, Amount: pr.Amount, PnL: pr.PnL, Claimed: pr.Claimed}
+			if pr.ClaimedAt != nil {
+				pd.ClaimedAt = unixString(*pr.ClaimedAt)
+			}
+			if pr.ClaimTx != nil {
+				pd.ClaimTx = *pr.ClaimTx
+			}
+			d.Prizes = append(d.Prizes, pd)
+		}
+		out.Pools = append(out.Pools, d)
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// unixString turns the indexer's block timestamp (seconds, as a string)
+// into RFC 3339.
+func unixString(s string) string {
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return ""
+	}
+	return timeOrEmpty(time.Unix(n, 0).UTC())
 }

@@ -457,6 +457,32 @@ paths:
           description: Aurora does not know this deposit, or failed.
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
+  /v1/prizes/history:
+    get:
+      summary: The weeks gone by, as the chain recorded them
+      description: |
+        Read from the prize-pool indexer (Envio HyperIndex over the
+        StrategyPrizePool contract): every pool with what it held, who won and
+        who has claimed. Amounts are the collateral token's smallest units,
+        as the contract emits them. Cached a minute; served stale, flagged,
+        when the indexer cannot be read.
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, default: 12, maximum: 100 }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrizeHistory" }
+        "502":
+          description: The indexer could not be read and there is no cached answer.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "503":
+          description: No indexer configured.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
   /v1/leaderboard:
     get:
       summary: This week's board for every strategy
@@ -1035,6 +1061,53 @@ components:
           type: array
           items: { type: string }
 
+    PrizeHistory:
+      type: object
+      required: [pools, totals, source, stale, updated_at]
+      properties:
+        pools:
+          type: array
+          items: { $ref: "#/components/schemas/HistoryPool" }
+        totals:
+          type: object
+          required: [funded, paid, claimed, pools, settled_pools]
+          properties:
+            funded: { type: string, description: Token units. }
+            paid: { type: string }
+            claimed: { type: string }
+            pools: { type: integer }
+            settled_pools: { type: integer }
+        source: { type: string, example: envio }
+        stale: { type: boolean }
+        updated_at: { type: string, format: date-time }
+
+    HistoryPool:
+      type: object
+      required: [week, week_start, strategy, funded, fundings, settled, carried, claimed, prizes]
+      properties:
+        week: { type: integer, format: int64 }
+        week_start: { type: string, format: date-time }
+        strategy: { type: string, description: The strategy id, or its bytes32 key when unknown to this platform. }
+        funded: { type: string, description: Token units. }
+        fundings: { type: integer }
+        settled: { type: boolean }
+        settled_at: { type: string, format: date-time }
+        carried: { type: string }
+        claimed: { type: string }
+        prizes:
+          type: array
+          items:
+            type: object
+            required: [wallet, rank, amount, pnl, claimed]
+            properties:
+              wallet: { type: string }
+              rank: { type: integer }
+              amount: { type: string, description: Token units. }
+              pnl: { type: string, description: Collateral micros, signed. }
+              claimed: { type: boolean }
+              claimed_at: { type: string, format: date-time }
+              claim_tx: { type: string }
+
     Error:
       type: object
       required: [error, message]
@@ -1053,7 +1126,7 @@ components:
             unknown, re-read state and retry), unknown_market, no_position,
             no_credentials, unauthenticated (401: the wallet registered a
             request-signing key and this request is not signed by it),
-            context_unavailable and deposit_unavailable (503: not configured),
+            context_unavailable, deposit_unavailable and history_unavailable (503: not configured),
             partner_error (502: Nansen or Aurora refused, message is theirs), internal.
         message: { type: string, description: For a person. }
         limit: { $ref: "#/components/schemas/Decimal" }
