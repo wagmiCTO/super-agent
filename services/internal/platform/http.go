@@ -895,19 +895,22 @@ func (h *handler) candles(w http.ResponseWriter, r *http.Request) {
 // --- trades ---
 
 type tradeDTO struct {
-	Strategy   string `json:"strategy"`
-	Symbol     string `json:"symbol"`
-	Side       string `json:"side"`
-	Size       string `json:"size"`
-	EntryPrice string `json:"entry_price"`
-	ExitPrice  string `json:"exit_price,omitempty"`
-	PnL        string `json:"pnl,omitempty"`
-	OpenedAt   string `json:"opened_at"`
-	ClosedAt   string `json:"closed_at,omitempty"`
+	Strategy    string `json:"strategy"`
+	Symbol      string `json:"symbol"`
+	Side        string `json:"side"`
+	Size        string `json:"size"`
+	EntryPrice  string `json:"entry_price"`
+	EntryFee    string `json:"entry_fee"`
+	ExitPrice   string `json:"exit_price,omitempty"`
+	ExitFee     string `json:"exit_fee,omitempty"`
+	PnL         string `json:"pnl,omitempty"`
+	CloseReason string `json:"close_reason,omitempty"`
+	OpenedAt    string `json:"opened_at"`
+	ClosedAt    string `json:"closed_at,omitempty"`
 }
 
 // trades lists the account's round trips in a market, newest first, for the
-// chart's marks: ?symbol=MON&limit=50.
+// chart's marks and the history: ?symbol=MON&strategy=direction&limit=50.
 func (h *handler) trades(w http.ResponseWriter, r *http.Request) {
 	svc, ok := h.service(w, r)
 	if !ok {
@@ -919,16 +922,16 @@ func (h *handler) trades(w http.ResponseWriter, r *http.Request) {
 			limit = n
 		}
 	}
-	list, err := svc.Trades(r.Context(), r.URL.Query().Get("symbol"), limit)
+	list, err := svc.Trades(r.Context(), r.URL.Query().Get("symbol"), r.URL.Query().Get("strategy"), limit)
 	if err != nil {
 		h.fail(w, err)
 		return
 	}
 	out := make([]tradeDTO, 0, len(list))
 	for _, t := range list {
-		d := tradeDTO{Strategy: t.Strategy, Symbol: t.Symbol, Side: t.Side, Size: t.Size.String(), EntryPrice: t.EntryPrice.String(), OpenedAt: timeOrEmpty(t.OpenedAt)}
+		d := tradeDTO{Strategy: t.Strategy, Symbol: t.Symbol, Side: t.Side, Size: t.Size.String(), EntryPrice: t.EntryPrice.String(), EntryFee: t.EntryFee.String(), OpenedAt: timeOrEmpty(t.OpenedAt)}
 		if !t.ClosedAt.IsZero() {
-			d.ExitPrice, d.PnL, d.ClosedAt = t.ExitPrice.String(), t.PnL.String(), timeOrEmpty(t.ClosedAt)
+			d.ExitPrice, d.ExitFee, d.PnL, d.CloseReason, d.ClosedAt = t.ExitPrice.String(), t.ExitFee.String(), t.PnL.String(), t.CloseReason, timeOrEmpty(t.ClosedAt)
 		}
 		out = append(out, d)
 	}

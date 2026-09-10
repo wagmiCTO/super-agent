@@ -270,7 +270,7 @@ func (s *Service) Open(ctx context.Context, req OpenRequest) (venue.Order, error
 	}
 	s.policy.RecordOpen(s.account, opened)
 	if s.ledger != nil {
-		s.ledger.Opened(s.account, req.Strategy, req.Symbol, placed.VenueID, store.Fill{Side: req.Side.String(), Size: placed.FilledSize, Price: placed.AvgPrice})
+		s.ledger.Opened(s.account, req.Strategy, req.Symbol, placed.VenueID, store.Fill{Side: req.Side.String(), Size: placed.FilledSize, Price: placed.AvgPrice, Fee: placed.Fee})
 	}
 	if req.Rules.Horizon > 0 {
 		// The exit is armed the moment the entry is confirmed. It fires on
@@ -378,7 +378,7 @@ func (s *Service) close(ctx context.Context, symbol string, reason CloseReason) 
 	pnl := realizedPnL(*pos, placed)
 	s.policy.RecordClose(s.account, notional, pnl)
 	if s.ledger != nil {
-		s.ledger.Closed(s.account, symbol, pnl, placed.VenueID, store.Fill{Side: pos.Side.String(), Size: placed.FilledSize, Price: placed.AvgPrice})
+		s.ledger.Closed(s.account, symbol, pnl, placed.VenueID, store.Fill{Side: pos.Side.String(), Size: placed.FilledSize, Price: placed.AvgPrice, Fee: placed.Fee}, string(reason))
 	}
 	s.mu.Lock()
 	s.lastClose = &CloseEvent{Symbol: symbol, Side: pos.Side, Reason: reason, Price: placed.AvgPrice, PnL: pnl, At: s.now()}
@@ -388,12 +388,13 @@ func (s *Service) close(ctx context.Context, symbol string, reason CloseReason) 
 	return placed, nil
 }
 
-// Trades lists this account's round trips in a symbol, newest first.
-func (s *Service) Trades(ctx context.Context, symbol string, limit int) ([]store.ClosedTrade, error) {
+// Trades lists this account's round trips in a symbol, newest first; an
+// empty strategy means all of them.
+func (s *Service) Trades(ctx context.Context, symbol, strategyID string, limit int) ([]store.ClosedTrade, error) {
 	if s.ledger == nil {
 		return nil, nil
 	}
-	return s.ledger.Trades(ctx, s.account, strings.ToUpper(strings.TrimSpace(symbol)), limit)
+	return s.ledger.Trades(ctx, s.account, strings.ToUpper(strings.TrimSpace(symbol)), strings.TrimSpace(strategyID), limit)
 }
 
 // Kill halts opening across the service; Revive lifts it.

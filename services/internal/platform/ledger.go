@@ -50,8 +50,9 @@ type Trade struct {
 	ClosedAt time.Time
 	// Ref ties the round trip to the venue: the hash of its order ids.
 	Ref [32]byte
-	// Entry and Exit are the fills, for the chart.
+	// Entry and Exit are the fills, for the chart; Reason says who closed.
 	Entry, Exit store.Fill
+	Reason      string
 }
 
 func NewLedger() *Ledger {
@@ -112,7 +113,7 @@ func (l *Ledger) Opened(wallet, strategyID, symbol, orderID string, f store.Fill
 // with no recorded open (a position from before a restart) counts under the
 // default strategy. closeOrderID is the venue's id of the closing order and
 // f what it filled.
-func (l *Ledger) Closed(wallet, symbol string, pnl fixed.D, closeOrderID string, f store.Fill) {
+func (l *Ledger) Closed(wallet, symbol string, pnl fixed.D, closeOrderID string, f store.Fill, reason string) {
 	l.mu.Lock()
 	key := tradeKey(wallet, symbol)
 	o, ok := l.open[key]
@@ -120,11 +121,11 @@ func (l *Ledger) Closed(wallet, symbol string, pnl fixed.D, closeOrderID string,
 		o = openTrade{Strategy: strategy.DefaultStrategy, Symbol: symbol, OpenedAt: l.now()}
 	}
 	delete(l.open, key)
-	t := Trade{Wallet: wallet, Strategy: o.Strategy, Symbol: symbol, PnL: pnl, OpenedAt: o.OpenedAt, ClosedAt: l.now(), Ref: TradeRef(o.OrderID, closeOrderID), Entry: o.Fill, Exit: f}
+	t := Trade{Wallet: wallet, Strategy: o.Strategy, Symbol: symbol, PnL: pnl, OpenedAt: o.OpenedAt, ClosedAt: l.now(), Ref: TradeRef(o.OrderID, closeOrderID), Entry: o.Fill, Exit: f, Reason: reason}
 	if l.journal != nil {
 		// The journal knows the strategy of a position opened before this
 		// process started; memory may not.
-		if ct, err := l.journal.TradeClosed(context.Background(), wallet, symbol, o.Strategy, closeOrderID, f, pnl, t.ClosedAt); err != nil {
+		if ct, err := l.journal.TradeClosed(context.Background(), wallet, symbol, o.Strategy, closeOrderID, f, pnl, reason, t.ClosedAt); err != nil {
 			slog.Warn("ledger: close not journaled", "wallet", wallet, "err", err)
 		} else {
 			t.Strategy, t.OpenedAt, t.Ref = ct.Strategy, ct.OpenedAt, TradeRef(ct.OpenOrderID, closeOrderID)
@@ -142,22 +143,22 @@ func (l *Ledger) Closed(wallet, symbol string, pnl fixed.D, closeOrderID string,
 
 // Trades lists a wallet's round trips in a symbol, newest first. Without a
 // journal, only what this process has seen.
-func (l *Ledger) Trades(ctx context.Context, wallet, symbol string, limit int) ([]store.ClosedTrade, error) {
+func (l *Ledger) Trades(ctx context.Context, wallet, symbol, strategyID string, limit int) ([]store.ClosedTrade, error) {
 	if l.journal != nil {
-		return l.journal.Trades(ctx, wallet, symbol, limit)
+		return l.journal.Trades(ctx, wallet, symbol, strategyID, limit)
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	var out []store.ClosedTrade
 	for i := len(l.closed) - 1; i >= 0 && len(out) < limit; i-- {
 		t := l.closed[i]
-		if t.Wallet != wallet || t.Symbol != symbol {
+		if t.Wallet != wallet || t.Symbol != symbol || (strategyID != "" && t.Strategy != strategyID) {
 			continue
 		}
-		out = append(out, store.ClosedTrade{Wallet: t.Wallet, Strategy: t.Strategy, Symbol: t.Symbol, Side: t.Entry.Side, Size: t.Entry.Size, EntryPrice: t.Entry.Price, ExitPrice: t.Exit.Price, PnL: t.PnL, OpenedAt: t.OpenedAt, ClosedAt: t.ClosedAt})
+		out = append(out, store.ClosedTrade{Wallet: t.Wallet, Strategy: t.Strategy, Symbol: t.Symbol, Side: t.Entry.Side, Size: t.Entry.Size, EntryPrice: t.Entry.Price, ExitPrice: t.Exit.Price, EntryFee: t.Entry.Fee, ExitFee: t.Exit.Fee, PnL: t.PnL, CloseReason: t.Reason, OpenedAt: t.OpenedAt, ClosedAt: t.ClosedAt})
 	}
-	if o, ok := l.open[tradeKey(wallet, symbol)]; ok && len(out) < limit {
-		out = append([]store.ClosedTrade{{Wallet: wallet, Strategy: o.Strategy, Symbol: symbol, Side: o.Fill.Side, Size: o.Fill.Size, EntryPrice: o.Fill.Price, OpenedAt: o.OpenedAt}}, out...)
+	if o, ok := l.open[tradeKey(wallet, symbol)]; ok && len(out) < limit && (strategyID == "" || o.Strategy == strategyID) {
+		out = append([]store.ClosedTrade{{Wallet: wallet, Strategy: o.Strategy, Symbol: symbol, Side: o.Fill.Side, Size: o.Fill.Size, EntryPrice: o.Fill.Price, EntryFee: o.Fill.Fee, OpenedAt: o.OpenedAt}}, out...)
 	}
 	return out, nil
 }

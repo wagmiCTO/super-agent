@@ -286,6 +286,7 @@ paths:
       description: What the chart marks — entries, exits and the open position. Routed by X-Account-Address like the rest of the account.
       parameters:
         - { in: query, name: symbol, required: true, schema: { type: string, example: MON } }
+        - { in: query, name: strategy, required: false, schema: { type: string, example: direction }, description: Only this strategy's round trips; absent means all. }
         - { in: query, name: limit, required: false, schema: { type: integer, default: 50, maximum: 500 } }
       responses:
         "200":
@@ -443,15 +444,21 @@ components:
 
     Trade:
       type: object
-      required: [strategy, symbol, side, size, entry_price, opened_at]
+      required: [strategy, symbol, side, size, entry_price, entry_fee, opened_at]
       properties:
         strategy: { type: string }
         symbol: { type: string }
         side: { $ref: "#/components/schemas/Side" }
         size: { $ref: "#/components/schemas/Decimal" }
         entry_price: { $ref: "#/components/schemas/Decimal" }
+        entry_fee: { $ref: "#/components/schemas/Decimal" }
         exit_price: { $ref: "#/components/schemas/Decimal" }
+        exit_fee: { $ref: "#/components/schemas/Decimal" }
         pnl: { $ref: "#/components/schemas/Decimal" }
+        close_reason:
+          type: string
+          enum: [manual, horizon]
+          description: Who closed the round trip; absent while open.
         opened_at: { type: string, format: date-time }
         closed_at: { type: string, format: date-time, description: Absent while the position is open. }
 
