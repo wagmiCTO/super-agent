@@ -144,20 +144,25 @@
   var pendingTrend = null;
   var chartReady = false;
   // Drawn lines: the box (two solid lines) and the dead zone (two dashed).
-  var lines = { box: [], zone: [] };
-  function drawLines(kind, prices, color, style) {
+  // Every redraw clears all shapes first — the chart draws nothing else —
+  // so a burst of messages can never stack duplicate lines.
+  var drawn = { box: null, zone: null };
+  function redraw() {
+    if (!chartReady) return;
     var chart = widget.activeChart();
-    lines[kind].forEach(function (id) { try { chart.removeEntity(id); } catch (e) {} });
-    lines[kind] = [];
-    if (!prices) return;
+    chart.getAllShapes().forEach(function (sh) { try { chart.removeEntity(sh.id); } catch (e) {} });
     var now = Math.floor(Date.now() / 1000);
-    prices.forEach(function (price) {
-      var id = chart.createShape({ time: now, price: price }, {
+    function line(price, color, style) {
+      chart.createShape({ time: now, price: price }, {
         shape: 'horizontal_line', lock: true, disableSelection: true, disableSave: true, disableUndo: true,
-        overrides: { linecolor: color, linewidth: 1, linestyle: style, showLabel: false },
+        overrides: { linecolor: color, linewidth: 1, linestyle: style, showLabel: false, showPrice: false },
       });
-      if (id) lines[kind].push(id);
-    });
+    }
+    if (drawn.box) { line(Number(drawn.box.top), MA, 0); line(Number(drawn.box.bottom), MA, 0); }
+    if (drawn.zone) {
+      var p = Number(drawn.zone.price), k = drawn.zone.bps / 10000;
+      line(p * (1 + k), TEXT, 2); line(p * (1 - k), TEXT, 2);
+    }
   }
   function paintTrend(value) {
     if (!ma) { pendingTrend = value; return; }
@@ -169,6 +174,7 @@
     var now = Math.floor(Date.now() / 1000);
     chart.setVisibleRange({ from: now - 90 * 60, to: now + 5 * 60 });
     chartReady = true;
+    redraw();
     if (!MA_LENGTH) { post({ type: 'ready' }); return; }
     // One average, drawn well: the strategy's slow line.
     chart.createStudy('Moving Average', false, false, { length: MA_LENGTH, source: 'close' }, {
@@ -184,12 +190,9 @@
       var chart = widget.activeChart();
       if (msg.type === 'chartType') chart.setChartType(msg.value === 'line' ? 2 : 1);
       if (msg.type === 'trend') paintTrend(msg.value);
-      if (msg.type === 'box') drawLines('box', msg.value ? [Number(msg.value.top), Number(msg.value.bottom)] : null, MA, 0);
-      if (msg.type === 'deadZone') {
-        var z = msg.value;
-        // The fee band: entry (or last price) ± the round-trip cost.
-        drawLines('zone', z ? [Number(z.price) * (1 + z.bps / 10000), Number(z.price) * (1 - z.bps / 10000)] : null, TEXT, 2);
-      }
+      if (msg.type === 'box') { drawn.box = msg.value || null; redraw(); }
+      // The fee band: entry (or last price) ± the round-trip cost.
+      if (msg.type === 'deadZone') { drawn.zone = msg.value || null; redraw(); }
     });
   });
   // React Native's WebView delivers injected messages through the same event.
