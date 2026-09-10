@@ -59,7 +59,7 @@ test.describe('Direction screen', () => {
 
     // The one number: a signed unrealized PnL under a position caption.
     await expect(page.getByText(/^Up · \d+ MON @ [\d.]+ · 2x$/)).toBeVisible();
-    await expect(page.getByText(/^unrealized · fees paid [\d.]+( · closes in \d+:\d\d)?$/)).toBeVisible();
+    await expect(page.getByText(/^unrealized · fees paid [\d.]+( · stop at -[\d.]+)?( · closes in \d+:\d\d)?$/)).toBeVisible();
 
     // Buttons flip: no Up/Down while a position is open, only Close.
     await expect(page.getByRole('button', { name: 'Up', exact: true })).toHaveCount(0);

@@ -31,6 +31,7 @@ export type DepositOptions = components['schemas']['DepositOptions'];
 export type DepositQuote = components['schemas']['DepositQuote'];
 export type DepositStatus = components['schemas']['DepositStatus'];
 export type PrizeHistory = components['schemas']['PrizeHistory'];
+export type RiskReport = components['schemas']['RiskReport'];
 
 /** Stable machine codes the server returns. Policy reasons come first. */
 export type ErrorCode =
@@ -192,6 +193,12 @@ export const api = {
   depositQuote: (body: { origin_asset: string; amount: string; dry?: boolean }) =>
     request<DepositQuote>('/v1/deposit/quote', { method: 'POST', body: JSON.stringify(body) }),
   prizeHistory: () => request<PrizeHistory>('/v1/prizes/history?limit=12'),
+  risk: () => request<RiskReport>('/v1/risk'),
+  closeAll: () =>
+    request<{ closed: number; results: { strategy: string; symbol: string; closed: boolean; error?: string; pnl?: string }[] }>('/v1/risk/close-all', {
+      method: 'POST',
+      body: '{}',
+    }),
   depositStatus: (depositAddress: string) =>
     request<DepositStatus>(`/v1/deposit/status?deposit_address=${encodeURIComponent(depositAddress)}`),
 };

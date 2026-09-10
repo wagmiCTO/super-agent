@@ -28,7 +28,20 @@ export function ScreenHeader({ title, state, offline, locked = false }: { title:
 }
 
 /** The one number: unrealized PnL while open; the cost of entry while flat. */
-export function PositionCard({ position, market, notional }: { position: Position | null; market: Market | null; notional: string }) {
+export function PositionCard({
+  position,
+  market,
+  notional,
+  stop = '0',
+  state = null,
+}: {
+  position: Position | null;
+  market: Market | null;
+  notional: string;
+  /** The stop the next tap arms, as a fraction of collateral ("0" = none). */
+  stop?: string;
+  state?: State | null;
+}) {
   const theme = useTheme();
   const closesIn = useCountdown(position?.closes_at ?? null);
   if (position) {
@@ -45,6 +58,7 @@ export function PositionCard({ position, market, notional }: { position: Positio
         </ThemedText>
         <ThemedText type="small" themeColor="textSecondary" testID="position-footer">
           unrealized · fees paid {trim(position.fees_paid)}
+          {position.stop_pnl ? ` · stop at ${trim(position.stop_pnl)}` : ''}
           {closesIn !== null ? ` · closes in ${closesIn}` : ''}
         </ThemedText>
       </View>
@@ -52,6 +66,7 @@ export function PositionCard({ position, market, notional }: { position: Positio
   }
   const bps = market?.fees.round_trip_taker_bps;
   const fee = market ? multiply(notional, market.fees.round_trip_taker) : null;
+  const risk = tapRisk(notional, stop, state);
   return (
     <View style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
       <ThemedText type="small" themeColor="textSecondary">
@@ -63,6 +78,11 @@ export function PositionCard({ position, market, notional }: { position: Positio
       <ThemedText type="small" themeColor="textSecondary">
         {fee !== null ? `round trip costs ${fee} (${bps} bps) · ${DEFAULT_LEVERAGE}x` : `${DEFAULT_LEVERAGE}x`}
       </ThemedText>
+      {risk ? (
+        <ThemedText type="small" themeColor="textSecondary" testID="tap-risk">
+          {risk}
+        </ThemedText>
+      ) : null}
     </View>
   );
 }
@@ -263,6 +283,31 @@ function clockTime(iso: string): string {
   const today = new Date();
   const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   return d.toDateString() === today.toDateString() ? hm : `${d.getDate()}.${String(d.getMonth() + 1).padStart(2, '0')} ${hm}`;
+}
+
+/**
+ * What the next tap puts at risk, in words: the collateral (notional over
+ * leverage), cut to the stop when one is armed, against today's remaining
+ * loss budget from the platform's limits.
+ */
+export function tapRisk(notional: string, stop: string, state: State | null): string | null {
+  const n = Number(notional);
+  const lev = Number(DEFAULT_LEVERAGE);
+  if (!n || !lev) return null;
+  const collateral = n / lev;
+  const frac = Number(stop);
+  const atRisk = frac > 0 ? collateral * frac : collateral;
+  let text = frac > 0 ? `This tap risks up to ${fmt(atRisk)} (stop at −${Math.round(frac * 100)}% of ${fmt(collateral)} collateral)` : `This tap risks up to ${fmt(collateral)} — the whole collateral, no stop`;
+  if (state) {
+    const left = Math.max(0, Number(state.limits.daily_loss) - Number(state.risk.daily_loss));
+    if (left > 0) text += ` · ${Math.min(999, Math.round((atRisk / left) * 100))}% of today's ${fmt(left)} loss budget`;
+    else text += ' · today\'s loss budget is spent';
+  }
+  return text;
+}
+
+function fmt(v: number): string {
+  return v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2).replace(/\.?0+$/, '');
 }
 
 /** A mm:ss (or h:mm:ss) countdown to an ISO time; null without one. */

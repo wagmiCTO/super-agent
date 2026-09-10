@@ -81,11 +81,19 @@ export function useTrading(symbol: string, strategy: string) {
   const position: Position | null = state?.positions.find((p) => p.symbol === symbol) ?? null;
 
   const open = useCallback(
-    async (side: 'long' | 'short', notional: string, horizonSeconds: number) => {
+    async (side: 'long' | 'short', notional: string, horizonSeconds: number, maxLoss = '0') => {
       setBusy(side === 'long' ? 'up' : 'down');
       setNotice(null);
       try {
-        const order = await api.open({ symbol, side, notional, leverage: DEFAULT_LEVERAGE, horizon_seconds: horizonSeconds, strategy });
+        const order = await api.open({
+          symbol,
+          side,
+          notional,
+          leverage: DEFAULT_LEVERAGE,
+          horizon_seconds: horizonSeconds,
+          strategy,
+          ...(maxLoss !== '0' ? { max_loss: maxLoss } : {}),
+        });
         if (order.status === 'failed') {
           setNotice({ text: `The exchange refused: ${order.rejection?.code ?? 'unknown'}`, kind: 'error' });
         } else {

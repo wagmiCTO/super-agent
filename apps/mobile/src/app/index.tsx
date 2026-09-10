@@ -77,6 +77,19 @@ export default function LobbyScreen() {
             <MyPrizes wallet={account.state.wallet} address={account.state.stored.address} contract={lb.prize.contract} />
           ) : null}
 
+          <Link href="/risk" asChild>
+            <Pressable accessibilityRole="button" accessibilityLabel="Risk and performance" testID="risk-link">
+              {({ pressed }) => (
+                <View style={[styles.card, { backgroundColor: theme.backgroundElement, opacity: pressed ? 0.7 : 1 }]}>
+                  <ThemedText type="smallBold">Risk & performance →</ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    What is at risk now, today&apos;s loss budget, how each strategy has done, and one button that closes everything.
+                  </ThemedText>
+                </View>
+              )}
+            </Pressable>
+          </Link>
+
           <PastWeeks />
 
           <Link href="/deposit" asChild>

@@ -766,6 +766,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/risk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The wallet's risk, every strategy at once
+         * @description For each strategy the wallet has a key for: the limits in force and
+         *     how much of them is spent (exposure, open positions, today's loss,
+         *     cooldown), the kill switch, the round trips today / this week / ever
+         *     (count, hit rate, result, fees, best, worst, drawdown, streak, who
+         *     closed), and the open positions with their horizon, stop, liquidation
+         *     distance and what they can still lose. Plus the market's own risk:
+         *     one-minute volatility against the round-trip fee. Routed and
+         *     authenticated like the rest of the account.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RiskReport"];
+                    };
+                };
+                /** @description No wallet named and the platform serves enrolled wallets only. */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/risk/close-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close every open position the wallet has, across strategies
+         * @description The one red button. Each close goes through the same path a tap or a
+         *     horizon takes; one failure does not stop the rest, and every outcome
+         *     is reported.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            closed: number;
+                            results: {
+                                strategy: string;
+                                symbol: string;
+                                closed: boolean;
+                                error?: string;
+                                pnl?: components["schemas"]["Decimal"];
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/context": {
         parameters: {
             query?: never;
@@ -1252,10 +1355,10 @@ export interface components {
             exit_fee?: components["schemas"]["Decimal"];
             pnl?: components["schemas"]["Decimal"];
             /**
-             * @description Who closed the round trip; absent while open.
+             * @description Who closed the round trip — a tap, the horizon, or the stop; absent while open.
              * @enum {string}
              */
-            close_reason?: "manual" | "horizon";
+            close_reason?: "manual" | "horizon" | "stop";
             /** Format: date-time */
             opened_at: string;
             /**
@@ -1405,6 +1508,10 @@ export interface components {
              * @description When the horizon closes this position; absent without one.
              */
             closes_at?: string;
+            /** @description The armed stop as a fraction of collateral; absent without one. */
+            max_loss?: components["schemas"]["Decimal"];
+            /** @description The unrealized result at which the stop closes; absent without one. */
+            stop_pnl?: components["schemas"]["Decimal"];
         };
         Limits: {
             allowed_symbols: string[];
@@ -1445,6 +1552,8 @@ export interface components {
             leverage?: components["schemas"]["Decimal"];
             /** @description Which strategy this entry belongs to, for the leaderboard: direction (default), ma-cross or rsi. */
             strategy?: string;
+            /** @description Arms a stop: the fraction of the position's collateral it may lose (0..1) before the platform closes it, judged on the venue's own mark. Absent or 0 arms none. */
+            max_loss?: components["schemas"]["Decimal"];
             /** @description The strategy's exit: the platform closes the position this many seconds after it opens (10 s to 24 h). 0 or absent leaves the close to the user. A manual close disarms it. */
             horizon_seconds?: number;
         };
@@ -1645,6 +1754,83 @@ export interface components {
                 claimed_at?: string;
                 claim_tx?: string;
             }[];
+        };
+        RiskReport: {
+            wallet: string;
+            strategies: components["schemas"]["RiskStrategy"][];
+            open: components["schemas"]["RiskPosition"][];
+            totals: {
+                exposure: components["schemas"]["Decimal"];
+                /** @description What every open position can still lose */
+                at_risk: components["schemas"]["Decimal"];
+                daily_loss: components["schemas"]["Decimal"];
+                today?: components["schemas"]["Perf"];
+                week?: components["schemas"]["Perf"];
+                all?: components["schemas"]["Perf"];
+            };
+            market: {
+                symbol: string;
+                /** @description Standard deviation of one-minute log returns over the last hour */
+                vol_1m_bps: number;
+                /** @description Mean one-minute bar range */
+                range_1m_bps: number;
+                /** @description Taker fee in and out. */
+                round_trip_bps: number;
+                /** @description vol_1m_bps over round_trip_bps; the strategies were sized for 5 and above. */
+                edge: number;
+                bars: number;
+            }[];
+            /** Format: date-time */
+            updated_at: string;
+        };
+        RiskStrategy: {
+            id: string;
+            name: string;
+            /** @description The wallet has a key for this strategy. */
+            enabled: boolean;
+            limits?: components["schemas"]["Limits"];
+            usage?: {
+                exposure: components["schemas"]["Decimal"];
+                exposure_pct: number;
+                open_positions: number;
+                daily_loss: components["schemas"]["Decimal"];
+                daily_loss_pct: number;
+                daily_loss_left: components["schemas"]["Decimal"];
+                cooldown_left_seconds: number;
+            };
+            killed: boolean;
+            kill_note?: string;
+            today?: components["schemas"]["Perf"];
+            week?: components["schemas"]["Perf"];
+            all?: components["schemas"]["Perf"];
+            open: components["schemas"]["RiskPosition"][];
+        };
+        RiskPosition: components["schemas"]["Position"] & {
+            strategy: string;
+            liquidation_price?: components["schemas"]["Decimal"];
+            distance_to_liquidation_pct?: components["schemas"]["Decimal"];
+            /** @description What the position can still lose — to its stop when armed */
+            at_risk: components["schemas"]["Decimal"];
+        };
+        Perf: {
+            trades: number;
+            wins: number;
+            losses: number;
+            /** @description 0..1 */
+            win_rate: number;
+            pnl: components["schemas"]["Decimal"];
+            fees: components["schemas"]["Decimal"];
+            best: components["schemas"]["Decimal"];
+            worst: components["schemas"]["Decimal"];
+            avg_win: components["schemas"]["Decimal"];
+            avg_loss: components["schemas"]["Decimal"];
+            max_drawdown: components["schemas"]["Decimal"];
+            avg_hold_seconds: number;
+            /** @description Wins in a row (positive) or losses in a row (negative) */
+            streak: number;
+            by_reason: {
+                [key: string]: number;
+            };
         };
         Error: {
             /**

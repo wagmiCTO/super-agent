@@ -29,7 +29,7 @@ import {
   ScreenHeader,
   styles,
 } from '@/components/trading';
-import { DEFAULT_SYMBOL, HORIZON_PRESETS, horizonSeconds, NOTIONAL_PRESETS, type Horizon } from '@/config';
+import { DEFAULT_STOP, DEFAULT_SYMBOL, HORIZON_PRESETS, horizonSeconds, NOTIONAL_PRESETS, STOP_PRESETS, stopFraction, type Horizon, type StopPreset } from '@/config';
 import { TVChart } from '@/components/TVChart';
 import { useTheme } from '@/hooks/use-theme';
 import { useTrading } from '@/trading/useTrading';
@@ -41,6 +41,7 @@ export default function DirectionScreen() {
   const t = useTrading(DEFAULT_SYMBOL, 'direction');
   const [notional, setNotional] = useState<Notional>('20');
   const [horizon, setHorizon] = useState<Horizon>('15m');
+  const [stop, setStop] = useState<StopPreset>(DEFAULT_STOP);
   const theme = useTheme();
   const dark = useColorScheme() === 'dark';
 
@@ -68,7 +69,7 @@ export default function DirectionScreen() {
 
           <ContextCard symbol={DEFAULT_SYMBOL} />
 
-          <PositionCard position={t.position} market={t.market} notional={notional} />
+          <PositionCard position={t.position} market={t.market} notional={notional} stop={stopFraction(stop)} state={t.state} />
 
           {t.position ? (
             <CloseButton busy={t.busy === 'close'} disabled={t.busy !== null} onPress={() => void t.close()} />
@@ -76,20 +77,21 @@ export default function DirectionScreen() {
             <>
               <PresetRow label="Amount" options={NOTIONAL_PRESETS} value={notional} onChange={setNotional} />
               <PresetRow label="Horizon" options={HORIZON_PRESETS} value={horizon} onChange={setHorizon} />
+              <PresetRow label="Stop" options={STOP_PRESETS} value={stop} onChange={setStop} />
               <View style={styles.directions}>
                 <DirectionButton
                   label="Up"
                   color="#16a34a"
                   busy={t.busy === 'up'}
                   disabled={t.busy !== null}
-                  onPress={() => void t.open('long', notional, horizonSeconds(horizon))}
+                  onPress={() => void t.open('long', notional, horizonSeconds(horizon), stopFraction(stop))}
                 />
                 <DirectionButton
                   label="Down"
                   color="#dc2626"
                   busy={t.busy === 'down'}
                   disabled={t.busy !== null}
-                  onPress={() => void t.open('short', notional, horizonSeconds(horizon))}
+                  onPress={() => void t.open('short', notional, horizonSeconds(horizon), stopFraction(stop))}
                 />
               </View>
             </>

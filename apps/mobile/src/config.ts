@@ -76,3 +76,23 @@ export const STRATEGY_KEY_INDEX: Record<string, number> = { direction: 0, 'ma-cr
 
 /** The strategies' names as the lobby shows them, by id. */
 export const STRATEGY_NAMES: Record<string, string> = { direction: 'Direction', 'ma-cross': 'MA Cross', rsi: 'RSI Bounce' };
+
+/**
+ * Stops a strategy screen offers: the share of the position's collateral
+ * the platform may let it lose before closing it. "Off" leaves the exit to
+ * the horizon and, past that, to the exchange's liquidation.
+ */
+export const STOP_PRESETS = ['Off', '−25%', '−50%'] as const;
+export type StopPreset = (typeof STOP_PRESETS)[number];
+export const DEFAULT_STOP: StopPreset = '−50%';
+
+export function stopFraction(s: StopPreset): string {
+  switch (s) {
+    case '−25%':
+      return '0.25';
+    case '−50%':
+      return '0.5';
+    default:
+      return '0';
+  }
+}

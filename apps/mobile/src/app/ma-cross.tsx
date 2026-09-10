@@ -31,7 +31,7 @@ import {
   styles,
   useCountdown,
 } from '@/components/trading';
-import { DEFAULT_SYMBOL, HORIZON_PRESETS, horizonSeconds, NOTIONAL_PRESETS, SIGNAL_POLL_MS, type Horizon } from '@/config';
+import { DEFAULT_STOP, DEFAULT_SYMBOL, HORIZON_PRESETS, horizonSeconds, NOTIONAL_PRESETS, SIGNAL_POLL_MS, STOP_PRESETS, stopFraction, type Horizon, type StopPreset } from '@/config';
 import { useTheme } from '@/hooks/use-theme';
 import { useTrading } from '@/trading/useTrading';
 
@@ -48,6 +48,7 @@ export default function MACrossScreen() {
   const signal = useSignal(DEFAULT_SYMBOL);
   const [notional, setNotional] = useState<Notional>('20');
   const [horizon, setHorizon] = useState<Horizon>('15m');
+  const [stop, setStop] = useState<StopPreset>(DEFAULT_STOP);
   const [mode, setMode] = useState<ChartMode>('Candles');
   const window = signal?.window ?? null;
   const windowLeft = useCountdown(window?.expires_at ?? null);
@@ -71,7 +72,7 @@ export default function MACrossScreen() {
 
           <ContextCard symbol={DEFAULT_SYMBOL} />
 
-          <PositionCard position={t.position} market={t.market} notional={notional} />
+          <PositionCard position={t.position} market={t.market} notional={notional} stop={stopFraction(stop)} state={t.state} />
 
           {t.position ? (
             <CloseButton busy={t.busy === 'close'} disabled={t.busy !== null} onPress={() => void t.close()} />
@@ -79,6 +80,7 @@ export default function MACrossScreen() {
             <>
               <PresetRow label="Amount" options={NOTIONAL_PRESETS} value={notional} onChange={setNotional} />
               <PresetRow label="Horizon" options={HORIZON_PRESETS} value={horizon} onChange={setHorizon} />
+              <PresetRow label="Stop" options={STOP_PRESETS} value={stop} onChange={setStop} />
               <View style={styles.directions}>
                 {/* Only the cross's direction is offered: that is the strategy. */}
                 <DirectionButton
@@ -86,7 +88,7 @@ export default function MACrossScreen() {
                   color={window.side === 'long' ? UP : DOWN}
                   busy={t.busy === 'up' || t.busy === 'down'}
                   disabled={t.busy !== null}
-                  onPress={() => void t.open(window.side, notional, horizonSeconds(horizon))}
+                  onPress={() => void t.open(window.side, notional, horizonSeconds(horizon), stopFraction(stop))}
                 />
               </View>
             </>
