@@ -10,7 +10,7 @@
  */
 import { Link } from 'expo-router';
 import { useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { ScrollView, useColorScheme, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAccount } from '@/account/useAccount';
@@ -28,6 +28,8 @@ import {
   styles,
 } from '@/components/trading';
 import { DEFAULT_SYMBOL, HORIZON_PRESETS, horizonSeconds, NOTIONAL_PRESETS, type Horizon } from '@/config';
+import { TVChart } from '@/components/TVChart';
+import { useTheme } from '@/hooks/use-theme';
 import { useTrading } from '@/trading/useTrading';
 
 type Notional = (typeof NOTIONAL_PRESETS)[number];
@@ -37,6 +39,8 @@ export default function DirectionScreen() {
   const t = useTrading(DEFAULT_SYMBOL, 'direction');
   const [notional, setNotional] = useState<Notional>('20');
   const [horizon, setHorizon] = useState<Horizon>('15m');
+  const theme = useTheme();
+  const dark = useColorScheme() === 'dark';
 
   return (
     <ThemedView style={styles.root}>
@@ -45,6 +49,20 @@ export default function DirectionScreen() {
           <ScreenHeader title={`DIRECTION · ${DEFAULT_SYMBOL}`} state={t.state} offline={t.offline} />
 
           <AccountSection account={account} state={t.state} onChange={t.refresh} />
+
+          <View style={[styles.card, { backgroundColor: theme.backgroundElement, alignItems: 'stretch' }]} testID="signal-card">
+            <TVChart
+              symbol={DEFAULT_SYMBOL}
+              theme={dark ? 'dark' : 'light'}
+              background={theme.backgroundElement}
+              chartType="candles"
+              trend={t.position ? (t.position.side === 'long' ? 'up' : 'down') : 'flat'}
+              ma={0}
+              trades={t.trades}
+              position={t.position}
+              height={260}
+            />
+          </View>
 
           <PositionCard position={t.position} market={t.market} notional={notional} />
 

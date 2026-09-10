@@ -7,9 +7,10 @@
  *
  *   /tv.html?api=http://host:8080&symbol=MON&theme=light&ma=20&bg=%23F0F0F3
  *
- * The app talks to the page with postMessage: { type: 'chartType', value:
- * 'candles' | 'line' } and { type: 'trend', value: 'up' | 'down' | 'flat' }.
- * The page answers { type: 'ready' } once the chart is drawn.
+ * The app talks to the page with postMessage: chartType (candles | line),
+ * trend (up | down | flat), box ({top, bottom} | null), trades (the round
+ * trips to mark) and position (the open one, or null). The page answers
+ * { type: 'ready' } once the chart is drawn.
  */
 (function () {
   var params = new URLSearchParams(location.search);
@@ -55,6 +56,7 @@
   // --- datafeed (TradingView JS API) ---
   var subscribers = {};
   var pricescale = 100000;
+  var newestBar = 0; // the chart refuses a bar older than the last one it got
   var datafeed = {
     onReady: function (cb) {
       setTimeout(function () { cb({ supported_resolutions: ['1'], supports_marks: false, supports_timescale_marks: false, supports_time: true }); }, 0);
@@ -76,16 +78,18 @@
     },
     getBars: function (_symbol, _res, range, onResult, onError) {
       fetchBars(range.from, range.to).then(function (bars) {
+        bars.sort(function (a, b) { return a.time - b.time; });
+        if (bars.length && bars[bars.length - 1].time > newestBar) newestBar = bars[bars.length - 1].time;
         onResult(bars, { noData: bars.length === 0 });
       }).catch(function (e) { onError(String(e)); });
     },
     subscribeBars: function (_symbol, _res, onTick, uid) {
-      var lastTime = 0;
       var timer = setInterval(function () {
         var now = Math.floor(Date.now() / 1000);
         fetchBars(now - 3 * PERIOD, now).then(function (bars) {
+          bars.sort(function (a, b) { return a.time - b.time; });
           for (var i = 0; i < bars.length; i++) {
-            if (bars[i].time >= lastTime) { onTick(bars[i]); lastTime = bars[i].time; }
+            if (bars[i].time >= newestBar) { onTick(bars[i]); newestBar = bars[i].time; }
           }
         }).catch(function () {});
       }, 3000);
@@ -146,25 +150,47 @@
   var ma = null;
   var pendingTrend = null;
   var chartReady = false;
-  // Drawn lines: the box (two solid lines) and the dead zone (two dashed).
-  // Every redraw clears all shapes first — the chart draws nothing else —
-  // so a burst of messages can never stack duplicate lines.
-  var drawn = { box: null, zone: null };
+  // Drawn things: the box (two lines), the trades (arrows at entry and exit,
+  // like any exchange), and the open position (a line at the entry with the
+  // live result). Every redraw clears and draws from one state, so a burst
+  // of messages never stacks duplicates.
+  var drawn = { box: null, trades: [], position: null };
+  function line(chart, time, price, color, style, text) {
+    var over = { linecolor: color, linewidth: text ? 2 : 1, linestyle: style, showPrice: false, showLabel: !!text };
+    if (text) { over.text = text; over.textcolor = color; over.horzLabelsAlign = 'left'; over.vertLabelsAlign = 'top'; over.fontsize = 12; over.bold = true; }
+    chart.createShape({ time: time, price: price }, {
+      shape: 'horizontal_line', lock: true, disableSelection: true, disableSave: true, disableUndo: true, text: text || undefined, overrides: over,
+    });
+  }
+  function arrow(chart, time, price, up, color, text) {
+    chart.createShape({ time: time, price: price }, {
+      shape: up ? 'arrow_up' : 'arrow_down', lock: true, disableSelection: true, disableSave: true, disableUndo: true, text: text,
+      overrides: { color: color, textcolor: color, fontsize: 10, bold: true },
+    });
+  }
   function redraw() {
     if (!chartReady) return;
     var chart = widget.activeChart();
     chart.getAllShapes().forEach(function (sh) { try { chart.removeEntity(sh.id); } catch (e) {} });
     var now = Math.floor(Date.now() / 1000);
-    function line(price, color, style) {
-      chart.createShape({ time: now, price: price }, {
-        shape: 'horizontal_line', lock: true, disableSelection: true, disableSave: true, disableUndo: true,
-        overrides: { linecolor: color, linewidth: 1, linestyle: style, showLabel: false, showPrice: false },
-      });
-    }
-    if (drawn.box) { line(Number(drawn.box.top), MA, 0); line(Number(drawn.box.bottom), MA, 0); }
-    if (drawn.zone) {
-      var p = Number(drawn.zone.price), k = drawn.zone.bps / 10000;
-      line(p * (1 + k), TEXT, 2); line(p * (1 - k), TEXT, 2);
+    if (drawn.box) { line(chart, now, Number(drawn.box.top), MA, 0); line(chart, now, Number(drawn.box.bottom), MA, 0); }
+    drawn.trades.forEach(function (t) {
+      // Rows journaled before prices were kept have nothing to draw.
+      if (!Number(t.entry_price)) return;
+      var long = t.side === 'long';
+      try {
+        arrow(chart, Math.floor(Date.parse(t.opened_at) / 1000), Number(t.entry_price), long, long ? UP : DOWN, long ? 'Up' : 'Down');
+        if (t.closed_at && Number(t.exit_price)) {
+          var won = Number(t.pnl || 0) >= 0;
+          arrow(chart, Math.floor(Date.parse(t.closed_at) / 1000), Number(t.exit_price), !long, won ? UP : DOWN, (won ? '+' : '') + Number(t.pnl || 0).toFixed(4));
+        }
+      } catch (e) { console.warn('tv: trade mark', e && e.message); }
+    });
+    if (drawn.position) {
+      var p = drawn.position, pnl = Number(p.unrealized_pnl);
+      try {
+        line(chart, now, Number(p.entry_price), pnl >= 0 ? UP : DOWN, 0, (p.side === 'long' ? 'Up ' : 'Down ') + p.size + ' · ' + (pnl >= 0 ? '+' : '') + pnl.toFixed(4));
+      } catch (e) { console.warn('tv: position line', e && e.message); }
     }
   }
   function paintTrend(value) {
@@ -194,8 +220,8 @@
       if (msg.type === 'chartType') chart.setChartType(msg.value === 'line' ? 2 : 1);
       if (msg.type === 'trend') paintTrend(msg.value);
       if (msg.type === 'box') { drawn.box = msg.value || null; redraw(); }
-      // The fee band: entry (or last price) ± the round-trip cost.
-      if (msg.type === 'deadZone') { drawn.zone = msg.value || null; redraw(); }
+      if (msg.type === 'trades') { drawn.trades = msg.value || []; redraw(); }
+      if (msg.type === 'position') { drawn.position = msg.value || null; redraw(); }
     });
   });
   // React Native's WebView delivers injected messages through the same event.

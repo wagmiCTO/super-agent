@@ -9,12 +9,13 @@ import { WebView } from 'react-native-webview';
 
 import { chartPageUrl, type ChartMessage, type TVChartProps } from '@/chart/page';
 
-export function TVChart({ symbol, theme, background, chartType, trend, ma, box, deadZone, height }: TVChartProps) {
+export function TVChart({ symbol, theme, background, chartType, trend, ma, box, trades, position, height }: TVChartProps) {
   const web = useRef<WebView>(null);
   const [ready, setReady] = useState(false);
   const url = chartPageUrl({ symbol, theme, background, ma });
   const boxKey = JSON.stringify(box ?? null);
-  const zoneKey = JSON.stringify(deadZone ?? null);
+  const tradesKey = JSON.stringify(trades ?? []);
+  const positionKey = JSON.stringify(position ?? null);
 
   const send = (msg: ChartMessage) =>
     web.current?.injectJavaScript(`window.dispatchEvent(new MessageEvent('message', { data: ${JSON.stringify(JSON.stringify(msg))} })); true;`);
@@ -29,9 +30,13 @@ export function TVChart({ symbol, theme, background, chartType, trend, ma, box, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, boxKey]);
   useEffect(() => {
-    if (ready) send({ type: 'deadZone', value: deadZone ?? null });
+    if (ready) send({ type: 'trades', value: trades ?? [] });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, zoneKey]);
+  }, [ready, tradesKey]);
+  useEffect(() => {
+    if (ready) send({ type: 'position', value: position ?? null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, positionKey]);
 
   return (
     <View style={{ height, borderRadius: 12, overflow: 'hidden' }} testID="signal-chart">

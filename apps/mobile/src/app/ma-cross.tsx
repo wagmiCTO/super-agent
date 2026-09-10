@@ -13,7 +13,7 @@ import { ScrollView, useColorScheme, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAccount } from '@/account/useAccount';
-import { api, type MACrossSignal } from '@/api/client';
+import { api, type MACrossSignal, type Position, type Trade } from '@/api/client';
 import { AccountSection } from '@/components/account';
 import { TVChart } from '@/components/TVChart';
 import { ThemedText } from '@/components/themed-text';
@@ -31,7 +31,7 @@ import {
 } from '@/components/trading';
 import { DEFAULT_SYMBOL, HORIZON_PRESETS, horizonSeconds, NOTIONAL_PRESETS, SIGNAL_POLL_MS, type Horizon } from '@/config';
 import { useTheme } from '@/hooks/use-theme';
-import { deadZoneFor, useTrading } from '@/trading/useTrading';
+import { useTrading } from '@/trading/useTrading';
 
 type Notional = (typeof NOTIONAL_PRESETS)[number];
 const CHART_MODES = ['Candles', 'Line'] as const;
@@ -63,7 +63,8 @@ export default function MACrossScreen() {
             windowLeft={windowLeft}
             mode={mode}
             onMode={setMode}
-            deadZone={deadZoneFor(t.position, t.market, signal?.points.at(-1)?.close ?? null)}
+            trades={t.trades}
+            position={t.position}
           />
 
           <PositionCard position={t.position} market={t.market} notional={notional} />
@@ -135,13 +136,15 @@ function SignalCard({
   windowLeft,
   mode,
   onMode,
-  deadZone,
+  trades,
+  position,
 }: {
   signal: MACrossSignal | null;
   windowLeft: string | null;
   mode: ChartMode;
   onMode: (m: ChartMode) => void;
-  deadZone: { price: string; bps: number } | null;
+  trades: Trade[];
+  position: Position | null;
 }) {
   const theme = useTheme();
   const dark = useColorScheme() === 'dark';
@@ -174,7 +177,8 @@ function SignalCard({
         background={theme.backgroundElement}
         chartType={mode === 'Line' ? 'line' : 'candles'}
         trend={signal?.trend ?? 'flat'}
-        deadZone={deadZone}
+        trades={trades}
+        position={position}
         height={280}
       />
       <PresetRow label="Chart" options={CHART_MODES} value={mode} onChange={onMode} />

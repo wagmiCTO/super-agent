@@ -31,7 +31,7 @@ import {
 import { TVChart } from '@/components/TVChart';
 import { DEFAULT_SYMBOL, HORIZON_PRESETS, horizonSeconds, NOTIONAL_PRESETS, SIGNAL_POLL_MS, type Horizon } from '@/config';
 import { useTheme } from '@/hooks/use-theme';
-import { deadZoneFor, useTrading } from '@/trading/useTrading';
+import { useTrading } from '@/trading/useTrading';
 
 type Notional = (typeof NOTIONAL_PRESETS)[number];
 const CHART_MODES = ['Candles', 'Line'] as const;
@@ -90,7 +90,8 @@ export default function BoxScreen() {
               trend={window ? (window.side === 'long' ? 'up' : 'down') : 'flat'}
               ma={0}
               box={signal?.ready ? { top: signal.top, bottom: signal.bottom } : null}
-              deadZone={deadZoneFor(t.position, t.market, signal?.points.at(-1)?.close ?? null)}
+              trades={t.trades}
+              position={t.position}
               height={280}
             />
             <PresetRow label="Chart" options={CHART_MODES} value={mode} onChange={setMode} />

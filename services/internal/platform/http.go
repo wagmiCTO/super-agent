@@ -44,6 +44,7 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /v1/leaderboard", h.leaderboard)
 	mux.HandleFunc("GET /v1/prizes", h.prizes)
 	mux.HandleFunc("GET /v1/candles", h.candles)
+	mux.HandleFunc("GET /v1/trades", h.trades)
 	mux.HandleFunc("GET /v1/health", h.health)
 	mux.HandleFunc("GET /v1/markets", h.markets)
 	mux.HandleFunc("GET /v1/state", h.state)
@@ -876,6 +877,49 @@ func (h *handler) candles(w http.ResponseWriter, r *http.Request) {
 	out := make([]candleDTO, 0, len(bars))
 	for _, b := range bars {
 		out = append(out, candleDTO{Time: b.Open.Unix(), Open: b.O.String(), High: b.H.String(), Low: b.L.String(), Close: b.C.String(), Volume: b.Volume.String()})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// --- trades ---
+
+type tradeDTO struct {
+	Strategy   string `json:"strategy"`
+	Symbol     string `json:"symbol"`
+	Side       string `json:"side"`
+	Size       string `json:"size"`
+	EntryPrice string `json:"entry_price"`
+	ExitPrice  string `json:"exit_price,omitempty"`
+	PnL        string `json:"pnl,omitempty"`
+	OpenedAt   string `json:"opened_at"`
+	ClosedAt   string `json:"closed_at,omitempty"`
+}
+
+// trades lists the account's round trips in a market, newest first, for the
+// chart's marks: ?symbol=MON&limit=50.
+func (h *handler) trades(w http.ResponseWriter, r *http.Request) {
+	svc, ok := h.service(w, r)
+	if !ok {
+		return
+	}
+	limit := 50
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 500 {
+			limit = n
+		}
+	}
+	list, err := svc.Trades(r.Context(), r.URL.Query().Get("symbol"), limit)
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	out := make([]tradeDTO, 0, len(list))
+	for _, t := range list {
+		d := tradeDTO{Strategy: t.Strategy, Symbol: t.Symbol, Side: t.Side, Size: t.Size.String(), EntryPrice: t.EntryPrice.String(), OpenedAt: timeOrEmpty(t.OpenedAt)}
+		if !t.ClosedAt.IsZero() {
+			d.ExitPrice, d.PnL, d.ClosedAt = t.ExitPrice.String(), t.PnL.String(), timeOrEmpty(t.ClosedAt)
+		}
+		out = append(out, d)
 	}
 	writeJSON(w, http.StatusOK, out)
 }

@@ -280,6 +280,21 @@ paths:
           description: No prize pool configured.
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
+  /v1/trades:
+    get:
+      summary: The account's round trips in a market, newest first
+      description: What the chart marks — entries, exits and the open position. Routed by X-Account-Address like the rest of the account.
+      parameters:
+        - { in: query, name: symbol, required: true, schema: { type: string, example: MON } }
+        - { in: query, name: limit, required: false, schema: { type: integer, default: 50, maximum: 500 } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Trade" }
+
   /v1/leaderboard:
     get:
       summary: This week's board for every strategy
@@ -425,6 +440,20 @@ components:
         boards:
           type: array
           items: { $ref: "#/components/schemas/Board" }
+
+    Trade:
+      type: object
+      required: [strategy, symbol, side, size, entry_price, opened_at]
+      properties:
+        strategy: { type: string }
+        symbol: { type: string }
+        side: { $ref: "#/components/schemas/Side" }
+        size: { $ref: "#/components/schemas/Decimal" }
+        entry_price: { $ref: "#/components/schemas/Decimal" }
+        exit_price: { $ref: "#/components/schemas/Decimal" }
+        pnl: { $ref: "#/components/schemas/Decimal" }
+        opened_at: { type: string, format: date-time }
+        closed_at: { type: string, format: date-time, description: Absent while the position is open. }
 
     Prize:
       type: object

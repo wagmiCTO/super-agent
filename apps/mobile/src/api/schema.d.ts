@@ -601,6 +601,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/trades": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The account's round trips in a market, newest first
+         * @description What the chart marks — entries, exits and the open position. Routed by X-Account-Address like the rest of the account.
+         */
+        get: {
+            parameters: {
+                query: {
+                    symbol: string;
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Trade"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/leaderboard": {
         parameters: {
             query?: never;
@@ -795,6 +836,22 @@ export interface components {
             source: "journal" | "memory";
             prize?: components["schemas"]["Prize"];
             boards: components["schemas"]["Board"][];
+        };
+        Trade: {
+            strategy: string;
+            symbol: string;
+            side: components["schemas"]["Side"];
+            size: components["schemas"]["Decimal"];
+            entry_price: components["schemas"]["Decimal"];
+            exit_price?: components["schemas"]["Decimal"];
+            pnl?: components["schemas"]["Decimal"];
+            /** Format: date-time */
+            opened_at: string;
+            /**
+             * Format: date-time
+             * @description Absent while the position is open.
+             */
+            closed_at?: string;
         };
         /** @description The on-chain weekly prize pool (StrategyPrizePool), when configured. */
         Prize: {

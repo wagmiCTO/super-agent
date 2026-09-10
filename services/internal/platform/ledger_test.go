@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/wagmiCTO/super-agent/services/internal/fixed"
+	"github.com/wagmiCTO/super-agent/services/internal/store"
 )
 
 // The week's board per strategy: who is up, what the strategy made for
@@ -16,20 +17,20 @@ func TestLeaderboardByStrategyAndWeek(t *testing.T) {
 
 	// Last week: must not count.
 	now = time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
-	l.Opened("0xaaa", "direction", "MON", "o")
-	l.Closed("0xaaa", "MON", fixed.FromInt(100), "c")
+	l.Opened("0xaaa", "direction", "MON", "o", store.Fill{})
+	l.Closed("0xaaa", "MON", fixed.FromInt(100), "c", store.Fill{})
 
 	now = time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
-	l.Opened("0xaaa", "direction", "MON", "o")
-	l.Closed("0xaaa", "MON", fixed.FromInt(3), "c")
-	l.Opened("0xbbb", "direction", "MON", "o")
-	l.Closed("0xbbb", "MON", fixed.FromInt(-1), "c")
-	l.Opened("0xbbb", "ma-cross", "MON", "o")
-	l.Closed("0xbbb", "MON", fixed.FromInt(5), "c")
+	l.Opened("0xaaa", "direction", "MON", "o", store.Fill{})
+	l.Closed("0xaaa", "MON", fixed.FromInt(3), "c", store.Fill{})
+	l.Opened("0xbbb", "direction", "MON", "o", store.Fill{})
+	l.Closed("0xbbb", "MON", fixed.FromInt(-1), "c", store.Fill{})
+	l.Opened("0xbbb", "ma-cross", "MON", "o", store.Fill{})
+	l.Closed("0xbbb", "MON", fixed.FromInt(5), "c", store.Fill{})
 	// An untagged position from before a restart counts as Direction.
-	l.Closed("0xccc", "MON", fixed.FromInt(1), "c")
+	l.Closed("0xccc", "MON", fixed.FromInt(1), "c", store.Fill{})
 	// Open right now under MA Cross.
-	l.Opened("0xaaa", "ma-cross", "MON", "o")
+	l.Opened("0xaaa", "ma-cross", "MON", "o", store.Fill{})
 
 	now = time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
 	lb := l.Leaderboard()

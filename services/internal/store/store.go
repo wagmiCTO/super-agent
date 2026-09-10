@@ -252,43 +252,92 @@ func (s *Store) Horizons(ctx context.Context, account string) ([]Horizon, error)
 
 // --- trades ---
 
+// Fill is what an opening or closing order did: side, size and price.
+type Fill struct {
+	Side  string // "long" or "short"
+	Size  fixed.D
+	Price fixed.D
+}
+
 // TradeOpened journals an opening fill.
-func (s *Store) TradeOpened(ctx context.Context, wallet, strategy, symbol, orderID string, at time.Time) error {
-	_, err := s.pool.Exec(ctx, `insert into trades (wallet, strategy, symbol, open_order_id, opened_at) values ($1, $2, $3, $4, $5)
-		on conflict (wallet, open_order_id) do nothing`, wallet, strategy, symbol, orderID, at)
+func (s *Store) TradeOpened(ctx context.Context, wallet, strategy, symbol, orderID string, f Fill, at time.Time) error {
+	_, err := s.pool.Exec(ctx, `insert into trades (wallet, strategy, symbol, open_order_id, side, size, entry_price, opened_at) values ($1, $2, $3, $4, $5, $6, $7, $8)
+		on conflict (wallet, open_order_id) do nothing`, wallet, strategy, symbol, orderID, f.Side, f.Size.String(), f.Price.String(), at)
 	return err
 }
 
-// ClosedTrade is a completed round trip as journaled.
+// ClosedTrade is a round trip as journaled; an open one has no exit.
 type ClosedTrade struct {
 	Wallet, Strategy, Symbol  string
 	OpenOrderID, CloseOrderID string
+	Side                      string
+	Size, EntryPrice          fixed.D
+	ExitPrice                 fixed.D
 	PnL                       fixed.D
 	OpenedAt, ClosedAt        time.Time
 }
 
 // TradeClosed completes the open round trip for a wallet's symbol. A close
 // with no open on record (a position from before the journal) is inserted
-// as a whole under the given strategy.
-func (s *Store) TradeClosed(ctx context.Context, wallet, symbol, fallbackStrategy, closeOrderID string, pnl fixed.D, at time.Time) (ClosedTrade, error) {
+// as a whole under the given strategy, with the exit as its only price.
+func (s *Store) TradeClosed(ctx context.Context, wallet, symbol, fallbackStrategy, closeOrderID string, f Fill, pnl fixed.D, at time.Time) (ClosedTrade, error) {
 	var t ClosedTrade
+	var size, entry, exit, pnlS string
 	err := s.pool.QueryRow(ctx, `
 		with open as (
 			select id from trades where wallet = $1 and symbol = $2 and closed_at is null order by opened_at desc limit 1
 		)
-		update trades set close_order_id = $3, pnl = $4, closed_at = $5 where id = (select id from open)
-		returning wallet, strategy, symbol, open_order_id, close_order_id, pnl::text, opened_at, closed_at`,
-		wallet, symbol, closeOrderID, pnl.String(), at).Scan(&t.Wallet, &t.Strategy, &t.Symbol, &t.OpenOrderID, &t.CloseOrderID, new(string), &t.OpenedAt, &t.ClosedAt)
+		update trades set close_order_id = $3, pnl = $4, closed_at = $5, exit_price = $6 where id = (select id from open)
+		returning wallet, strategy, symbol, open_order_id, close_order_id, side, size::text, entry_price::text, exit_price::text, pnl::text, opened_at, closed_at`,
+		wallet, symbol, closeOrderID, pnl.String(), at, f.Price.String()).Scan(&t.Wallet, &t.Strategy, &t.Symbol, &t.OpenOrderID, &t.CloseOrderID, &t.Side, &size, &entry, &exit, &pnlS, &t.OpenedAt, &t.ClosedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
-		_, err = s.pool.Exec(ctx, `insert into trades (wallet, strategy, symbol, open_order_id, close_order_id, pnl, opened_at, closed_at)
-			values ($1, $2, $3, $4, $5, $6, $7, $7)`, wallet, fallbackStrategy, symbol, "unknown-"+closeOrderID, closeOrderID, pnl.String(), at)
-		t = ClosedTrade{Wallet: wallet, Strategy: fallbackStrategy, Symbol: symbol, OpenOrderID: "unknown-" + closeOrderID, CloseOrderID: closeOrderID, PnL: pnl, OpenedAt: at, ClosedAt: at}
+		_, err = s.pool.Exec(ctx, `insert into trades (wallet, strategy, symbol, open_order_id, close_order_id, side, size, entry_price, exit_price, pnl, opened_at, closed_at)
+			values ($1, $2, $3, $4, $5, $6, $7, 0, $8, $9, $10, $10)`, wallet, fallbackStrategy, symbol, "unknown-"+closeOrderID, closeOrderID, f.Side, f.Size.String(), f.Price.String(), pnl.String(), at)
+		t = ClosedTrade{Wallet: wallet, Strategy: fallbackStrategy, Symbol: symbol, OpenOrderID: "unknown-" + closeOrderID, CloseOrderID: closeOrderID, Side: f.Side, Size: f.Size, ExitPrice: f.Price, PnL: pnl, OpenedAt: at, ClosedAt: at}
+		return t, err
 	}
 	if err != nil {
 		return ClosedTrade{}, err
 	}
+	t.Size, _ = fixed.Parse(size)
+	t.EntryPrice, _ = fixed.Parse(entry)
+	t.ExitPrice, _ = fixed.Parse(exit)
 	t.PnL = pnl
 	return t, nil
+}
+
+// Trades lists a wallet's round trips in a symbol, newest first: what the
+// chart marks. Open ones have no exit.
+func (s *Store) Trades(ctx context.Context, wallet, symbol string, limit int) ([]ClosedTrade, error) {
+	rows, err := s.pool.Query(ctx, `select wallet, strategy, symbol, open_order_id, coalesce(close_order_id, ''), side, size::text, entry_price::text,
+		coalesce(exit_price::text, ''), coalesce(pnl::text, ''), opened_at, closed_at
+		from trades where wallet = $1 and symbol = $2 order by opened_at desc limit $3`, wallet, symbol, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ClosedTrade
+	for rows.Next() {
+		var t ClosedTrade
+		var size, entry, exit, pnl string
+		var closedAt *time.Time
+		if err := rows.Scan(&t.Wallet, &t.Strategy, &t.Symbol, &t.OpenOrderID, &t.CloseOrderID, &t.Side, &size, &entry, &exit, &pnl, &t.OpenedAt, &closedAt); err != nil {
+			return nil, err
+		}
+		t.Size, _ = fixed.Parse(size)
+		t.EntryPrice, _ = fixed.Parse(entry)
+		if exit != "" {
+			t.ExitPrice, _ = fixed.Parse(exit)
+		}
+		if pnl != "" {
+			t.PnL, _ = fixed.Parse(pnl)
+		}
+		if closedAt != nil {
+			t.ClosedAt = *closedAt
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
 }
 
 // OpenStrategy reports the strategy of a wallet's open round trip.

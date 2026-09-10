@@ -13,14 +13,19 @@ export type ChartType = 'candles' | 'line';
 export type Trend = 'up' | 'down' | 'flat';
 
 export type Box = { top: string; bottom: string };
-/** The band around a price where a trade cannot beat the round-trip fee. */
-export type DeadZone = { price: string; bps: number };
+
+/** A round trip to mark on the chart; an open one has no exit. */
+export type ChartTrade = { side: 'long' | 'short'; size: string; entry_price: string; exit_price?: string; pnl?: string; opened_at: string; closed_at?: string };
+
+/** The open position: one line at the entry with the live result. */
+export type ChartPosition = { side: 'long' | 'short'; size: string; entry_price: string; unrealized_pnl: string };
 
 export type ChartMessage =
   | { type: 'chartType'; value: ChartType }
   | { type: 'trend'; value: Trend }
   | { type: 'box'; value: Box | null }
-  | { type: 'deadZone'; value: DeadZone | null };
+  | { type: 'trades'; value: ChartTrade[] }
+  | { type: 'position'; value: ChartPosition | null };
 
 export type TVChartProps = {
   symbol: string;
@@ -32,7 +37,8 @@ export type TVChartProps = {
   /** Length of the one moving average drawn; 0 draws none. */
   ma?: number;
   box?: Box | null;
-  deadZone?: DeadZone | null;
+  trades?: ChartTrade[];
+  position?: ChartPosition | null;
   height: number;
 };
 
