@@ -36,7 +36,7 @@ func TestLeaderboardByStrategyAndWeek(t *testing.T) {
 	if !lb.WeekStart.Equal(time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)) {
 		t.Fatalf("week start = %v", lb.WeekStart)
 	}
-	if len(lb.Boards) != 2 {
+	if len(lb.Boards) != 3 {
 		t.Fatalf("boards = %d", len(lb.Boards))
 	}
 	dir, ma := lb.Boards[0], lb.Boards[1]

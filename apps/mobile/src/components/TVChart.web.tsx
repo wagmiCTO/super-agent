@@ -7,9 +7,11 @@ import { View } from 'react-native';
 
 import { chartPageUrl, type ChartMessage, type TVChartProps } from '@/chart/page';
 
-export function TVChart({ symbol, theme, background, chartType, trend, height }: TVChartProps) {
+export function TVChart({ symbol, theme, background, chartType, trend, ma, box, deadZone, height }: TVChartProps) {
   const frame = useRef<HTMLIFrameElement | null>(null);
-  const url = chartPageUrl({ symbol, theme, background });
+  const url = chartPageUrl({ symbol, theme, background, ma });
+  const boxKey = JSON.stringify(box ?? null);
+  const zoneKey = JSON.stringify(deadZone ?? null);
 
   const send = (msg: ChartMessage) => frame.current?.contentWindow?.postMessage(msg, '*');
   useEffect(() => {
@@ -18,6 +20,14 @@ export function TVChart({ symbol, theme, background, chartType, trend, height }:
   useEffect(() => {
     send({ type: 'trend', value: trend });
   }, [trend, url]);
+  useEffect(() => {
+    send({ type: 'box', value: box ?? null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boxKey, url]);
+  useEffect(() => {
+    send({ type: 'deadZone', value: deadZone ?? null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoneKey, url]);
 
   return (
     <View style={{ height, borderRadius: 12, overflow: 'hidden' }} testID="signal-chart">
@@ -29,6 +39,8 @@ export function TVChart({ symbol, theme, background, chartType, trend, height }:
         onLoad={() => {
           send({ type: 'chartType', value: chartType });
           send({ type: 'trend', value: trend });
+          send({ type: 'box', value: box ?? null });
+          send({ type: 'deadZone', value: deadZone ?? null });
         }}
       />
     </View>

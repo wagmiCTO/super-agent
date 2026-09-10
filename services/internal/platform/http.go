@@ -40,6 +40,7 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /v1/exchange/key", h.enrolledKey)
 	mux.HandleFunc("GET /v1/exchange/network", h.exchangeNetwork)
 	mux.HandleFunc("GET /v1/signals/ma-cross", h.maCross)
+	mux.HandleFunc("GET /v1/signals/box", h.box)
 	mux.HandleFunc("GET /v1/leaderboard", h.leaderboard)
 	mux.HandleFunc("GET /v1/prizes", h.prizes)
 	mux.HandleFunc("GET /v1/candles", h.candles)
@@ -752,6 +753,55 @@ type maCrossDTO struct {
 	Window        *signalWindowDTO `json:"window,omitempty"`
 	LastCross     *signalCrossDTO  `json:"last_cross,omitempty"`
 	Points        []signalPointDTO `json:"points"`
+}
+
+type boxBreakDTO struct {
+	Side   string `json:"side"`
+	At     string `json:"at"`
+	Top    string `json:"top"`
+	Bottom string `json:"bottom"`
+}
+
+type boxDTO struct {
+	Symbol        string           `json:"symbol"`
+	PeriodSeconds int              `json:"period_seconds"`
+	Length        int              `json:"length"`
+	Ready         bool             `json:"ready"`
+	Top           string           `json:"top"`
+	Bottom        string           `json:"bottom"`
+	Forming       bool             `json:"forming"`
+	Window        *signalWindowDTO `json:"window,omitempty"`
+	LastBreak     *boxBreakDTO     `json:"last_break,omitempty"`
+	Points        []signalPointDTO `json:"points"`
+}
+
+// box serves the Box signal for a market: the range, the bars, and whether
+// a breakout is on offer right now.
+func (h *handler) box(w http.ResponseWriter, r *http.Request) {
+	if h.signals == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "signals_unavailable", Message: "no signals are running"})
+		return
+	}
+	symbol := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("symbol")))
+	st, ok := h.signals.Box(symbol)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, errorDTO{Error: "unknown_market", Message: "no signal for this market"})
+		return
+	}
+	out := boxDTO{
+		Symbol: st.Symbol, PeriodSeconds: int(st.Period / time.Second), Length: st.Length, Ready: st.Ready,
+		Top: st.Top.String(), Bottom: st.Bottom.String(), Forming: st.Forming, Points: make([]signalPointDTO, 0, len(st.Points)),
+	}
+	for _, p := range st.Points {
+		out.Points = append(out.Points, signalPointDTO{At: p.At.UTC().Format(time.RFC3339), Open: p.Open.String(), High: p.High.String(), Low: p.Low.String(), Close: p.Close.String()})
+	}
+	if st.Window != nil {
+		out.Window = &signalWindowDTO{Side: st.Window.Side.String(), OpenedAt: timeOrEmpty(st.Window.OpenedAt), ExpiresAt: timeOrEmpty(st.Window.ExpiresAt)}
+	}
+	if st.LastBreak != nil {
+		out.LastBreak = &boxBreakDTO{Side: st.LastBreak.Side.String(), At: timeOrEmpty(st.LastBreak.At), Top: st.LastBreak.Top.String(), Bottom: st.LastBreak.Bottom.String()}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // maCross serves the MA Cross signal for a market: the chart, the trend,

@@ -9,10 +9,12 @@ import { WebView } from 'react-native-webview';
 
 import { chartPageUrl, type ChartMessage, type TVChartProps } from '@/chart/page';
 
-export function TVChart({ symbol, theme, background, chartType, trend, height }: TVChartProps) {
+export function TVChart({ symbol, theme, background, chartType, trend, ma, box, deadZone, height }: TVChartProps) {
   const web = useRef<WebView>(null);
   const [ready, setReady] = useState(false);
-  const url = chartPageUrl({ symbol, theme, background });
+  const url = chartPageUrl({ symbol, theme, background, ma });
+  const boxKey = JSON.stringify(box ?? null);
+  const zoneKey = JSON.stringify(deadZone ?? null);
 
   const send = (msg: ChartMessage) =>
     web.current?.injectJavaScript(`window.dispatchEvent(new MessageEvent('message', { data: ${JSON.stringify(JSON.stringify(msg))} })); true;`);
@@ -22,6 +24,14 @@ export function TVChart({ symbol, theme, background, chartType, trend, height }:
   useEffect(() => {
     if (ready) send({ type: 'trend', value: trend });
   }, [ready, trend]);
+  useEffect(() => {
+    if (ready) send({ type: 'box', value: box ?? null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, boxKey]);
+  useEffect(() => {
+    if (ready) send({ type: 'deadZone', value: deadZone ?? null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, zoneKey]);
 
   return (
     <View style={{ height, borderRadius: 12, overflow: 'hidden' }} testID="signal-chart">

@@ -22,7 +22,17 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useTrading } from '@/trading/useTrading';
 
-const ROUTES: Record<string, Href> = { direction: '/direction', 'ma-cross': '/ma-cross' };
+const ROUTES: Record<string, Href> = { direction: '/direction', 'ma-cross': '/ma-cross', box: '/box' };
+
+/** The week's argument: which strategy made the most for its players. */
+function factionLine(boards: Board[]): string | null {
+  const played = boards.filter((b) => b.trades > 0);
+  if (played.length === 0) return null;
+  const sorted = [...played].sort((a, b) => Number(b.pnl) - Number(a.pnl));
+  const lead = sorted[0];
+  const rest = sorted.slice(1).map((b) => `${b.name} ${Number(b.pnl) >= 0 ? '+' : ''}${trim(b.pnl)}`);
+  return `${lead.name} leads this week with ${Number(lead.pnl) >= 0 ? '+' : ''}${trim(lead.pnl)}${rest.length ? ` · ${rest.join(' · ')}` : ''}`;
+}
 
 export default function LobbyScreen() {
   const account = useAccount();
@@ -45,6 +55,12 @@ export default function LobbyScreen() {
           </View>
 
           <AccountSection account={account} state={t.state} onChange={t.refresh} />
+
+          {boards && factionLine(boards) ? (
+            <ThemedText type="smallBold" style={trading.footer} testID="faction-line">
+              {factionLine(boards)}
+            </ThemedText>
+          ) : null}
 
           {boards === null ? (
             <ThemedText type="small" themeColor="textSecondary" style={trading.footer}>

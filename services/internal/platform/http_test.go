@@ -181,7 +181,7 @@ func TestLeaderboardCountsRoundTrips(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Boards) != 2 || out.Boards[1].ID != "ma-cross" || out.Boards[1].Trades != 1 || out.Boards[1].Players != 1 {
+	if len(out.Boards) != 3 || out.Boards[1].ID != "ma-cross" || out.Boards[1].Trades != 1 || out.Boards[1].Players != 1 {
 		t.Errorf("boards = %+v", out.Boards)
 	}
 	if out.Boards[0].Trades != 0 {

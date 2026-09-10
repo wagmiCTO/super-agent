@@ -103,3 +103,16 @@ export function useTrading(symbol: string, strategy: string) {
 
   return { state, market, position, busy, notice, offline, refresh, open, close };
 }
+
+/**
+ * The dead zone: the band around a price that a trade cannot leave with a
+ * profit, because the round trip costs that much. Around the entry while a
+ * position is open; around the last price while flat, so the player sees
+ * how far the price has to go before a tap can pay.
+ */
+export function deadZoneFor(position: Position | null, market: Market | null, lastClose: string | null): { price: string; bps: number } | null {
+  if (!market) return null;
+  const bps = Number(market.fees.round_trip_taker_bps);
+  const price = position?.entry_price ?? lastClose;
+  return price ? { price, bps } : null;
+}

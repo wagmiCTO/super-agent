@@ -218,6 +218,25 @@ paths:
           description: No signals are running.
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
+  /v1/signals/box:
+    get:
+      summary: The Box signal for a market
+      description: >-
+        The last N closed bars draw a box — highest high, lowest low. A bar
+        closing outside it is a breakout and opens a window in that direction
+        for a few minutes. Waiting inside the box is free.
+      parameters:
+        - in: query
+          name: symbol
+          required: true
+          schema: { type: string, example: MON }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BoxSignal" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /v1/candles:
     get:
       summary: OHLCV history for a market, for the chart
@@ -463,6 +482,44 @@ components:
               pnl: { $ref: "#/components/schemas/Decimal" }
               trades: { type: integer }
 
+    BoxSignal:
+      type: object
+      required: [symbol, period_seconds, length, ready, top, bottom, forming, points]
+      properties:
+        symbol: { type: string }
+        period_seconds: { type: integer }
+        length: { type: integer, description: Closed bars that draw the box. }
+        ready: { type: boolean }
+        top: { $ref: "#/components/schemas/Decimal" }
+        bottom: { $ref: "#/components/schemas/Decimal" }
+        forming: { type: boolean }
+        window:
+          type: object
+          required: [side, opened_at, expires_at]
+          properties:
+            side: { $ref: "#/components/schemas/Side" }
+            opened_at: { type: string, format: date-time }
+            expires_at: { type: string, format: date-time }
+        last_break:
+          type: object
+          required: [side, at, top, bottom]
+          properties:
+            side: { $ref: "#/components/schemas/Side" }
+            at: { type: string, format: date-time }
+            top: { $ref: "#/components/schemas/Decimal" }
+            bottom: { $ref: "#/components/schemas/Decimal" }
+        points:
+          type: array
+          items:
+            type: object
+            required: [at, open, high, low, close]
+            properties:
+              at: { type: string, format: date-time }
+              open: { $ref: "#/components/schemas/Decimal" }
+              high: { $ref: "#/components/schemas/Decimal" }
+              low: { $ref: "#/components/schemas/Decimal" }
+              close: { $ref: "#/components/schemas/Decimal" }
+
     MACrossSignal:
       type: object
       required: [symbol, period_seconds, fast, slow, ready, trend, forming, points]
@@ -594,7 +651,7 @@ components:
           type: string
           description: >-
             Which strategy this entry belongs to, for the leaderboard:
-            direction (default) or ma-cross.
+            direction (default), ma-cross or box.
         horizon_seconds:
           type: integer
           minimum: 0

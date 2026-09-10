@@ -1,11 +1,10 @@
 /**
- * Strategy #2 — MA Cross.
+ * Strategy #3 — Box.
  *
- * A minute chart with the price and the slow average. When the fast average
- * crosses the slow one, the screen lights up and offers an entry in the
- * cross's direction for a few minutes. The signal is computed on the
- * platform from closed bars and shared by everyone; the tap is the user's.
- * The exit is the same horizon Direction uses.
+ * The last thirty closed bars draw a box on the chart. Waiting inside it
+ * costs nothing; when a bar closes outside, the screen lights up and offers
+ * an entry in the breakout's direction for a few minutes. Same tap, same
+ * horizon, same exit as the other strategies — only the invitation differs.
  */
 import { Link } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -13,9 +12,9 @@ import { ScrollView, useColorScheme, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAccount } from '@/account/useAccount';
-import { api, type MACrossSignal } from '@/api/client';
+import { api, type BoxSignal } from '@/api/client';
 import { AccountSection } from '@/components/account';
-import { TVChart } from '@/components/TVChart';
+import { trim } from '@/components/format';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import {
@@ -29,6 +28,7 @@ import {
   styles,
   useCountdown,
 } from '@/components/trading';
+import { TVChart } from '@/components/TVChart';
 import { DEFAULT_SYMBOL, HORIZON_PRESETS, horizonSeconds, NOTIONAL_PRESETS, SIGNAL_POLL_MS, type Horizon } from '@/config';
 import { useTheme } from '@/hooks/use-theme';
 import { deadZoneFor, useTrading } from '@/trading/useTrading';
@@ -40,31 +40,61 @@ type ChartMode = (typeof CHART_MODES)[number];
 const UP = '#16a34a';
 const DOWN = '#dc2626';
 
-export default function MACrossScreen() {
+export default function BoxScreen() {
   const account = useAccount();
-  const t = useTrading(DEFAULT_SYMBOL, 'ma-cross');
-  const signal = useSignal(DEFAULT_SYMBOL);
+  const t = useTrading(DEFAULT_SYMBOL, 'box');
+  const signal = useBox(DEFAULT_SYMBOL);
   const [notional, setNotional] = useState<Notional>('20');
   const [horizon, setHorizon] = useState<Horizon>('15m');
   const [mode, setMode] = useState<ChartMode>('Candles');
   const window = signal?.window ?? null;
   const windowLeft = useCountdown(window?.expires_at ?? null);
+  const theme = useTheme();
+  const dark = useColorScheme() === 'dark';
+  const lit = Boolean(window);
+  const sideColor = window?.side === 'long' ? UP : DOWN;
 
   return (
     <ThemedView style={styles.root}>
       <SafeAreaView style={styles.safe}>
         <ScrollView contentContainerStyle={styles.content}>
-          <ScreenHeader title={`MA CROSS · ${DEFAULT_SYMBOL}`} state={t.state} offline={t.offline} />
+          <ScreenHeader title={`BOX · ${DEFAULT_SYMBOL}`} state={t.state} offline={t.offline} />
 
           <AccountSection account={account} state={t.state} onChange={t.refresh} />
 
-          <SignalCard
-            signal={signal}
-            windowLeft={windowLeft}
-            mode={mode}
-            onMode={setMode}
-            deadZone={deadZoneFor(t.position, t.market, signal?.points.at(-1)?.close ?? null)}
-          />
+          <View
+            testID="signal-card"
+            style={[
+              styles.card,
+              { backgroundColor: theme.backgroundElement, alignItems: 'stretch', borderWidth: 2, borderColor: lit ? sideColor : 'transparent' },
+            ]}>
+            <View style={styles.header}>
+              <ThemedText type="small" themeColor="textSecondary" testID="signal-box">
+                {signal?.ready ? `box ${trim(signal.bottom)} – ${trim(signal.top)} · ${signal.length}×1m` : 'Warming up the signal…'}
+              </ThemedText>
+              {window ? (
+                <ThemedText type="smallBold" style={{ color: sideColor }} testID="signal-window">
+                  {window.side === 'long' ? 'Broke up' : 'Broke down'} · {windowLeft ?? ''}
+                </ThemedText>
+              ) : signal?.last_break ? (
+                <ThemedText type="small" themeColor="textSecondary" testID="signal-last-break">
+                  last break {signal.last_break.side === 'long' ? 'up' : 'down'} · {timeOfDay(signal.last_break.at)}
+                </ThemedText>
+              ) : null}
+            </View>
+            <TVChart
+              symbol={DEFAULT_SYMBOL}
+              theme={dark ? 'dark' : 'light'}
+              background={theme.backgroundElement}
+              chartType={mode === 'Line' ? 'line' : 'candles'}
+              trend={window ? (window.side === 'long' ? 'up' : 'down') : 'flat'}
+              ma={0}
+              box={signal?.ready ? { top: signal.top, bottom: signal.bottom } : null}
+              deadZone={deadZoneFor(t.position, t.market, signal?.points.at(-1)?.close ?? null)}
+              height={280}
+            />
+            <PresetRow label="Chart" options={CHART_MODES} value={mode} onChange={setMode} />
+          </View>
 
           <PositionCard position={t.position} market={t.market} notional={notional} />
 
@@ -75,10 +105,9 @@ export default function MACrossScreen() {
               <PresetRow label="Amount" options={NOTIONAL_PRESETS} value={notional} onChange={setNotional} />
               <PresetRow label="Horizon" options={HORIZON_PRESETS} value={horizon} onChange={setHorizon} />
               <View style={styles.directions}>
-                {/* Only the cross's direction is offered: that is the strategy. */}
                 <DirectionButton
                   label={window.side === 'long' ? 'Up' : 'Down'}
-                  color={window.side === 'long' ? UP : DOWN}
+                  color={sideColor}
                   busy={t.busy === 'up' || t.busy === 'down'}
                   disabled={t.busy !== null}
                   onPress={() => void t.open(window.side, notional, horizonSeconds(horizon))}
@@ -87,7 +116,7 @@ export default function MACrossScreen() {
             </>
           ) : (
             <ThemedText type="small" themeColor="textSecondary" style={styles.footer} testID="signal-waiting">
-              {signal?.ready ? 'Waiting for the next cross — the screen lights up when it comes' : 'Warming up the signal…'}
+              {signal?.ready ? 'Inside the box — waiting is free. The screen lights up on a breakout' : 'Warming up the signal…'}
             </ThemedText>
           )}
 
@@ -105,14 +134,13 @@ export default function MACrossScreen() {
   );
 }
 
-/** Polls the platform's signal for a market. */
-function useSignal(symbol: string): MACrossSignal | null {
-  const [signal, setSignal] = useState<MACrossSignal | null>(null);
+function useBox(symbol: string): BoxSignal | null {
+  const [signal, setSignal] = useState<BoxSignal | null>(null);
   useEffect(() => {
     let alive = true;
     const read = () =>
       api
-        .maCross(symbol)
+        .box(symbol)
         .then((s) => alive && setSignal(s))
         .catch(() => undefined);
     void read();
@@ -123,63 +151,6 @@ function useSignal(symbol: string): MACrossSignal | null {
     };
   }, [symbol]);
   return signal;
-}
-
-/**
- * The chart and the state of the signal. Price as a thin line, the slow
- * average as the one line that matters, the whole card tinted by the trend
- * and lit while a window is open.
- */
-function SignalCard({
-  signal,
-  windowLeft,
-  mode,
-  onMode,
-  deadZone,
-}: {
-  signal: MACrossSignal | null;
-  windowLeft: string | null;
-  mode: ChartMode;
-  onMode: (m: ChartMode) => void;
-  deadZone: { price: string; bps: number } | null;
-}) {
-  const theme = useTheme();
-  const dark = useColorScheme() === 'dark';
-  const trendColor = signal?.trend === 'up' ? UP : signal?.trend === 'down' ? DOWN : theme.textSecondary;
-  const lit = Boolean(signal?.window);
-  return (
-    <View
-      testID="signal-card"
-      style={[
-        styles.card,
-        { backgroundColor: theme.backgroundElement, alignItems: 'stretch', borderWidth: 2, borderColor: lit ? trendColor : 'transparent' },
-      ]}>
-      <View style={styles.header}>
-        <ThemedText type="small" themeColor="textSecondary" testID="signal-trend">
-          {signal ? `${signal.fast}/${signal.slow} · 1m · trend ${signal.trend}` : 'Loading signal…'}
-        </ThemedText>
-        {signal?.window ? (
-          <ThemedText type="smallBold" style={{ color: trendColor }} testID="signal-window">
-            {signal.window.side === 'long' ? 'Up' : 'Down'} window · {windowLeft ?? ''}
-          </ThemedText>
-        ) : signal?.last_cross ? (
-          <ThemedText type="small" themeColor="textSecondary" testID="signal-last-cross">
-            last cross {signal.last_cross.side === 'long' ? 'up' : 'down'} · {timeOfDay(signal.last_cross.at)}
-          </ThemedText>
-        ) : null}
-      </View>
-      <TVChart
-        symbol={DEFAULT_SYMBOL}
-        theme={dark ? 'dark' : 'light'}
-        background={theme.backgroundElement}
-        chartType={mode === 'Line' ? 'line' : 'candles'}
-        trend={signal?.trend ?? 'flat'}
-        deadZone={deadZone}
-        height={280}
-      />
-      <PresetRow label="Chart" options={CHART_MODES} value={mode} onChange={onMode} />
-    </View>
-  );
 }
 
 function timeOfDay(iso: string): string {

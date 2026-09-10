@@ -9,7 +9,7 @@ test('the lobby shows each strategy with its week and opens it', async ({ page }
   await expect(page.getByText(/^STRATEGIES · THIS WEEK$/)).toBeVisible();
   await expect(page.getByText(/^Balance /)).toBeVisible();
 
-  for (const id of ['direction', 'ma-cross']) {
+  for (const id of ['direction', 'ma-cross', 'box']) {
     const card = page.getByTestId(`strategy-${id}`);
     await expect(card).toBeVisible();
     await expect(card.getByTestId(`board-pnl-${id}`)).toHaveText(/^[+-]?\d+(\.\d+)?$/);

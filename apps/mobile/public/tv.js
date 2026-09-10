@@ -142,6 +142,23 @@
 
   var ma = null;
   var pendingTrend = null;
+  var chartReady = false;
+  // Drawn lines: the box (two solid lines) and the dead zone (two dashed).
+  var lines = { box: [], zone: [] };
+  function drawLines(kind, prices, color, style) {
+    var chart = widget.activeChart();
+    lines[kind].forEach(function (id) { try { chart.removeEntity(id); } catch (e) {} });
+    lines[kind] = [];
+    if (!prices) return;
+    var now = Math.floor(Date.now() / 1000);
+    prices.forEach(function (price) {
+      var id = chart.createShape({ time: now, price: price }, {
+        shape: 'horizontal_line', lock: true, disableSelection: true, disableSave: true, disableUndo: true,
+        overrides: { linecolor: color, linewidth: 1, linestyle: style, showLabel: false },
+      });
+      if (id) lines[kind].push(id);
+    });
+  }
   function paintTrend(value) {
     if (!ma) { pendingTrend = value; return; }
     var color = value === 'up' ? UP : value === 'down' ? DOWN : MA;
@@ -151,6 +168,8 @@
     var chart = widget.activeChart();
     var now = Math.floor(Date.now() / 1000);
     chart.setVisibleRange({ from: now - 90 * 60, to: now + 5 * 60 });
+    chartReady = true;
+    if (!MA_LENGTH) { post({ type: 'ready' }); return; }
     // One average, drawn well: the strategy's slow line.
     chart.createStudy('Moving Average', false, false, { length: MA_LENGTH, source: 'close' }, {
       'plot.color': MA, 'plot.linewidth': 2, 'plot.linestyle': 0, 'plot.transparency': 0,
@@ -165,6 +184,12 @@
       var chart = widget.activeChart();
       if (msg.type === 'chartType') chart.setChartType(msg.value === 'line' ? 2 : 1);
       if (msg.type === 'trend') paintTrend(msg.value);
+      if (msg.type === 'box') drawLines('box', msg.value ? [Number(msg.value.top), Number(msg.value.bottom)] : null, MA, 0);
+      if (msg.type === 'deadZone') {
+        var z = msg.value;
+        // The fee band: entry (or last price) ± the round-trip cost.
+        drawLines('zone', z ? [Number(z.price) * (1 + z.bps / 10000), Number(z.price) * (1 - z.bps / 10000)] : null, TEXT, 2);
+      }
     });
   });
   // React Native's WebView delivers injected messages through the same event.
