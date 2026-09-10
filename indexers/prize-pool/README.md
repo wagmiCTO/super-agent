@@ -37,6 +37,6 @@ Hasura is then on http://localhost:8085 (console password `testing`):
 
 ## Deploy
 
-Envio's hosted service builds from this directory on push: connect the
-repository at https://envio.dev/app, root `indexers/prize-pool`. The
+Envio's hosted service builds from this directory on every push to `main`
+(indexer `prize-pool` in the `wagmicto` organisation, root `indexers/prize-pool`). The
 platform reads the deployed GraphQL endpoint from `ENVIO_GRAPHQL_URL`.
