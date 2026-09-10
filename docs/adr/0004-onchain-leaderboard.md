@@ -1,62 +1,61 @@
-# ADR 0004: The leaderboard is a contract, settled one trade at a time
+# ADR 0004: The weekly prize is a contract; the leaderboard is a table
 
-**Status:** accepted, 2026-09-10
+**Status:** accepted, 2026-09-10 (supersedes the same day's first draft,
+which put the leaderboard itself on-chain)
 
 ## Context
 
-Every strategy has a weekly board: what it made for all its players, who is
-up, how many trades. Until now that board lived in the platform's memory
-(ADR 0003's ledger). A board in our database asks the user to trust us twice —
-that the numbers are real, and that we did not edit them. A board that is a
-contract asks for neither: the venue's fills are public, the records are
-public, and anyone can recompute the week.
+Every strategy has a weekly board — what it made for all its players, who is
+up, how many trades — and the product wants a reason to come back next week:
+a prize for the top of each board.
 
-This is also the honest answer to "why does this need Monad". A leaderboard
-settled per trade is thousands of small writes a minute at peak — cheap and
-fast here, unaffordable on Ethereum. Nothing else in the product needs a
-particular chain: the venue adapter and the account layer are chain-agnostic
-by design.
+The first draft of this ADR settled every closed trade into a leaderboard
+contract. It worked, and it was withdrawn the same day: a board that exists
+on-chain only so that it can be said to exist on-chain reads as built for a
+bounty, and for the platform's own bookkeeping a contract is a poor database
+— it cannot enumerate, cannot be corrected, and charges gas to write.
+
+What does need a chain is money that must not be ours to take back.
 
 ## Decision
 
-`contracts/src/StrategyLeaderboard.sol`:
+**The system of record is Postgres** (`services/internal/store`): keys,
+policy state, pending horizons, and a journal of round trips from which the
+boards are computed. Every engine keeps working from memory and writes
+through; a restart restores from the database.
 
-- **One write per closed round trip.** `recordTrade(strategy, wallet, pnl,
-  closedAt, ref)`; the contract aggregates by ISO week (Monday 00:00 UTC),
-  per wallet and per strategy, and emits `TradeRecorded`. `pnl` is the
-  realized result in collateral micros, fees included — the same number the
-  platform's daily-loss limit sees. There is no off-chain summary pushed at
-  the end of the week.
-- **`ref` is the audit trail.** It is the hash of the venue order ids of the
-  round trip. It makes every record idempotent (a retry cannot double count)
-  and lets anyone tie a record back to the exchange.
-- **Writers are settlers; the owner appoints them.** The platform holds a
-  settler key. A settler can only add records; it cannot edit or delete one,
-  and a record needs a unique `ref`. Misbehaviour is visible, not silent.
-- **Reads are `eth_call`s.** `totalOf(week, strategy)` and `scoreOf(week,
-  strategy, wallet)` are what the app's lobby shows. Ranking across wallets
-  needs enumeration the contract does not do; that is the indexer's job
-  (Envio over `TradeRecorded`), and until it exists the platform ranks the
-  wallets it knows.
+**The prize is a contract** — `contracts/src/StrategyPrizePool.sol`, over
+the venue's collateral token (AUSD):
 
-The platform side (`services/internal/chain`) speaks JSON-RPC and signs
-EIP-1559 transactions itself, with `decred/secp256k1` for the curve — the
-same "own the wire protocol" rule as the venue adapter, and one small
-dependency rather than a client framework. Settlement runs off the trade
-path: a closed trade is queued and sent with retries; a failed settlement
-never blocks a close.
+- `fund(week, strategy, amount)`: anyone can add to a strategy's pool for a
+  week. The platform does, out of its builder fees, a fixed amount per
+  closed trade, so the pool grows in front of the players during the week.
+- `settle(week, strategy, winners, amounts, pnls)`: once the week is over, a
+  settler publishes who won and with what result. Amounts must fit in the
+  pool; what is not allocated carries into the next week of the same
+  strategy. Settling is final: no second settle, no funding a settled week.
+- `claim(week, strategy)`: each winner takes their own prize. The platform
+  never holds the payout and cannot redirect it.
+
+The winners are computed off-chain from the journal — top three by realized
+result, 50/30/20 of the pool, positive results only — and published together
+with the results they earned it on, so anyone can check the list against the
+venue's public fills. The platform's whole power over the money is to publish
+that list, once, in public.
+
+The platform talks to the chain through `services/internal/chain`: JSON-RPC
+and locally signed EIP-1559 transactions, with `decred/secp256k1` for the
+curve — the same "own the wire protocol" rule as the venue adapter.
 
 ## Consequences
 
-- The gate of sprint 3 — the board is read from the contract, not our
-  database — is met once `/v1/leaderboard` reads totals and scores via
-  `eth_call` and the in-memory ledger is only the fallback while the chain
-  is unreachable.
-- Two keys now exist on the platform: the venue API keys of the users and the
-  settler key. Both live in the same secret store; the settler key can spend
-  gas and nothing else of value, but it is still a key.
-- Records are public. Wallet addresses on a board are public by
-  construction; there is no account name to leak. A later privacy option
-  would be a per-user pseudonymous wallet, not a change to the contract.
-- Testnet first; a mainnet deployment is a deliberate step with its own
-  settler key, and the contract address becomes configuration, never code.
+- The lobby shows the live pool per strategy and last week's winners; a
+  winner sees a claim button and signs the claim with the passkey wallet,
+  the same way it signs its activation.
+- The settler key spends gas and the prize budget, nothing else. On testnet
+  it is funded by hand; on mainnet the budget is a share of builder fees.
+- Weeks are ISO weeks, Monday 00:00 UTC, in both the contract and the
+  journal; the week index is `(unix + 3 days) / 7 days`.
+- Testnet first: `0x19952068Ce2D25C672d71cD48775A9f43438f4E6` over AUSD
+  `0xa9012a…22dc`. A mainnet deployment is a deliberate step with its own
+  settler, and the address stays configuration.

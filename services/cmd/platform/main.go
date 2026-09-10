@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/big"
 	"net/http"
 	"os"
 	"os/signal"
@@ -150,6 +151,33 @@ func run(log *slog.Logger) error {
 	go signals.Run(ctx, limits.AllowedSymbols)
 	handlerOpts = append(handlerOpts, platform.WithSignals(signals), platform.WithLedger(ledger))
 
+	// The weekly prize: every closed round trip adds to its strategy's pool
+	// on-chain, and last week's winners are published once the week is over.
+	if key, pool := os.Getenv("PLATFORM_SETTLER_KEY"), os.Getenv("PLATFORM_PRIZE_POOL_ADDRESS"); key != "" && pool != "" {
+		if db == nil {
+			return fmt.Errorf("the prize pool needs DATABASE_URL: winners are computed from the journal")
+		}
+		act, err := adapter.Activation(ctx)
+		if err != nil {
+			return fmt.Errorf("prize pool: read collateral token: %w", err)
+		}
+		perTrade, err := prizePerTrade(envOr("PLATFORM_PRIZE_PER_TRADE", "0"), act.CollateralDecimals)
+		if err != nil {
+			return err
+		}
+		prize, err := platform.NewPrize(ctx, platform.PrizeConfig{
+			RPCURL: envOr("PLATFORM_CHAIN_RPC", act.RPCURL), PrivateKey: key, Contract: pool, Token: act.CollateralToken, PerTrade: perTrade,
+		}, db, log)
+		if err != nil {
+			return err
+		}
+		ledger.OnClosed(prize.OnClosed)
+		go prize.Run(ctx)
+		handlerOpts = append(handlerOpts, platform.WithPrize(prize))
+	} else {
+		log.Warn("prize pool disabled: PLATFORM_SETTLER_KEY or PLATFORM_PRIZE_POOL_ADDRESS is not set")
+	}
+
 	// Bind to loopback unless told otherwise: this API places orders and has
 	// no authentication yet.
 	addr := envOr("PLATFORM_ADDR", "127.0.0.1:8080")
@@ -251,4 +279,16 @@ func splitList(s string) []string {
 		}
 	}
 	return out
+}
+
+// prizePerTrade converts a collateral amount such as "0.1" to token units.
+func prizePerTrade(v string, decimals int) (*big.Int, error) {
+	d, err := fixed.Parse(v)
+	if err != nil || d.IsNeg() {
+		return nil, fmt.Errorf("PLATFORM_PRIZE_PER_TRADE: %q", v)
+	}
+	// fixed has 8 decimals; scale to the token's.
+	units := new(big.Int).SetInt64(int64(d))
+	div := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(8-decimals)), nil)
+	return units.Div(units, div), nil
 }

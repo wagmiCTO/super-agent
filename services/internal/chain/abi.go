@@ -117,3 +117,27 @@ func EncodeArrays(signature string, arrays ...[][32]byte) []byte {
 	out = append(out, head...)
 	return append(out, tail...)
 }
+
+// EncodeCall builds calldata for a function whose parameters are some static
+// words followed by dynamic arrays of static types (settle). Offsets are
+// relative to the start of the arguments.
+func EncodeCall(signature string, static [][32]byte, arrays [][][32]byte) []byte {
+	sel := Selector(signature)
+	out := append([]byte{}, sel[:]...)
+	for _, w := range static {
+		out = append(out, w[:]...)
+	}
+	offset := 32 * (len(static) + len(arrays))
+	var tail []byte
+	for _, arr := range arrays {
+		w := Word(uint64(offset))
+		out = append(out, w[:]...)
+		n := Word(uint64(len(arr)))
+		tail = append(tail, n[:]...)
+		for _, e := range arr {
+			tail = append(tail, e[:]...)
+		}
+		offset += 32 * (1 + len(arr))
+	}
+	return append(out, tail...)
+}

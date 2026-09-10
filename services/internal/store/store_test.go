@@ -156,7 +156,7 @@ func TestTradesJournalAndBoards(t *testing.T) {
 	// Open right now.
 	must(s.TradeOpened(ctx, w1, "ma-cross", "MON", "o4", now))
 
-	boards, err := s.Boards(ctx, now.Add(-2*time.Hour), 10)
+	boards, err := s.Boards(ctx, now.Add(-2*time.Hour), now.Add(time.Hour), 10)
 	must(err)
 	dir := boards["direction"]
 	// Other tests' wallets may be present; check ours by name.

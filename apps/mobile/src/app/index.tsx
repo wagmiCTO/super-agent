@@ -4,12 +4,14 @@
  * argue about is the strategy's total, not any one player's.
  */
 import { Link, type Href } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import type { Wallet } from '@/account/derive';
 import { useAccount } from '@/account/useAccount';
-import { api, type Board, type Leaderboard } from '@/api/client';
+import { api, describeError, type Board, type Leaderboard } from '@/api/client';
+import { claimPrize, fetchMyPrizes, type MyPrizes } from '@/exchange/prize';
 import { AccountSection } from '@/components/account';
 import { trim } from '@/components/format';
 import { ThemedText } from '@/components/themed-text';
@@ -49,14 +51,20 @@ export default function LobbyScreen() {
               Loading strategies…
             </ThemedText>
           ) : (
-            boards.map((b) => <StrategyCard key={b.id} board={b} href={ROUTES[b.id] ?? '/'} />)
+            boards.map((b) => (
+              <StrategyCard key={b.id} board={b} href={ROUTES[b.id] ?? '/'} pool={lb?.prize?.pools.find((p) => p.strategy === b.id)?.pool ?? null} />
+            ))
           )}
+
+          {account.state.status === 'unlocked' && lb?.prize ? (
+            <MyPrizes wallet={account.state.wallet} address={account.state.stored.address} contract={lb.prize.contract} />
+          ) : null}
 
           {lb ? (
             <ThemedText type="small" themeColor="textSecondary" style={trading.footer} testID="leaderboard-source">
-              {lb.source === 'chain'
-                ? `Settled on Monad · contract ${short(lb.contract ?? '')} · week ${lb.week}`
-                : 'Board from the platform — not settled on-chain yet'}
+              {lb.prize
+                ? `Prizes paid by contract ${short(lb.prize.contract)} · week ${lb.prize.week}${lb.prize.winners.length ? ` · last week: ${lb.prize.winners.length} winners` : ''}`
+                : 'No prize pool this week'}
             </ThemedText>
           ) : null}
         </ScrollView>
@@ -85,7 +93,7 @@ function useLeaderboard(): Leaderboard | null {
 }
 
 /** One strategy: what it is, what it made this week, who is up, who is in. */
-function StrategyCard({ board, href }: { board: Board; href: Href }) {
+function StrategyCard({ board, href, pool }: { board: Board; href: Href; pool: string | null }) {
   const theme = useTheme();
   const pnl = Number(board.pnl);
   const color = pnl > 0 ? '#16a34a' : pnl < 0 ? '#dc2626' : theme.text;
@@ -103,6 +111,11 @@ function StrategyCard({ board, href }: { board: Board; href: Href }) {
             <ThemedText type="small" themeColor="textSecondary">
               {board.tagline}
             </ThemedText>
+            {pool !== null ? (
+              <ThemedText type="smallBold" testID={`prize-pool-${board.id}`}>
+                Prize pool {trim(pool)} AUSD
+              </ThemedText>
+            ) : null}
             <View style={trading.header}>
               <ThemedText type="title" style={{ color }} testID={`board-pnl-${board.id}`}>
                 {pnl > 0 ? '+' : ''}
@@ -127,6 +140,70 @@ function StrategyCard({ board, href }: { board: Board; href: Href }) {
         )}
       </Pressable>
     </Link>
+  );
+}
+
+/**
+ * The wallet's published prizes, with a claim for each one not taken yet.
+ * The claim is the wallet's own transaction, like its activation.
+ */
+function MyPrizes({ wallet, address, contract }: { wallet: Wallet; address: string; contract: string }) {
+  const theme = useTheme();
+  const [mine, setMine] = useState<MyPrizes | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const load = useCallback(() => {
+    fetchMyPrizes(address)
+      .then(setMine)
+      .catch(() => setMine(null));
+  }, [address]);
+  useEffect(load, [load]);
+  if (!mine || mine.prizes.length === 0) return null;
+  const claim = async (i: number) => {
+    const p = mine.prizes[i];
+    const key = `${mine.weeks[i]}-${p.strategy}`;
+    setBusy(key);
+    setNotice(null);
+    try {
+      await claimPrize(wallet, contract, mine.weeks[i], p.strategy);
+      setNotice(`Claimed ${trim(p.amount)} AUSD`);
+      load();
+    } catch (e) {
+      setNotice(describeError(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <View style={[styles.card, { backgroundColor: theme.backgroundElement }]} testID="my-prizes">
+      <ThemedText type="subtitle">Your prizes</ThemedText>
+      {mine.prizes.map((p, i) => (
+        <View key={`${mine.weeks[i]}-${p.strategy}`} style={trading.header}>
+          <ThemedText type="small">
+            Week {mine.weeks[i]} · {p.strategy} · {trim(p.amount)} AUSD
+          </ThemedText>
+          {p.claimed ? (
+            <ThemedText type="small" themeColor="textSecondary">
+              claimed
+            </ThemedText>
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Claim ${trim(p.amount)}`}
+              disabled={busy !== null}
+              onPress={() => void claim(i)}
+              style={[trading.smallButton, { backgroundColor: theme.backgroundSelected, opacity: busy ? 0.6 : 1 }]}>
+              <ThemedText type="smallBold">Claim</ThemedText>
+            </Pressable>
+          )}
+        </View>
+      ))}
+      {notice ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          {notice}
+        </ThemedText>
+      ) : null}
+    </View>
   );
 }
 

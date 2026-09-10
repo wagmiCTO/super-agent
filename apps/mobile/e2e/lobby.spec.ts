@@ -16,8 +16,9 @@ test('the lobby shows each strategy with its week and opens it', async ({ page }
     await expect(card.getByText(/\d+ (player|players) · \d+ (trade|trades) · /)).toBeVisible();
   }
 
-  // The board is read from the contract, and the screen says so.
-  await expect(page.getByTestId('leaderboard-source')).toHaveText(/^Settled on Monad · contract 0x[0-9a-f]{4}…[0-9a-f]{4} · week \d+$/);
+  // The weekly prize lives in a contract; each card shows its pool.
+  await expect(page.getByTestId('prize-pool-direction')).toHaveText(/^Prize pool [\d.]+ AUSD$/);
+  await expect(page.getByTestId('leaderboard-source')).toHaveText(/^Prizes paid by contract 0x[0-9a-f]{4}…[0-9a-f]{4} · week \d+/);
 
   await page.getByRole('link', { name: 'Play Direction', exact: true }).click();
   await expect(page.getByText(/^DIRECTION · MON$/)).toBeVisible();

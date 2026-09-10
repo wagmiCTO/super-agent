@@ -236,6 +236,31 @@ paths:
         "400": { $ref: "#/components/responses/Invalid" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /v1/prizes:
+    get:
+      summary: A wallet's published prizes and whether each was claimed
+      parameters:
+        - { in: query, name: address, required: true, schema: { type: string } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [contract, prizes, weeks]
+                properties:
+                  contract: { type: string }
+                  prizes:
+                    type: array
+                    items: { $ref: "#/components/schemas/PrizeWinner" }
+                  weeks:
+                    type: array
+                    items: { type: integer }
+                    description: The week index of each prize, in the same order.
+        "503":
+          description: No prize pool configured.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
   /v1/leaderboard:
     get:
       summary: This week's board for every strategy
@@ -369,27 +394,50 @@ components:
 
     Leaderboard:
       type: object
-      required: [week_start, week, source, boards]
+      required: [week_start, source, boards]
       properties:
         week_start: { type: string, format: date-time }
-        week: { type: integer, description: The contract's week index (weeks since epoch, Monday-aligned). }
         source:
           type: string
-          enum: [chain, memory]
-          description: chain when the boards were read from the StrategyLeaderboard contract; memory when from the platform's own ledger.
-        contract: { type: string, description: The StrategyLeaderboard address, when settlement is on. }
-        settlement:
-          type: object
-          description: The settlement queue, when settlement is on.
-          required: [pending, sent, failed]
-          properties:
-            pending: { type: integer }
-            sent: { type: integer }
-            failed: { type: integer }
-            last_error: { type: string }
+          enum: [journal, memory]
+          description: journal when the boards come from the platform's database; memory when from the process alone.
+        prize:
+          $ref: "#/components/schemas/Prize"
         boards:
           type: array
           items: { $ref: "#/components/schemas/Board" }
+
+    Prize:
+      type: object
+      description: The on-chain weekly prize pool (StrategyPrizePool), when configured.
+      required: [contract, token, week, pools, last_week, winners]
+      properties:
+        contract: { type: string }
+        token: { type: string, description: The collateral token the pool holds. }
+        week: { type: integer, description: This week's index (Monday-aligned weeks since epoch). }
+        pools:
+          type: array
+          items:
+            type: object
+            required: [strategy, pool]
+            properties:
+              strategy: { type: string }
+              pool: { $ref: "#/components/schemas/Decimal" }
+        last_week: { type: integer }
+        winners:
+          type: array
+          description: Last week's published winners, best first per strategy.
+          items: { $ref: "#/components/schemas/PrizeWinner" }
+
+    PrizeWinner:
+      type: object
+      required: [strategy, wallet, amount, pnl, claimed]
+      properties:
+        strategy: { type: string }
+        wallet: { type: string }
+        amount: { $ref: "#/components/schemas/Decimal" }
+        pnl: { $ref: "#/components/schemas/Decimal" }
+        claimed: { type: boolean }
 
     Board:
       type: object

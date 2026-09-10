@@ -509,6 +509,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/prizes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A wallet's published prizes and whether each was claimed */
+        get: {
+            parameters: {
+                query: {
+                    address: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            contract: string;
+                            prizes: components["schemas"]["PrizeWinner"][];
+                            /** @description The week index of each prize, in the same order. */
+                            weeks: number[];
+                        };
+                    };
+                };
+                /** @description No prize pool configured. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/leaderboard": {
         parameters: {
             query?: never;
@@ -696,23 +747,35 @@ export interface components {
         Leaderboard: {
             /** Format: date-time */
             week_start: string;
-            /** @description The contract's week index (weeks since epoch */
-            week: number;
             /**
-             * @description chain when the boards were read from the StrategyLeaderboard contract; memory when from the platform's own ledger.
+             * @description journal when the boards come from the platform's database; memory when from the process alone.
              * @enum {string}
              */
-            source: "chain" | "memory";
-            /** @description The StrategyLeaderboard address */
-            contract?: string;
-            /** @description The settlement queue, when settlement is on. */
-            settlement?: {
-                pending: number;
-                sent: number;
-                failed: number;
-                last_error?: string;
-            };
+            source: "journal" | "memory";
+            prize?: components["schemas"]["Prize"];
             boards: components["schemas"]["Board"][];
+        };
+        /** @description The on-chain weekly prize pool (StrategyPrizePool), when configured. */
+        Prize: {
+            contract: string;
+            /** @description The collateral token the pool holds. */
+            token: string;
+            /** @description This week's index (Monday-aligned weeks since epoch). */
+            week: number;
+            pools: {
+                strategy: string;
+                pool: components["schemas"]["Decimal"];
+            }[];
+            last_week: number;
+            /** @description Last week's published winners, best first per strategy. */
+            winners: components["schemas"]["PrizeWinner"][];
+        };
+        PrizeWinner: {
+            strategy: string;
+            wallet: string;
+            amount: components["schemas"]["Decimal"];
+            pnl: components["schemas"]["Decimal"];
+            claimed: boolean;
         };
         Board: {
             /** @example ma-cross */

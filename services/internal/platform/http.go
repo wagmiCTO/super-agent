@@ -12,6 +12,7 @@ import (
 
 	"github.com/wagmiCTO/super-agent/services/internal/fixed"
 	"github.com/wagmiCTO/super-agent/services/internal/policy"
+	"github.com/wagmiCTO/super-agent/services/internal/store"
 	"github.com/wagmiCTO/super-agent/services/internal/strategy"
 	"github.com/wagmiCTO/super-agent/services/internal/venue"
 )
@@ -29,7 +30,7 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	for _, opt := range opts {
 		opt(&o)
 	}
-	h := &handler{svc: s, log: log, enroll: o.enrollment, registry: o.registry, signals: o.signals, ledger: o.ledger}
+	h := &handler{svc: s, log: log, enroll: o.enrollment, registry: o.registry, signals: o.signals, ledger: o.ledger, prize: o.prize}
 	if o.ledger != nil {
 		s.UseLedger(o.ledger)
 	}
@@ -40,6 +41,7 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /v1/exchange/network", h.exchangeNetwork)
 	mux.HandleFunc("GET /v1/signals/ma-cross", h.maCross)
 	mux.HandleFunc("GET /v1/leaderboard", h.leaderboard)
+	mux.HandleFunc("GET /v1/prizes", h.prizes)
 	mux.HandleFunc("GET /v1/candles", h.candles)
 	mux.HandleFunc("GET /v1/health", h.health)
 	mux.HandleFunc("GET /v1/markets", h.markets)
@@ -64,6 +66,7 @@ type options struct {
 	registry    *Registry
 	signals     *Signals
 	ledger      *Ledger
+	prize       *Prize
 }
 
 // WithRegistry routes requests carrying X-Account-Address to that wallet's
@@ -80,6 +83,11 @@ func WithSignals(s *Signals) Option {
 // WithLedger serves the leaderboard.
 func WithLedger(l *Ledger) Option {
 	return func(o *options) { o.ledger = l }
+}
+
+// WithPrize adds the prize pool to the leaderboard and serves claims.
+func WithPrize(p *Prize) Option {
+	return func(o *options) { o.prize = p }
 }
 
 // WithEnrollment exposes the API-key enrollment endpoints. Without it they
@@ -129,6 +137,7 @@ type handler struct {
 	registry *Registry
 	signals  *Signals
 	ledger   *Ledger
+	prize    *Prize
 }
 
 // AccountHeader names the wallet a request acts for. It is not authentication
@@ -841,12 +850,106 @@ type boardDTO struct {
 	Top       []standingDTO `json:"top"`
 }
 
+type prizePoolDTO struct {
+	Strategy string `json:"strategy"`
+	Pool     string `json:"pool"` // collateral units, decimal
+}
+
+type prizeWinnerDTO struct {
+	Strategy string `json:"strategy"`
+	Wallet   string `json:"wallet"`
+	Amount   string `json:"amount"` // collateral units, decimal
+	PnL      string `json:"pnl"`
+	Claimed  bool   `json:"claimed"`
+}
+
+type prizeDTO struct {
+	Contract string           `json:"contract"`
+	Token    string           `json:"token"`
+	Week     uint64           `json:"week"`
+	Pools    []prizePoolDTO   `json:"pools"`
+	LastWeek uint64           `json:"last_week"`
+	Winners  []prizeWinnerDTO `json:"winners"`
+}
+
 type leaderboardDTO struct {
 	WeekStart string `json:"week_start"`
 	// Source is "journal" when the boards come from the database, "memory"
 	// when from the process (no database, or it is unreachable).
 	Source string     `json:"source"`
 	Boards []boardDTO `json:"boards"`
+	// Prize is the on-chain pool, when one is configured.
+	Prize *prizeDTO `json:"prize,omitempty"`
+}
+
+// tokenDecimal renders token units (AUSD micros) as a decimal string.
+func tokenDecimal(units string) string {
+	d, err := fixed.Parse(units)
+	if err != nil {
+		return units
+	}
+	return d.Div(fixed.FromInt(1_000_000)).String()
+}
+
+// prizeBlock reads this week's pools and last week's winners.
+func (h *handler) prizeBlock(r *http.Request, week uint64) *prizeDTO {
+	pools, err := h.prize.Pools(r.Context(), week)
+	if err != nil {
+		h.log.Warn("prize pools not read", "err", err)
+		return nil
+	}
+	out := &prizeDTO{Contract: h.prize.Contract(), Token: h.prize.Token(), Week: week, LastWeek: week - 1, Pools: make([]prizePoolDTO, 0, len(pools)), Winners: []prizeWinnerDTO{}}
+	for _, p := range pools {
+		out.Pools = append(out.Pools, prizePoolDTO{Strategy: p.Strategy, Pool: tokenDecimal(p.Pool.String())})
+	}
+	if h.prize.store != nil {
+		recs, err := h.prize.store.Prizes(r.Context(), week-1)
+		if err == nil {
+			for _, rec := range recs {
+				_, claimed, err := h.prize.PrizeOf(r.Context(), rec.Week, rec.Strategy, rec.Wallet)
+				if err != nil {
+					claimed = false
+				}
+				out.Winners = append(out.Winners, prizeWinnerDTO{Strategy: rec.Strategy, Wallet: rec.Wallet, Amount: tokenDecimal(rec.Amount), PnL: rec.PnL.String(), Claimed: claimed})
+			}
+		}
+	}
+	return out
+}
+
+// prizes lists a wallet's published prizes and whether each was claimed.
+func (h *handler) prizes(w http.ResponseWriter, r *http.Request) {
+	if h.prize == nil || h.prize.store == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "prize_unavailable", Message: "no prize pool is configured"})
+		return
+	}
+	address := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("address")))
+	if address == "" {
+		writeJSON(w, http.StatusBadRequest, errorDTO{Error: "invalid", Message: "address is required"})
+		return
+	}
+	recs, err := h.prize.store.PrizesFor(r.Context(), address)
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	out := make([]prizeWinnerDTO, 0, len(recs))
+	for _, rec := range recs {
+		_, claimed, err := h.prize.PrizeOf(r.Context(), rec.Week, rec.Strategy, rec.Wallet)
+		if err != nil {
+			claimed = false
+		}
+		out = append(out, prizeWinnerDTO{Strategy: rec.Strategy, Wallet: rec.Wallet, Amount: tokenDecimal(rec.Amount), PnL: rec.PnL.String(), Claimed: claimed})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"contract": h.prize.Contract(), "prizes": out, "weeks": weeksOf(recs)})
+}
+
+func weeksOf(recs []store.PrizeRecord) []uint64 {
+	out := make([]uint64, 0, len(recs))
+	for _, r := range recs {
+		out = append(out, r.Week)
+	}
+	return out
 }
 
 // leaderboard serves the week's boards: one per strategy, in lobby order.
@@ -857,6 +960,9 @@ func (h *handler) leaderboard(w http.ResponseWriter, r *http.Request) {
 	}
 	lb := h.ledger.Leaderboard()
 	out := leaderboardDTO{WeekStart: timeOrEmpty(lb.WeekStart), Source: lb.Source, Boards: make([]boardDTO, 0, len(lb.Boards))}
+	if h.prize != nil {
+		out.Prize = h.prizeBlock(r, WeekOf(lb.WeekStart))
+	}
 	for _, b := range lb.Boards {
 		d := boardDTO{
 			ID: b.Strategy.ID, Name: b.Strategy.Name, Tagline: b.Strategy.Tagline, Rhythm: b.Strategy.Rhythm,

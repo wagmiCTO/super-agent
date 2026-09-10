@@ -318,14 +318,14 @@ type BoardRow struct {
 	Top       []Standing
 }
 
-// Boards aggregates closed trades from `since` by strategy, with the top
-// wallets, and counts open positions per strategy.
-func (s *Store) Boards(ctx context.Context, since time.Time, topN int) (map[string]*BoardRow, error) {
+// Boards aggregates closed trades in [since, until) by strategy, with the
+// top wallets, and counts open positions per strategy.
+func (s *Store) Boards(ctx context.Context, since, until time.Time, topN int) (map[string]*BoardRow, error) {
 	out := make(map[string]*BoardRow)
 	rows, err := s.pool.Query(ctx, `
 		select strategy, wallet, sum(pnl)::text, count(*)
-		from trades where closed_at >= $1
-		group by strategy, wallet`, since)
+		from trades where closed_at >= $1 and closed_at < $2
+		group by strategy, wallet`, since, until)
 	if err != nil {
 		return nil, err
 	}
@@ -401,6 +401,62 @@ func (s *Store) Wallets(ctx context.Context) ([]string, error) {
 			return nil, err
 		}
 		out = append(out, w)
+	}
+	return out, rows.Err()
+}
+
+// --- prizes ---
+
+// PrizeRecord is one published winner: what the settler sent on-chain.
+type PrizeRecord struct {
+	Week      uint64
+	Strategy  string
+	Wallet    string
+	Amount    string // token units
+	PnL       fixed.D
+	SettledAt time.Time
+}
+
+func (s *Store) SavePrize(ctx context.Context, r PrizeRecord) error {
+	_, err := s.pool.Exec(ctx, `insert into prizes (week, strategy, wallet, amount, pnl, settled_at) values ($1, $2, $3, $4, $5, $6)
+		on conflict (week, strategy, wallet) do nothing`, r.Week, r.Strategy, r.Wallet, r.Amount, r.PnL.String(), r.SettledAt)
+	return err
+}
+
+// Prizes lists the published winners of a week, best first.
+func (s *Store) Prizes(ctx context.Context, week uint64) ([]PrizeRecord, error) {
+	rows, err := s.pool.Query(ctx, `select week, strategy, wallet, amount::text, pnl::text, settled_at from prizes where week = $1 order by strategy, amount desc`, week)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanPrizes(rows)
+}
+
+// PrizesFor lists every prize a wallet was ever published for.
+func (s *Store) PrizesFor(ctx context.Context, wallet string) ([]PrizeRecord, error) {
+	rows, err := s.pool.Query(ctx, `select week, strategy, wallet, amount::text, pnl::text, settled_at from prizes where wallet = $1 order by week desc`, wallet)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanPrizes(rows)
+}
+
+func scanPrizes(rows pgx.Rows) ([]PrizeRecord, error) {
+	var out []PrizeRecord
+	for rows.Next() {
+		var r PrizeRecord
+		var pnl string
+		if err := rows.Scan(&r.Week, &r.Strategy, &r.Wallet, &r.Amount, &pnl, &r.SettledAt); err != nil {
+			return nil, err
+		}
+		d, err := fixed.Parse(pnl)
+		if err != nil {
+			return nil, err
+		}
+		r.PnL = d
+		out = append(out, r)
 	}
 	return out, rows.Err()
 }

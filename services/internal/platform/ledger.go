@@ -181,7 +181,7 @@ const topN = 10
 func (l *Ledger) Leaderboard() Leaderboard {
 	if l.journal != nil {
 		weekStart := weekStartOf(l.now())
-		rows, err := l.journal.Boards(context.Background(), weekStart, topN)
+		rows, err := l.journal.Boards(context.Background(), weekStart, weekStart.AddDate(0, 0, 7), topN)
 		if err == nil {
 			out := Leaderboard{WeekStart: weekStart, Source: "journal"}
 			for _, s := range strategy.Catalog {
