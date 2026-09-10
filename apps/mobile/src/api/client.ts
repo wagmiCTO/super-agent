@@ -132,7 +132,8 @@ export const api = {
   close: (body: CloseRequest) =>
     request<Order>('/v1/orders/close', { method: 'POST', body: JSON.stringify(body) }),
   maCross: (symbol: string) => request<MACrossSignal>(`/v1/signals/ma-cross?symbol=${encodeURIComponent(symbol)}`),
-  trades: (symbol: string) => request<Trade[]>(`/v1/trades?symbol=${encodeURIComponent(symbol)}&limit=50`),
+  trades: (symbol: string, strategy: string) =>
+    request<Trade[]>(`/v1/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&limit=50`),
   rsi: (symbol: string) => request<RSISignal>(`/v1/signals/rsi?symbol=${encodeURIComponent(symbol)}`),
   leaderboard: () => request<Leaderboard>('/v1/leaderboard'),
 };

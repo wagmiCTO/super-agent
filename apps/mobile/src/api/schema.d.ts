@@ -616,6 +616,8 @@ export interface paths {
             parameters: {
                 query: {
                     symbol: string;
+                    /** @description Only this strategy's round trips; absent means all. */
+                    strategy?: string;
                     limit?: number;
                 };
                 header?: never;
@@ -843,8 +845,15 @@ export interface components {
             side: components["schemas"]["Side"];
             size: components["schemas"]["Decimal"];
             entry_price: components["schemas"]["Decimal"];
+            entry_fee: components["schemas"]["Decimal"];
             exit_price?: components["schemas"]["Decimal"];
+            exit_fee?: components["schemas"]["Decimal"];
             pnl?: components["schemas"]["Decimal"];
+            /**
+             * @description Who closed the round trip; absent while open.
+             * @enum {string}
+             */
+            close_reason?: "manual" | "horizon";
             /** Format: date-time */
             opened_at: string;
             /**

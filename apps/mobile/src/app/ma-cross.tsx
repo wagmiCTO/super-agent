@@ -21,6 +21,7 @@ import { ThemedView } from '@/components/themed-view';
 import {
   CloseButton,
   DirectionButton,
+  HistoryCard,
   LimitsFooter,
   NoticeBox,
   PositionCard,
@@ -93,6 +94,7 @@ export default function MACrossScreen() {
           )}
 
           <NoticeBox notice={t.notice} />
+          <HistoryCard trades={t.trades} />
           <LimitsFooter state={t.state} />
 
           <Link href="/" style={styles.link} accessibilityRole="link">

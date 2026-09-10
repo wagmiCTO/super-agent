@@ -57,8 +57,9 @@ test.describe('Direction screen', () => {
     await expect(page.getByRole('button', { name: 'Close position', exact: true })).toBeVisible();
 
     await page.getByRole('button', { name: 'Close position', exact: true }).click();
-    // Closing is free on this venue; the screen shows the fee it was charged.
-    await expect(page.getByText(/^Closed \d+ @ [\d.]+, fee 0$/)).toBeVisible();
+    // The screen shows the fee the close was charged (the builder fee since
+    // trades go through the platform's own key).
+    await expect(page.getByText(/^Closed \d+ @ [\d.]+, fee [\d.]+$/)).toBeVisible();
     await expect(page.getByText('No position')).toBeVisible();
   });
 
@@ -105,5 +106,10 @@ test.describe('Direction screen', () => {
     await expect(page.getByTestId('position-footer')).toHaveText(/closes in 00:(0|1)\d/, { timeout: 15_000 });
     await expect(page.getByTestId('notice')).toHaveText(/^Closed by timer @ [\d.]+, [+-]?[\d.]+$/, { timeout: 40_000 });
     await expect(page.getByText('No position')).toBeVisible();
+
+    // The round trip is in this strategy's history, on both tabs.
+    await expect(page.getByTestId('history-position').first()).toContainText(/Up · \d+ @ [\d.]+ → [\d.]+/);
+    await page.getByRole('button', { name: 'History Orders', exact: true }).click();
+    await expect(page.getByTestId('history-order').first()).toContainText(/Close Up · timer/);
   });
 });

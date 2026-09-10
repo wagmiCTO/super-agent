@@ -35,10 +35,10 @@ export function useTrading(symbol: string, strategy: string) {
       if (!mounted.current) return;
       setState(s);
       setOffline(false);
-      // The chart marks the account's round trips; they change only on a
-      // fill, so this follows the same poll rather than its own.
+      // The chart marks and the history list this strategy's round trips;
+      // they change only on a fill, so this follows the same poll.
       api
-        .trades(symbol)
+        .trades(symbol, strategy)
         .then((list) => mounted.current && setTrades(list))
         .catch(() => undefined);
       // A position closed by its horizon while the user was away is news.
@@ -55,7 +55,7 @@ export function useTrading(symbol: string, strategy: string) {
       if (!mounted.current) return;
       if (e instanceof ApiError && e.code === 'network') setOffline(true);
     }
-  }, [symbol]);
+  }, [symbol, strategy]);
 
   useEffect(() => {
     mounted.current = true;

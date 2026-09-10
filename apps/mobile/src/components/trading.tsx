@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
-import type { Market, Position, State } from '@/api/client';
+import type { Market, Position, State, Trade } from '@/api/client';
 import { ThemedText } from '@/components/themed-text';
 import { DEFAULT_LEVERAGE } from '@/config';
 import { Spacing } from '@/constants/theme';
@@ -170,6 +170,99 @@ export function LimitsFooter({ state }: { state: State | null }) {
       {state.killed ? ' · trading paused' : ''}
     </ThemedText>
   );
+}
+
+/**
+ * This strategy's history, two ways: positions (round trips with their
+ * result) and orders (every fill, entries and exits alike, with its fee).
+ */
+export function HistoryCard({ trades }: { trades: Trade[] }) {
+  const theme = useTheme();
+  const [tab, setTab] = useState<'Positions' | 'Orders'>('Positions');
+  const orders = tradesToOrders(trades);
+  return (
+    <View style={[styles.card, { backgroundColor: theme.backgroundElement, alignItems: 'stretch', gap: Spacing.two }]} testID="history">
+      <PresetRow label="History" options={['Positions', 'Orders'] as const} value={tab} onChange={setTab} />
+      {tab === 'Positions' ? (
+        trades.length === 0 ? (
+          <ThemedText type="small" themeColor="textSecondary" style={styles.footer}>
+            No positions in this strategy yet
+          </ThemedText>
+        ) : (
+          trades.map((t, i) => <PositionRow key={`${t.opened_at}-${i}`} trade={t} />)
+        )
+      ) : orders.length === 0 ? (
+        <ThemedText type="small" themeColor="textSecondary" style={styles.footer}>
+          No orders in this strategy yet
+        </ThemedText>
+      ) : (
+        orders.map((o, i) => <OrderRow key={`${o.at}-${i}`} order={o} />)
+      )}
+    </View>
+  );
+}
+
+function PositionRow({ trade: t }: { trade: Trade }) {
+  const theme = useTheme();
+  const open = !t.closed_at;
+  const pnl = Number(t.pnl ?? 0);
+  const color = open ? theme.textSecondary : pnl > 0 ? '#16a34a' : pnl < 0 ? '#dc2626' : theme.text;
+  return (
+    <View style={styles.header} testID="history-position">
+      <View style={{ flex: 1 }}>
+        <ThemedText type="small">
+          {t.side === 'long' ? 'Up' : 'Down'} · {trim(t.size)} @ {trim(t.entry_price)}
+          {t.exit_price ? ` → ${trim(t.exit_price)}` : ''}
+        </ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">
+          {clockTime(t.opened_at)}
+          {t.closed_at ? ` – ${clockTime(t.closed_at)} · ${t.close_reason === 'horizon' ? 'by timer' : 'closed'}` : ' · open'}
+        </ThemedText>
+      </View>
+      <ThemedText type="smallBold" style={{ color }}>
+        {open ? 'open' : `${pnl > 0 ? '+' : ''}${trim(t.pnl ?? '0')}`}
+      </ThemedText>
+    </View>
+  );
+}
+
+type OrderLine = { at: string; label: string; size: string; price: string; fee: string; side: 'long' | 'short' };
+
+/** Each round trip is two fills: the entry and, once closed, the exit. */
+function tradesToOrders(trades: Trade[]): OrderLine[] {
+  const out: OrderLine[] = [];
+  for (const t of trades) {
+    if (t.closed_at && t.exit_price) {
+      out.push({ at: t.closed_at, label: `Close ${t.side === 'long' ? 'Up' : 'Down'}${t.close_reason === 'horizon' ? ' · timer' : ''}`, size: t.size, price: t.exit_price, fee: t.exit_fee ?? '0', side: t.side });
+    }
+    out.push({ at: t.opened_at, label: `Open ${t.side === 'long' ? 'Up' : 'Down'}`, size: t.size, price: t.entry_price, fee: t.entry_fee, side: t.side });
+  }
+  return out.sort((a, b) => (a.at < b.at ? 1 : -1));
+}
+
+function OrderRow({ order: o }: { order: OrderLine }) {
+  return (
+    <View style={styles.header} testID="history-order">
+      <View style={{ flex: 1 }}>
+        <ThemedText type="small">
+          {o.label} · {trim(o.size)} @ {trim(o.price)}
+        </ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">
+          {clockTime(o.at)} · fee {trim(o.fee)}
+        </ThemedText>
+      </View>
+      <ThemedText type="small" themeColor="textSecondary">
+        filled
+      </ThemedText>
+    </View>
+  );
+}
+
+function clockTime(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return d.toDateString() === today.toDateString() ? hm : `${d.getDate()}.${String(d.getMonth() + 1).padStart(2, '0')} ${hm}`;
 }
 
 /** A mm:ss (or h:mm:ss) countdown to an ISO time; null without one. */
