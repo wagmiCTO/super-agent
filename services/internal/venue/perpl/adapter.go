@@ -2,6 +2,7 @@ package perpl
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -494,6 +495,21 @@ func (a *Adapter) Place(ctx context.Context, req venue.OrderRequest) (venue.Orde
 	// timeout means the venue really said nothing.
 	wait := time.Duration(m.OrderTTLBlocks)*blockInterval + 5*time.Second
 	o, err := a.trade.submit(ctx, wire, wait)
+	if errors.Is(err, venue.ErrUnconfirmed) {
+		// Acknowledged, then silence: seen when a request id was reused
+		// after a reconnect. The first request's last block has passed, so
+		// it can no longer execute; one retry with a fresh id and a fresh
+		// last block is safe.
+		a.log.Warn("perpl: order acknowledged without an update; retrying once with a fresh request id", "client_id", req.ClientID, "rq", wire.RequestID)
+		if wire, err = a.buildOrder(ctx, m, acct, req); err != nil {
+			return venue.Order{}, err
+		}
+		a.mu.Lock()
+		a.reqByClient[req.ClientID] = wire.RequestID
+		a.clientByReq[wire.RequestID] = req.ClientID
+		a.mu.Unlock()
+		o, err = a.trade.submit(ctx, wire, wait)
+	}
 	if err != nil {
 		var rej *Rejection
 		if errorsAs(err, &rej) {

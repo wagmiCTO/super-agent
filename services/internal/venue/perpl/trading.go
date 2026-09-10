@@ -280,6 +280,17 @@ func (t *tradingClient) handle(raw []byte) error {
 		if err := json.Unmarshal(raw, &m); err != nil {
 			return fmt.Errorf("perpl: orders: %w", err)
 		}
+		// Every order carries the request id it was placed with. The
+		// account's lfr has been seen to lag behind them after a reconnect,
+		// and a reused id is acknowledged and then silently dropped as a
+		// duplicate — so the counter also moves past every id in sight.
+		t.mu.Lock()
+		for _, o := range m.Data {
+			if o.RequestID >= t.nextReqID {
+				t.nextReqID = o.RequestID + 1
+			}
+		}
+		t.mu.Unlock()
 		for _, o := range m.Data {
 			t.deliverOrder(o)
 		}
