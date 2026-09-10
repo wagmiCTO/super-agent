@@ -18,6 +18,7 @@
   var SYMBOL = (params.get('symbol') || 'MON').toUpperCase();
   var THEME = params.get('theme') === 'dark' ? 'dark' : 'light';
   var MA_LENGTH = Number(params.get('ma') || 20);
+  var STUDY = params.get('study') || '';
   var BG = params.get('bg') || (THEME === 'dark' ? '#212225' : '#F0F0F3');
   var UP = '#16a34a', DOWN = '#dc2626', MA = '#2563eb';
   var TEXT = THEME === 'dark' ? '#9ca3af' : '#6b7280';
@@ -204,6 +205,11 @@
     chart.setVisibleRange({ from: now - 90 * 60, to: now + 5 * 60 });
     chartReady = true;
     redraw();
+    if (STUDY === 'rsi') {
+      chart.createStudy('Relative Strength Index', false, false, { length: 14 }, {
+        'plot.color': MA, 'plot.linewidth': 2, 'upper band.color': DOWN, 'lower band.color': UP, 'upper band.value': 70, 'lower band.value': 30,
+      }).catch(function (e) { console.warn('tv: rsi study', e && e.message); });
+    }
     if (!MA_LENGTH) { post({ type: 'ready' }); return; }
     // One average, drawn well: the strategy's slow line.
     chart.createStudy('Moving Average', false, false, { length: MA_LENGTH, source: 'close' }, {

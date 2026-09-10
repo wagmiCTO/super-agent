@@ -16,7 +16,7 @@ type Info struct {
 var Catalog = []Info{
 	{ID: "direction", Name: "Direction", Tagline: "Up or down, an amount, a horizon. The platform closes for you.", Rhythm: "minutes to hours"},
 	{ID: "ma-cross", Name: "MA Cross", Tagline: "Trade the trend: enter when the fast average crosses the slow one.", Rhythm: "a few entries an hour"},
-	{ID: "box", Name: "Box", Tagline: "Wait inside the range for free; enter when a bar closes outside it.", Rhythm: "long waits, sharp entries"},
+	{ID: "rsi", Name: "RSI Bounce", Tagline: "Counter the trend: enter when the crowd has overdone it — below 30 up, above 70 down.", Rhythm: "long waits, sharp entries"},
 }
 
 // DefaultStrategy is what an untagged order counts as.

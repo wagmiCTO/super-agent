@@ -7,9 +7,9 @@ import { View } from 'react-native';
 
 import { chartPageUrl, type ChartMessage, type TVChartProps } from '@/chart/page';
 
-export function TVChart({ symbol, theme, background, chartType, trend, ma, box, trades, position, height }: TVChartProps) {
+export function TVChart({ symbol, theme, background, chartType, trend, ma, study, box, trades, position, height }: TVChartProps) {
   const frame = useRef<HTMLIFrameElement | null>(null);
-  const url = chartPageUrl({ symbol, theme, background, ma });
+  const url = chartPageUrl({ symbol, theme, background, ma, study });
   const boxKey = JSON.stringify(box ?? null);
   const tradesKey = JSON.stringify(trades ?? []);
   const positionKey = JSON.stringify(position ?? null);

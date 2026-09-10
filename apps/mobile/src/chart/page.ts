@@ -36,6 +36,8 @@ export type TVChartProps = {
   trend: Trend;
   /** Length of the one moving average drawn; 0 draws none. */
   ma?: number;
+  /** An extra study in its own pane: the RSI for the counter-trend screen. */
+  study?: 'rsi';
   box?: Box | null;
   trades?: ChartTrade[];
   position?: ChartPosition | null;
@@ -43,7 +45,7 @@ export type TVChartProps = {
 };
 
 /** Where the chart page lives, with the platform and the market in the query. */
-export function chartPageUrl({ symbol, theme, background, ma }: Pick<TVChartProps, 'symbol' | 'theme' | 'background' | 'ma'>): string {
-  const q = new URLSearchParams({ api: API_URL, symbol, theme, bg: background, ma: String(ma ?? 20) });
+export function chartPageUrl({ symbol, theme, background, ma, study }: Pick<TVChartProps, 'symbol' | 'theme' | 'background' | 'ma' | 'study'>): string {
+  const q = new URLSearchParams({ api: API_URL, symbol, theme, bg: background, ma: String(ma ?? 20), study: study ?? '' });
   return `${WEB_URL}/tv.html?${q.toString()}`;
 }

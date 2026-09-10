@@ -1,10 +1,11 @@
 /**
- * Strategy #3 — Box.
+ * Strategy #3 — RSI Bounce.
  *
- * The last thirty closed bars draw a box on the chart. Waiting inside it
- * costs nothing; when a bar closes outside, the screen lights up and offers
- * an entry in the breakout's direction for a few minutes. Same tap, same
- * horizon, same exit as the other strategies — only the invitation differs.
+ * The counter-trend game. A thermometer shows how hard the crowd has been
+ * buying or selling; when a bar closes with the index entering the oversold
+ * zone the screen offers an entry up, entering overbought offers an entry
+ * down, for a few minutes. Long waits, rare sharp entries — the opposite
+ * rhythm of MA Cross, on purpose.
  */
 import { Link } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -12,7 +13,7 @@ import { ScrollView, useColorScheme, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAccount } from '@/account/useAccount';
-import { api, type BoxSignal } from '@/api/client';
+import { api, type RSISignal } from '@/api/client';
 import { AccountSection } from '@/components/account';
 import { trim } from '@/components/format';
 import { ThemedText } from '@/components/themed-text';
@@ -40,10 +41,10 @@ type ChartMode = (typeof CHART_MODES)[number];
 const UP = '#16a34a';
 const DOWN = '#dc2626';
 
-export default function BoxScreen() {
+export default function RSIScreen() {
   const account = useAccount();
-  const t = useTrading(DEFAULT_SYMBOL, 'box');
-  const signal = useBox(DEFAULT_SYMBOL);
+  const t = useTrading(DEFAULT_SYMBOL, 'rsi');
+  const signal = useRSI(DEFAULT_SYMBOL);
   const [notional, setNotional] = useState<Notional>('20');
   const [horizon, setHorizon] = useState<Horizon>('15m');
   const [mode, setMode] = useState<ChartMode>('Candles');
@@ -58,7 +59,7 @@ export default function BoxScreen() {
     <ThemedView style={styles.root}>
       <SafeAreaView style={styles.safe}>
         <ScrollView contentContainerStyle={styles.content}>
-          <ScreenHeader title={`BOX · ${DEFAULT_SYMBOL}`} state={t.state} offline={t.offline} />
+          <ScreenHeader title={`RSI BOUNCE · ${DEFAULT_SYMBOL}`} state={t.state} offline={t.offline} />
 
           <AccountSection account={account} state={t.state} onChange={t.refresh} />
 
@@ -69,31 +70,36 @@ export default function BoxScreen() {
               { backgroundColor: theme.backgroundElement, alignItems: 'stretch', borderWidth: 2, borderColor: lit ? sideColor : 'transparent' },
             ]}>
             <View style={styles.header}>
-              <ThemedText type="small" themeColor="textSecondary" testID="signal-box">
-                {signal?.ready ? `box ${trim(signal.bottom)} – ${trim(signal.top)} · ${signal.length}×1m` : 'Warming up the signal…'}
+              <ThemedText type="small" themeColor="textSecondary" testID="signal-rsi">
+                {signal?.ready ? `RSI(${signal.length}) · 1m · zones ${trim(signal.oversold)} / ${trim(signal.overbought)}` : 'Warming up the signal…'}
               </ThemedText>
               {window ? (
                 <ThemedText type="smallBold" style={{ color: sideColor }} testID="signal-window">
-                  {window.side === 'long' ? 'Broke up' : 'Broke down'} · {windowLeft ?? ''}
+                  {window.side === 'long' ? 'Oversold' : 'Overbought'} · {windowLeft ?? ''}
                 </ThemedText>
-              ) : signal?.last_break ? (
-                <ThemedText type="small" themeColor="textSecondary" testID="signal-last-break">
-                  last break {signal.last_break.side === 'long' ? 'up' : 'down'} · {timeOfDay(signal.last_break.at)}
+              ) : signal?.last_cross ? (
+                <ThemedText type="small" themeColor="textSecondary" testID="signal-last-cross">
+                  last {signal.last_cross.side === 'long' ? 'oversold' : 'overbought'} · {timeOfDay(signal.last_cross.at)}
                 </ThemedText>
               ) : null}
             </View>
-            <TVChart
-              symbol={DEFAULT_SYMBOL}
-              theme={dark ? 'dark' : 'light'}
-              background={theme.backgroundElement}
-              chartType={mode === 'Line' ? 'line' : 'candles'}
-              trend={window ? (window.side === 'long' ? 'up' : 'down') : 'flat'}
-              ma={0}
-              box={signal?.ready ? { top: signal.top, bottom: signal.bottom } : null}
-              trades={t.trades}
-              position={t.position}
-              height={280}
-            />
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <TVChart
+                  symbol={DEFAULT_SYMBOL}
+                  theme={dark ? 'dark' : 'light'}
+                  background={theme.backgroundElement}
+                  chartType={mode === 'Line' ? 'line' : 'candles'}
+                  trend={window ? (window.side === 'long' ? 'up' : 'down') : 'flat'}
+                  ma={0}
+                  study="rsi"
+                  trades={t.trades}
+                  position={t.position}
+                  height={320}
+                />
+              </View>
+              <Thermometer value={signal?.ready ? Number(signal.value) : null} low={Number(signal?.oversold ?? 30)} high={Number(signal?.overbought ?? 70)} />
+            </View>
             <PresetRow label="Chart" options={CHART_MODES} value={mode} onChange={setMode} />
           </View>
 
@@ -117,7 +123,7 @@ export default function BoxScreen() {
             </>
           ) : (
             <ThemedText type="small" themeColor="textSecondary" style={styles.footer} testID="signal-waiting">
-              {signal?.ready ? 'Inside the box — waiting is free. The screen lights up on a breakout' : 'Warming up the signal…'}
+              {signal?.ready ? 'Waiting for the crowd to overdo it — the screen lights up when the RSI enters a zone' : 'Warming up the signal…'}
             </ThemedText>
           )}
 
@@ -135,13 +141,39 @@ export default function BoxScreen() {
   );
 }
 
-function useBox(symbol: string): BoxSignal | null {
-  const [signal, setSignal] = useState<BoxSignal | null>(null);
+/** The index as a vertical bar: zones at the ends, the value as a marker. */
+function Thermometer({ value, low, high }: { value: number | null; low: number; high: number }) {
+  const theme = useTheme();
+  const color = value === null ? theme.textSecondary : value <= low ? UP : value >= high ? DOWN : theme.text;
+  return (
+    <View style={{ width: 44, alignItems: 'center', gap: 4 }} testID="rsi-thermometer">
+      <ThemedText type="small" themeColor="textSecondary">
+        {high}
+      </ThemedText>
+      <View style={{ flex: 1, width: 14, borderRadius: 7, backgroundColor: theme.backgroundSelected, overflow: 'hidden', justifyContent: 'flex-end' }}>
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: `${100 - high}%`, backgroundColor: 'rgba(220,38,38,0.25)' }} />
+        <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: `${low}%`, backgroundColor: 'rgba(22,163,74,0.25)' }} />
+        {value !== null ? (
+          <View style={{ position: 'absolute', left: 0, right: 0, bottom: `${Math.max(0, Math.min(100, value))}%`, height: 3, backgroundColor: color }} />
+        ) : null}
+      </View>
+      <ThemedText type="small" themeColor="textSecondary">
+        {low}
+      </ThemedText>
+      <ThemedText type="smallBold" style={{ color }} testID="rsi-value">
+        {value === null ? '—' : value.toFixed(0)}
+      </ThemedText>
+    </View>
+  );
+}
+
+function useRSI(symbol: string): RSISignal | null {
+  const [signal, setSignal] = useState<RSISignal | null>(null);
   useEffect(() => {
     let alive = true;
     const read = () =>
       api
-        .box(symbol)
+        .rsi(symbol)
         .then((s) => alive && setSignal(s))
         .catch(() => undefined);
     void read();

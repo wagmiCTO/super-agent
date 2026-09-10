@@ -467,7 +467,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/signals/box": {
+    "/v1/signals/rsi": {
         parameters: {
             query?: never;
             header?: never;
@@ -475,8 +475,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * The Box signal for a market
-         * @description The last N closed bars draw a box — highest high, lowest low. A bar closing outside it is a breakout and opens a window in that direction for a few minutes. Waiting inside the box is free.
+         * The RSI signal for a market
+         * @description Wilder's RSI over closed one-minute bars with the oversold and overbought zones. A bar closing with the index entering the oversold zone opens a window up; entering overbought opens a window down.
          */
         get: {
             parameters: {
@@ -494,7 +494,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["BoxSignal"];
+                        "application/json": components["schemas"]["RSISignal"];
                     };
                 };
                 404: components["responses"]["NotFound"];
@@ -895,14 +895,15 @@ export interface components {
                 trades: number;
             }[];
         };
-        BoxSignal: {
+        RSISignal: {
             symbol: string;
             period_seconds: number;
-            /** @description Closed bars that draw the box. */
             length: number;
+            oversold: components["schemas"]["Decimal"];
+            overbought: components["schemas"]["Decimal"];
             ready: boolean;
-            top: components["schemas"]["Decimal"];
-            bottom: components["schemas"]["Decimal"];
+            /** @description The index as of the last closed bar, 0..100. */
+            value: components["schemas"]["Decimal"];
             forming: boolean;
             window?: {
                 side: components["schemas"]["Side"];
@@ -911,20 +912,17 @@ export interface components {
                 /** Format: date-time */
                 expires_at: string;
             };
-            last_break?: {
+            last_cross?: {
                 side: components["schemas"]["Side"];
                 /** Format: date-time */
                 at: string;
-                top: components["schemas"]["Decimal"];
-                bottom: components["schemas"]["Decimal"];
+                value: components["schemas"]["Decimal"];
             };
             points: {
                 /** Format: date-time */
                 at: string;
-                open: components["schemas"]["Decimal"];
-                high: components["schemas"]["Decimal"];
-                low: components["schemas"]["Decimal"];
                 close: components["schemas"]["Decimal"];
+                value?: components["schemas"]["Decimal"];
             }[];
         };
         MACrossSignal: {
@@ -1034,7 +1032,7 @@ export interface components {
             notional: components["schemas"]["Decimal"];
             /** @description Defaults to 1. */
             leverage?: components["schemas"]["Decimal"];
-            /** @description Which strategy this entry belongs to, for the leaderboard: direction (default), ma-cross or box. */
+            /** @description Which strategy this entry belongs to, for the leaderboard: direction (default), ma-cross or rsi. */
             strategy?: string;
             /** @description The strategy's exit: the platform closes the position this many seconds after it opens (10 s to 24 h). 0 or absent leaves the close to the user. A manual close disarms it. */
             horizon_seconds?: number;

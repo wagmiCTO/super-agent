@@ -23,7 +23,7 @@ type Signals struct {
 
 	mu      sync.Mutex
 	macross map[string]*strategy.MACross
-	boxes   map[string]*strategy.Box
+	rsis    map[string]*strategy.RSI
 }
 
 // NewSignals wires the signals on a market-data adapter; Run starts them.
@@ -31,7 +31,7 @@ func NewSignals(v venue.Adapter, log *slog.Logger) *Signals {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Signals{venue: v, log: log, now: time.Now, macross: make(map[string]*strategy.MACross), boxes: make(map[string]*strategy.Box)}
+	return &Signals{venue: v, log: log, now: time.Now, macross: make(map[string]*strategy.MACross), rsis: make(map[string]*strategy.RSI)}
 }
 
 // Run feeds the MA Cross signal for each symbol until ctx ends. It blocks.
@@ -47,33 +47,33 @@ func (s *Signals) Run(ctx context.Context, symbols []string) {
 			s.log.Error("signal not started", "symbol", sym, "err", err)
 			continue
 		}
-		box, err := strategy.NewBox(strategy.DefaultBox(sym))
+		rsi, err := strategy.NewRSI(strategy.DefaultRSI(sym))
 		if err != nil {
 			s.log.Error("signal not started", "symbol", sym, "err", err)
 			continue
 		}
 		s.mu.Lock()
 		s.macross[sym] = sig
-		s.boxes[sym] = box
+		s.rsis[sym] = rsi
 		s.mu.Unlock()
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			s.feed(ctx, sym, sig, box)
+			s.feed(ctx, sym, sig, rsi)
 		}()
 	}
 	wg.Wait()
 }
 
-// Box returns the box signal's state for a symbol.
-func (s *Signals) Box(symbol string) (strategy.BoxState, bool) {
+// RSI returns the RSI signal's state for a symbol.
+func (s *Signals) RSI(symbol string) (strategy.RSIState, bool) {
 	s.mu.Lock()
-	b, ok := s.boxes[strings.ToUpper(strings.TrimSpace(symbol))]
+	r, ok := s.rsis[strings.ToUpper(strings.TrimSpace(symbol))]
 	s.mu.Unlock()
 	if !ok {
-		return strategy.BoxState{}, false
+		return strategy.RSIState{}, false
 	}
-	return b.State(s.now()), true
+	return r.State(s.now()), true
 }
 
 // MACross returns the signal's state for a symbol.
@@ -90,10 +90,10 @@ func (s *Signals) MACross(symbol string) (strategy.MACrossState, bool) {
 // signalRetry is the pause before a failed seed or stream is tried again.
 const signalRetry = 5 * time.Second
 
-func (s *Signals) feed(ctx context.Context, symbol string, sig *strategy.MACross, box *strategy.Box) {
+func (s *Signals) feed(ctx context.Context, symbol string, sig *strategy.MACross, rsi *strategy.RSI) {
 	cfg := strategy.DefaultMACross(symbol)
 	for ctx.Err() == nil {
-		if err := s.seed(ctx, symbol, sig, box, cfg); err != nil {
+		if err := s.seed(ctx, symbol, sig, rsi, cfg); err != nil {
 			s.log.Warn("signal seed failed", "symbol", symbol, "err", err)
 			sleepCtx(ctx, signalRetry)
 			continue
@@ -107,7 +107,7 @@ func (s *Signals) feed(ctx context.Context, symbol string, sig *strategy.MACross
 		for b := range bars {
 			now := s.now()
 			sig.Apply(b, now)
-			box.Apply(b, now)
+			rsi.Apply(b, now)
 		}
 		// The stream closed: the venue connection dropped. Loop to re-seed
 		// the gap and subscribe again.
@@ -118,7 +118,7 @@ func (s *Signals) feed(ctx context.Context, symbol string, sig *strategy.MACross
 	}
 }
 
-func (s *Signals) seed(ctx context.Context, symbol string, sig *strategy.MACross, box *strategy.Box, cfg strategy.MACrossConfig) error {
+func (s *Signals) seed(ctx context.Context, symbol string, sig *strategy.MACross, rsi *strategy.RSI, cfg strategy.MACrossConfig) error {
 	now := s.now()
 	from := now.Add(-time.Duration(cfg.History) * cfg.Period)
 	bars, err := s.venue.Candles(ctx, symbol, cfg.Period, from, now)
@@ -126,7 +126,7 @@ func (s *Signals) seed(ctx context.Context, symbol string, sig *strategy.MACross
 		return err
 	}
 	sig.Seed(bars, now)
-	box.Seed(bars, now)
+	rsi.Seed(bars, now)
 	s.log.Info("signal seeded", "symbol", symbol, "bars", len(bars))
 	return nil
 }

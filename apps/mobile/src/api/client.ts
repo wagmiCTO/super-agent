@@ -20,7 +20,7 @@ export type CloseRequest = components['schemas']['CloseRequest'];
 export type ErrorBody = components['schemas']['Error'];
 export type Side = components['schemas']['Side'];
 export type MACrossSignal = components['schemas']['MACrossSignal'];
-export type BoxSignal = components['schemas']['BoxSignal'];
+export type RSISignal = components['schemas']['RSISignal'];
 export type Trade = components['schemas']['Trade'];
 export type Leaderboard = components['schemas']['Leaderboard'];
 export type Board = components['schemas']['Board'];
@@ -133,7 +133,7 @@ export const api = {
     request<Order>('/v1/orders/close', { method: 'POST', body: JSON.stringify(body) }),
   maCross: (symbol: string) => request<MACrossSignal>(`/v1/signals/ma-cross?symbol=${encodeURIComponent(symbol)}`),
   trades: (symbol: string) => request<Trade[]>(`/v1/trades?symbol=${encodeURIComponent(symbol)}&limit=50`),
-  box: (symbol: string) => request<BoxSignal>(`/v1/signals/box?symbol=${encodeURIComponent(symbol)}`),
+  rsi: (symbol: string) => request<RSISignal>(`/v1/signals/rsi?symbol=${encodeURIComponent(symbol)}`),
   leaderboard: () => request<Leaderboard>('/v1/leaderboard'),
 };
 

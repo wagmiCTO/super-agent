@@ -9,10 +9,10 @@ import { WebView } from 'react-native-webview';
 
 import { chartPageUrl, type ChartMessage, type TVChartProps } from '@/chart/page';
 
-export function TVChart({ symbol, theme, background, chartType, trend, ma, box, trades, position, height }: TVChartProps) {
+export function TVChart({ symbol, theme, background, chartType, trend, ma, study, box, trades, position, height }: TVChartProps) {
   const web = useRef<WebView>(null);
   const [ready, setReady] = useState(false);
-  const url = chartPageUrl({ symbol, theme, background, ma });
+  const url = chartPageUrl({ symbol, theme, background, ma, study });
   const boxKey = JSON.stringify(box ?? null);
   const tradesKey = JSON.stringify(trades ?? []);
   const positionKey = JSON.stringify(position ?? null);

@@ -22,7 +22,7 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useTrading } from '@/trading/useTrading';
 
-const ROUTES: Record<string, Href> = { direction: '/direction', 'ma-cross': '/ma-cross', box: '/box' };
+const ROUTES: Record<string, Href> = { direction: '/direction', 'ma-cross': '/ma-cross', rsi: '/rsi' };
 
 /** The week's argument: which strategy made the most for its players. */
 function factionLine(boards: Board[]): string | null {

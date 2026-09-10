@@ -218,13 +218,13 @@ paths:
           description: No signals are running.
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
-  /v1/signals/box:
+  /v1/signals/rsi:
     get:
-      summary: The Box signal for a market
+      summary: The RSI signal for a market
       description: >-
-        The last N closed bars draw a box — highest high, lowest low. A bar
-        closing outside it is a breakout and opens a window in that direction
-        for a few minutes. Waiting inside the box is free.
+        Wilder's RSI over closed one-minute bars with the oversold and
+        overbought zones. A bar closing with the index entering the oversold
+        zone opens a window up; entering overbought opens a window down.
       parameters:
         - in: query
           name: symbol
@@ -234,7 +234,7 @@ paths:
         "200":
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/BoxSignal" }
+              schema: { $ref: "#/components/schemas/RSISignal" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /v1/candles:
@@ -511,16 +511,19 @@ components:
               pnl: { $ref: "#/components/schemas/Decimal" }
               trades: { type: integer }
 
-    BoxSignal:
+    RSISignal:
       type: object
-      required: [symbol, period_seconds, length, ready, top, bottom, forming, points]
+      required: [symbol, period_seconds, length, oversold, overbought, ready, value, forming, points]
       properties:
         symbol: { type: string }
         period_seconds: { type: integer }
-        length: { type: integer, description: Closed bars that draw the box. }
+        length: { type: integer }
+        oversold: { $ref: "#/components/schemas/Decimal" }
+        overbought: { $ref: "#/components/schemas/Decimal" }
         ready: { type: boolean }
-        top: { $ref: "#/components/schemas/Decimal" }
-        bottom: { $ref: "#/components/schemas/Decimal" }
+        value:
+          $ref: "#/components/schemas/Decimal"
+          description: The index as of the last closed bar, 0..100.
         forming: { type: boolean }
         window:
           type: object
@@ -529,25 +532,22 @@ components:
             side: { $ref: "#/components/schemas/Side" }
             opened_at: { type: string, format: date-time }
             expires_at: { type: string, format: date-time }
-        last_break:
+        last_cross:
           type: object
-          required: [side, at, top, bottom]
+          required: [side, at, value]
           properties:
             side: { $ref: "#/components/schemas/Side" }
             at: { type: string, format: date-time }
-            top: { $ref: "#/components/schemas/Decimal" }
-            bottom: { $ref: "#/components/schemas/Decimal" }
+            value: { $ref: "#/components/schemas/Decimal" }
         points:
           type: array
           items:
             type: object
-            required: [at, open, high, low, close]
+            required: [at, close]
             properties:
               at: { type: string, format: date-time }
-              open: { $ref: "#/components/schemas/Decimal" }
-              high: { $ref: "#/components/schemas/Decimal" }
-              low: { $ref: "#/components/schemas/Decimal" }
               close: { $ref: "#/components/schemas/Decimal" }
+              value: { $ref: "#/components/schemas/Decimal" }
 
     MACrossSignal:
       type: object
@@ -680,7 +680,7 @@ components:
           type: string
           description: >-
             Which strategy this entry belongs to, for the leaderboard:
-            direction (default), ma-cross or box.
+            direction (default), ma-cross or rsi.
         horizon_seconds:
           type: integer
           minimum: 0

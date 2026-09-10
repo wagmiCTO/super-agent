@@ -40,7 +40,7 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /v1/exchange/key", h.enrolledKey)
 	mux.HandleFunc("GET /v1/exchange/network", h.exchangeNetwork)
 	mux.HandleFunc("GET /v1/signals/ma-cross", h.maCross)
-	mux.HandleFunc("GET /v1/signals/box", h.box)
+	mux.HandleFunc("GET /v1/signals/rsi", h.rsi)
 	mux.HandleFunc("GET /v1/leaderboard", h.leaderboard)
 	mux.HandleFunc("GET /v1/prizes", h.prizes)
 	mux.HandleFunc("GET /v1/candles", h.candles)
@@ -756,51 +756,61 @@ type maCrossDTO struct {
 	Points        []signalPointDTO `json:"points"`
 }
 
-type boxBreakDTO struct {
-	Side   string `json:"side"`
-	At     string `json:"at"`
-	Top    string `json:"top"`
-	Bottom string `json:"bottom"`
+type rsiCrossDTO struct {
+	Side  string `json:"side"`
+	At    string `json:"at"`
+	Value string `json:"value"`
 }
 
-type boxDTO struct {
+type rsiPointDTO struct {
+	At    string `json:"at"`
+	Close string `json:"close"`
+	Value string `json:"value,omitempty"`
+}
+
+type rsiDTO struct {
 	Symbol        string           `json:"symbol"`
 	PeriodSeconds int              `json:"period_seconds"`
 	Length        int              `json:"length"`
+	Oversold      string           `json:"oversold"`
+	Overbought    string           `json:"overbought"`
 	Ready         bool             `json:"ready"`
-	Top           string           `json:"top"`
-	Bottom        string           `json:"bottom"`
+	Value         string           `json:"value"`
 	Forming       bool             `json:"forming"`
 	Window        *signalWindowDTO `json:"window,omitempty"`
-	LastBreak     *boxBreakDTO     `json:"last_break,omitempty"`
-	Points        []signalPointDTO `json:"points"`
+	LastCross     *rsiCrossDTO     `json:"last_cross,omitempty"`
+	Points        []rsiPointDTO    `json:"points"`
 }
 
-// box serves the Box signal for a market: the range, the bars, and whether
-// a breakout is on offer right now.
-func (h *handler) box(w http.ResponseWriter, r *http.Request) {
+// rsi serves the RSI signal for a market: the index, the zones, and whether
+// an entry is on offer right now.
+func (h *handler) rsi(w http.ResponseWriter, r *http.Request) {
 	if h.signals == nil {
 		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "signals_unavailable", Message: "no signals are running"})
 		return
 	}
 	symbol := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("symbol")))
-	st, ok := h.signals.Box(symbol)
+	st, ok := h.signals.RSI(symbol)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, errorDTO{Error: "unknown_market", Message: "no signal for this market"})
 		return
 	}
-	out := boxDTO{
-		Symbol: st.Symbol, PeriodSeconds: int(st.Period / time.Second), Length: st.Length, Ready: st.Ready,
-		Top: st.Top.String(), Bottom: st.Bottom.String(), Forming: st.Forming, Points: make([]signalPointDTO, 0, len(st.Points)),
+	out := rsiDTO{
+		Symbol: st.Symbol, PeriodSeconds: int(st.Period / time.Second), Length: st.Length, Oversold: st.Oversold.String(), Overbought: st.Overbought.String(),
+		Ready: st.Ready, Value: st.Value.String(), Forming: st.Forming, Points: make([]rsiPointDTO, 0, len(st.Points)),
 	}
 	for _, p := range st.Points {
-		out.Points = append(out.Points, signalPointDTO{At: p.At.UTC().Format(time.RFC3339), Open: p.Open.String(), High: p.High.String(), Low: p.Low.String(), Close: p.Close.String()})
+		d := rsiPointDTO{At: p.At.UTC().Format(time.RFC3339), Close: p.Close.String()}
+		if !p.Value.IsZero() {
+			d.Value = p.Value.String()
+		}
+		out.Points = append(out.Points, d)
 	}
 	if st.Window != nil {
 		out.Window = &signalWindowDTO{Side: st.Window.Side.String(), OpenedAt: timeOrEmpty(st.Window.OpenedAt), ExpiresAt: timeOrEmpty(st.Window.ExpiresAt)}
 	}
-	if st.LastBreak != nil {
-		out.LastBreak = &boxBreakDTO{Side: st.LastBreak.Side.String(), At: timeOrEmpty(st.LastBreak.At), Top: st.LastBreak.Top.String(), Bottom: st.LastBreak.Bottom.String()}
+	if st.LastCross != nil {
+		out.LastCross = &rsiCrossDTO{Side: st.LastCross.Side.String(), At: timeOrEmpty(st.LastCross.At), Value: st.LastCross.Value.String()}
 	}
 	writeJSON(w, http.StatusOK, out)
 }
