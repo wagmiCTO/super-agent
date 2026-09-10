@@ -984,6 +984,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/prizes/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The weeks gone by, as the chain recorded them
+         * @description Read from the prize-pool indexer (Envio HyperIndex over the
+         *     StrategyPrizePool contract): every pool with what it held, who won and
+         *     who has claimed. Amounts are the collateral token's smallest units,
+         *     as the contract emits them. Cached a minute; served stale, flagged,
+         *     when the indexer cannot be read.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PrizeHistory"];
+                    };
+                };
+                /** @description The indexer could not be read and there is no cached answer. */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description No indexer configured. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/leaderboard": {
         parameters: {
             query?: never;
@@ -1540,6 +1602,50 @@ export interface components {
             amount_out?: string;
             tx_hashes: string[];
         };
+        PrizeHistory: {
+            pools: components["schemas"]["HistoryPool"][];
+            totals: {
+                /** @description Token units. */
+                funded: string;
+                paid: string;
+                claimed: string;
+                pools: number;
+                settled_pools: number;
+            };
+            /** @example envio */
+            source: string;
+            stale: boolean;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        HistoryPool: {
+            /** Format: int64 */
+            week: number;
+            /** Format: date-time */
+            week_start: string;
+            /** @description The strategy id */
+            strategy: string;
+            /** @description Token units. */
+            funded: string;
+            fundings: number;
+            settled: boolean;
+            /** Format: date-time */
+            settled_at?: string;
+            carried: string;
+            claimed: string;
+            prizes: {
+                wallet: string;
+                rank: number;
+                /** @description Token units. */
+                amount: string;
+                /** @description Collateral micros */
+                pnl: string;
+                claimed: boolean;
+                /** Format: date-time */
+                claimed_at?: string;
+                claim_tx?: string;
+            }[];
+        };
         Error: {
             /**
              * @description Stable machine code. Policy denials use the engine's reasons:
@@ -1553,7 +1659,7 @@ export interface components {
              *     unknown, re-read state and retry), unknown_market, no_position,
              *     no_credentials, unauthenticated (401: the wallet registered a
              *     request-signing key and this request is not signed by it),
-             *     context_unavailable and deposit_unavailable (503: not configured),
+             *     context_unavailable, deposit_unavailable and history_unavailable (503: not configured),
              *     partner_error (502: Nansen or Aurora refused, message is theirs), internal.
              */
             error: string;

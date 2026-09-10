@@ -10,14 +10,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { Wallet } from '@/account/derive';
 import { useAccount } from '@/account/useAccount';
-import { api, describeError, type Board, type Leaderboard } from '@/api/client';
+import { api, ApiError, describeError, type Board, type Leaderboard, type PrizeHistory } from '@/api/client';
 import { claimPrize, fetchMyPrizes, type MyPrizes } from '@/exchange/prize';
 import { AccountSection } from '@/components/account';
 import { trim } from '@/components/format';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { styles as trading } from '@/components/trading';
-import { LEADERBOARD_POLL_MS } from '@/config';
+import { LEADERBOARD_POLL_MS, STRATEGY_NAMES } from '@/config';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useTrading } from '@/trading/useTrading';
@@ -76,6 +76,8 @@ export default function LobbyScreen() {
           {account.state.status === 'unlocked' && lb?.prize ? (
             <MyPrizes wallet={account.state.wallet} address={account.state.stored.address} contract={lb.prize.contract} />
           ) : null}
+
+          <PastWeeks />
 
           <Link href="/deposit" asChild>
             <Pressable accessibilityRole="button" accessibilityLabel="Deposit from any chain" testID="deposit-link">
@@ -244,3 +246,64 @@ function short(address: string): string {
 const styles = StyleSheet.create({
   card: { borderRadius: 16, padding: Spacing.three, gap: Spacing.one },
 });
+
+/**
+ * The weeks gone by as the chain recorded them, read from the prize-pool
+ * indexer: what each pool held, who won, who has collected. The platform's
+ * own numbers are above; this is the same story from the chain's side.
+ */
+function PastWeeks() {
+  const theme = useTheme();
+  const [history, setHistory] = useState<PrizeHistory | null | 'unavailable'>(null);
+  useEffect(() => {
+    let alive = true;
+    api
+      .prizeHistory()
+      .then((h) => alive && setHistory(h))
+      .catch((e) => alive && setHistory(e instanceof ApiError && e.code === 'history_unavailable' ? 'unavailable' : null));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  if (!history || history === 'unavailable') return null;
+  const settled = history.pools.filter((p) => p.settled);
+  return (
+    <View style={[styles.card, { backgroundColor: theme.backgroundElement }]} testID="past-weeks">
+      <View style={trading.header}>
+        <ThemedText type="smallBold" themeColor="textSecondary">
+          ON-CHAIN · PRIZE POOLS
+        </ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">
+          {history.totals.pools} pools · {micros(history.totals.funded)} AUSD funded
+        </ThemedText>
+      </View>
+      {settled.length === 0 ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          No week settled yet — the first settlement runs when the current week ends.
+        </ThemedText>
+      ) : (
+        settled.slice(0, 6).map((p) => (
+          <View key={`${p.week}-${p.strategy}`} style={{ gap: 2 }} testID="past-week">
+            <ThemedText type="small">
+              {STRATEGY_NAMES[p.strategy] ?? p.strategy} · week of {new Date(p.week_start).toLocaleDateString()} · pool {micros(p.funded)} AUSD
+            </ThemedText>
+            {p.prizes.map((pr) => (
+              <ThemedText key={pr.wallet} type="small" themeColor="textSecondary">
+                #{pr.rank} {short(pr.wallet)} · {micros(pr.amount)} AUSD · {pr.claimed ? 'claimed' : 'unclaimed'}
+              </ThemedText>
+            ))}
+          </View>
+        ))
+      )}
+      <ThemedText type="small" themeColor="textSecondary" style={{ opacity: 0.7 }}>
+        Indexed by Envio{history.stale ? ' · last known' : ''}
+      </ThemedText>
+    </View>
+  );
+}
+
+/** Token units (6 decimals) to a short decimal. */
+function micros(units: string): string {
+  const n = Number(units) / 1e6;
+  return Number.isFinite(n) ? String(Math.round(n * 100) / 100) : units;
+}

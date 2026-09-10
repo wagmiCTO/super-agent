@@ -30,6 +30,7 @@ export type MarketContext = components['schemas']['MarketContext'];
 export type DepositOptions = components['schemas']['DepositOptions'];
 export type DepositQuote = components['schemas']['DepositQuote'];
 export type DepositStatus = components['schemas']['DepositStatus'];
+export type PrizeHistory = components['schemas']['PrizeHistory'];
 
 /** Stable machine codes the server returns. Policy reasons come first. */
 export type ErrorCode =
@@ -53,6 +54,7 @@ export type ErrorCode =
   | 'unauthenticated'
   | 'context_unavailable'
   | 'deposit_unavailable'
+  | 'history_unavailable'
   | 'partner_error'
   | 'internal'
   | 'network';
@@ -188,6 +190,7 @@ export const api = {
   depositOptions: () => request<DepositOptions>('/v1/deposit/options'),
   depositQuote: (body: { origin_asset: string; amount: string; dry?: boolean }) =>
     request<DepositQuote>('/v1/deposit/quote', { method: 'POST', body: JSON.stringify(body) }),
+  prizeHistory: () => request<PrizeHistory>('/v1/prizes/history?limit=12'),
   depositStatus: (depositAddress: string) =>
     request<DepositStatus>(`/v1/deposit/status?deposit_address=${encodeURIComponent(depositAddress)}`),
 };
