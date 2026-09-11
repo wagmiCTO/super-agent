@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -146,8 +147,13 @@ func (e *Enrollment) Payload(ctx context.Context, req PayloadRequest) (PayloadRe
 	}
 	pending.TypedData = payload.TypedData
 	pending.MAC = payload.MAC
+	pending.Salt = documentSalt(payload.TypedData)
 	pending.Auth = auth
 	e.store.Register(pending)
+	// The venue refuses a document whose salt was reused or superseded by a
+	// newer one for the same address (their diagnosis, 11 Sep 2026); every
+	// salt handed out is logged so a refusal can be traced.
+	e.log.Info("enroll payload issued", "address", pending.Address, "strategy", pending.Strategy, "salt", pending.Salt, "handle", pending.Handle)
 	return PayloadResult{
 		Handle:        pending.Handle,
 		Strategy:      pending.Strategy,
@@ -225,7 +231,7 @@ func (e *Enrollment) Enroll(ctx context.Context, handle, signInSignature, wallet
 			break
 		}
 		if attempt >= enrollAttempts || !isVenueRefusal(err) {
-			e.log.Warn("enroll refused", "address", pending.Address, "attempt", attempt, "err", err)
+			e.log.Warn("enroll refused", "address", pending.Address, "salt", pending.Salt, "attempt", attempt, "err", err)
 			return keys.Key{}, err
 		}
 		e.log.Info("enroll refused, retrying", "address", pending.Address, "attempt", attempt, "err", err)
@@ -257,7 +263,7 @@ func (e *Enrollment) Enroll(ctx context.Context, handle, signInSignature, wallet
 		// mirror is worth a loud log, not a failed enrollment.
 		e.log.Error("enrolled key not persisted", "address", k.Address, "err", err)
 	}
-	e.log.Info("api key enrolled", "address", k.Address, "strategy", k.Strategy, "derived", k.Derived, "label", k.Label, "builder", k.BuilderID, "max_fee_per_100k", k.MaxBuilderFeePer100K)
+	e.log.Info("api key enrolled", "address", k.Address, "strategy", k.Strategy, "salt", pending.Salt, "derived", k.Derived, "label", k.Label, "builder", k.BuilderID, "max_fee_per_100k", k.MaxBuilderFeePer100K)
 	return k, nil
 }
 
@@ -268,6 +274,26 @@ func (e *Enrollment) Key(address, strategyID string) (keys.Key, error) {
 
 // Keys lists a wallet's enrolled keys.
 func (e *Enrollment) Keys(address string) []keys.Key { return e.store.ForWallet(address) }
+
+// documentSalt reads the salt from an EIP-712 document — the venue puts it
+// in the domain; the message is checked too — or "" if absent.
+func documentSalt(typedData []byte) string {
+	var doc struct {
+		Domain struct {
+			Salt string `json:"salt"`
+		} `json:"domain"`
+		Message struct {
+			Salt string `json:"salt"`
+		} `json:"message"`
+	}
+	if err := json.Unmarshal(typedData, &doc); err != nil {
+		return ""
+	}
+	if doc.Domain.Salt != "" {
+		return doc.Domain.Salt
+	}
+	return doc.Message.Salt
+}
 
 func isAddress(s string) bool {
 	if len(s) != 42 || !strings.HasPrefix(s, "0x") {

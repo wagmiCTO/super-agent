@@ -77,6 +77,9 @@ type Pending struct {
 	Derived    bool
 	TypedData  []byte
 	MAC        string
+	// Salt is the EIP-712 document's salt: the venue's nonce for this
+	// enrollment, logged so a refusal can be traced to its document.
+	Salt string
 	// Auth is the venue's sign-in payload for the wallet, signed alongside.
 	Auth      perpl.AuthPayload
 	BuilderID int
