@@ -1,0 +1,69 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #18181B; } a:hover { color: #52525B; }
+  </style>
+</helmet>
+<div style="width: 390px; min-height: 844px; background: #FFFFFF; color: #18181B; box-sizing: border-box; padding: 60px 24px 40px; display: flex; flex-direction: column; gap: 22px;">
+  <div style="display: flex; flex-direction: column; gap: 6px;">
+    <div style="font-size: 13px; font-weight: 600; letter-spacing: 0.04em; color: #71717A;">GLOSSARY</div>
+    <div style="font-size: 26px; font-weight: 700; letter-spacing: -0.01em;">Every word the app uses</div>
+    <div style="font-size: 14px; color: #71717A;">One term, one sentence a stranger understands. Each appears in the app with this text behind a dashed underline.</div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 16px; border-top: 1px solid #E4E4E7;">
+    <div style="font-size: 17px; font-weight: 700;">Passkey</div>
+    <div style="font-size: 15px; line-height: 1.45; color: #3F3F46;">Your account key, made on this phone and unlocked by Face ID. No password to remember, no seed phrase to lose.</div>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 16px; border-top: 1px solid #E4E4E7;">
+    <div style="font-size: 17px; font-weight: 700;">AUSD</div>
+    <div style="font-size: 15px; line-height: 1.45; color: #3F3F46;">The dollar you trade with. One AUSD is one dollar. On testnet it is practice money the exchange gives you.</div>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 16px; border-top: 1px solid #E4E4E7;">
+    <div style="font-size: 17px; font-weight: 700;">Testnet</div>
+    <div style="font-size: 15px; line-height: 1.45; color: #3F3F46;">A practice copy of the exchange. Real prices, real mechanics, no real money. Everything you win or lose here is for training.</div>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 16px; border-top: 1px solid #E4E4E7;">
+    <div style="font-size: 17px; font-weight: 700;">15x</div>
+    <div style="font-size: 15px; line-height: 1.45; color: #3F3F46;">Your 50 AUSD moves like 750. A 1% move in Bitcoin is 7.50 AUSD for you, up or down. The market's maximum by default; lower it in position settings.</div>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 16px; border-top: 1px solid #E4E4E7;">
+    <div style="font-size: 17px; font-weight: 700;">Stop −50%</div>
+    <div style="font-size: 15px; line-height: 1.45; color: #3F3F46;">If the trade loses half of what you put in, we close it. That is the most you can lose on one tap.</div>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 16px; border-top: 1px solid #E4E4E7;">
+    <div style="font-size: 17px; font-weight: 700;">15 minutes</div>
+    <div style="font-size: 15px; line-height: 1.45; color: #3F3F46;">How long the trade lives. It closes on its own when the time runs out, whatever the price. You never have to remember to close.</div>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 16px; border-top: 1px solid #E4E4E7;">
+    <div style="font-size: 17px; font-weight: 700;">Take profit</div>
+    <div style="font-size: 15px; line-height: 1.45; color: #3F3F46;">Optional. Closes the trade when it has won the amount you set, before the time runs out. Off by default.</div>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 16px; border-top: 1px solid #E4E4E7;">
+    <div style="font-size: 17px; font-weight: 700;">Fees</div>
+    <div style="font-size: 15px; line-height: 1.45; color: #3F3F46;">What the exchange charges to open and close: about 26 cents on a 50 AUSD tap at 15x. Already counted in the number you see.</div>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 16px; border-top: 1px solid #E4E4E7;">
+    <div style="font-size: 17px; font-weight: 700;">Liquidation</div>
+    <div style="font-size: 15px; line-height: 1.45; color: #3F3F46;">The exchange closing a trade that lost everything you put in. Your stop fires long before that, so on this app you should never see it.</div>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 16px; border-top: 1px solid #E4E4E7;">
+    <div style="font-size: 17px; font-weight: 700;">Strategy</div>
+    <div style="font-size: 15px; line-height: 1.45; color: #3F3F46;">A set of rules for when to trade. Direction: you decide. MA Cross and RSI Bounce: the screen tells you when, you tap once.</div>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 16px; border-top: 1px solid #E4E4E7;">
+    <div style="font-size: 17px; font-weight: 700;">Prize pool</div>
+    <div style="font-size: 15px; line-height: 1.45; color: #3F3F46;">A weekly pot paid to the players with the best results in each strategy. Settled on-chain every Sunday; you collect it with one tap.</div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
