@@ -1,0 +1,63 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #18181B; } a:hover { color: #52525B; }
+    @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(24,24,27,0.35); } 50% { box-shadow: 0 0 0 8px rgba(24,24,27,0); } }
+    @keyframes slide { from { background-position: 0 0; } to { background-position: 40px 0; } }
+    .pulse { animation: pulse 1.2s ease-out infinite; }
+    .busy { background-image: repeating-linear-gradient(90deg, #18181B 0 12px, #52525B 12px 20px); background-size: 40px 6px; animation: slide 0.8s linear infinite; }
+  </style>
+</helmet>
+<div style="display: inline-flex; flex-direction: column; gap: 28px; padding: 32px 40px 40px; background: #FAFAFA; color: #18181B; box-sizing: border-box;">
+  <div style="display: flex; flex-direction: column; gap: 4px;"><div style="font-size: 24px; font-weight: 700;">7 · Errors and empty states</div><div style="font-size: 14px; color: #71717A;">What the app says when something is missing or broken.</div></div>
+  <div style="display: flex; align-items: flex-start;"><div style="display: flex; flex-direction: column; gap: 10px; width: 390px; flex-shrink: 0;">
+     <div style="font-size: 14px; font-weight: 600; color: #18181B; height: 20px;">1 · Loading</div>
+     <div style="width: 390px; height: 844px; border-radius: 28px; border: 1px solid #D4D4D8; background: #FFFFFF; color: #18181B; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; position: relative;"><div style="flex: 1; display: flex; flex-direction: column; padding: 60px 20px 24px; box-sizing: border-box; gap: 14px;">
+     <div style="display: flex; align-items: center; gap: 10px;"><div style="width: 28px; height: 28px; border-radius: 8px; background: #18181B;"></div><div style="margin-left: auto; width: 70px; height: 14px; border-radius: 7px; background: #E4E4E7;"></div></div>
+     <div style="width: 180px; height: 22px; border-radius: 8px; background: #E4E4E7;"></div>
+     <div style="height: 120px; border-radius: 14px; background: #F4F4F5;"></div><div style="height: 120px; border-radius: 14px; background: #F4F4F5;"></div><div style="height: 120px; border-radius: 14px; background: #F4F4F5;"></div>
+     <div style="font-size: 13px; color: #71717A;">Loading strategies…</div>
+   </div></div>
+     <div style="font-size: 13px; line-height: 1.4; color: #71717A; min-height: 36px;">Skeleton, no spinner.</div>
+   </div><div style="display: flex; flex-direction: column; align-items: center; justify-content: center; width: 110px; flex-shrink: 0; gap: 6px; padding-top: 30px;">
+     <div style="font-size: 12px; font-weight: 600; color: #3F3F46; text-align: center; line-height: 1.3;">no answer</div>
+     <svg width="90" height="20" viewBox="0 0 90 20" fill="none" stroke="#18181B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10h78"></path><path d="M72 4l8 6-8 6"></path></svg>
+   </div><div style="display: flex; flex-direction: column; gap: 10px; width: 390px; flex-shrink: 0;">
+     <div style="font-size: 14px; font-weight: 600; color: #18181B; height: 20px;">2 · Offline</div>
+     <div style="width: 390px; height: 844px; border-radius: 28px; border: 1px solid #D4D4D8; background: #FFFFFF; color: #18181B; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; position: relative;"><div style="flex: 1; display: flex; flex-direction: column; justify-content: space-between; padding: 60px 24px 32px; box-sizing: border-box; gap: 16px;"><div style="display: flex; flex-direction: column; gap: 20px;"><div style="display: flex; align-items: center; gap: 10px;"><div style="font-size: 15px; font-weight: 600;">TradeAgent</div></div><div style="height: 120px; border-radius: 16px; background: repeating-linear-gradient(135deg, #E4E4E7 0 6px, #F4F4F5 6px 12px);"></div><div style="font-size: 28px; line-height: 1.15; font-weight: 700; letter-spacing: -0.01em;">The exchange is not answering</div><div style="font-size: 16px; line-height: 1.45; color: #52525B; text-wrap: pretty;">Nothing is lost. Your open trades keep their stops at the exchange. Last data from 12:41.</div></div><div style="display: flex; flex-direction: column; gap: 12px;"><div style="height: 52px; border-radius: 12px; border: 1px solid #18181B; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 600;">Try again</div></div></div></div>
+     <div style="font-size: 13px; line-height: 1.4; color: #71717A; min-height: 36px;">Time of the last data; stops are at the exchange.</div>
+   </div><div style="display: flex; flex-direction: column; align-items: center; justify-content: center; width: 110px; flex-shrink: 0; gap: 6px; padding-top: 30px;">
+     <div style="font-size: 12px; font-weight: 600; color: #3F3F46; text-align: center; line-height: 1.3;"></div>
+     <svg width="90" height="20" viewBox="0 0 90 20" fill="none" stroke="#18181B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10h78"></path><path d="M72 4l8 6-8 6"></path></svg>
+   </div><div style="display: flex; flex-direction: column; gap: 10px; width: 390px; flex-shrink: 0;">
+     <div style="font-size: 14px; font-weight: 600; color: #18181B; height: 20px;">3 · Signed out</div>
+     <div style="width: 390px; height: 844px; border-radius: 28px; border: 1px solid #D4D4D8; background: #FFFFFF; color: #18181B; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; position: relative;"><div style="flex: 1; display: flex; flex-direction: column; justify-content: space-between; padding: 60px 24px 32px; box-sizing: border-box; gap: 16px;"><div style="display: flex; flex-direction: column; gap: 20px;"><div style="display: flex; align-items: center; gap: 10px;"><div style="font-size: 15px; font-weight: 600;">TradeAgent</div></div><div style="font-size: 28px; line-height: 1.15; font-weight: 700; letter-spacing: -0.01em;">Sign in to trade</div><div style="font-size: 16px; line-height: 1.45; color: #52525B; text-wrap: pretty;">This platform trades only for signed-in wallets. Unlock with your passkey to see your balance and strategies.</div></div><div style="display: flex; flex-direction: column; gap: 12px;"><div style="height: 52px; border-radius: 12px; background: #18181B; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 600;">Sign in with passkey</div></div></div></div>
+     <div style="font-size: 13px; line-height: 1.4; color: #71717A; min-height: 36px;">The platform serves signed-in wallets only.</div>
+   </div><div style="display: flex; flex-direction: column; align-items: center; justify-content: center; width: 110px; flex-shrink: 0; gap: 6px; padding-top: 30px;">
+     <div style="font-size: 12px; font-weight: 600; color: #3F3F46; text-align: center; line-height: 1.3;"></div>
+     <svg width="90" height="20" viewBox="0 0 90 20" fill="none" stroke="#18181B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10h78"></path><path d="M72 4l8 6-8 6"></path></svg>
+   </div><div style="display: flex; flex-direction: column; gap: 10px; width: 390px; flex-shrink: 0;">
+     <div style="font-size: 14px; font-weight: 600; color: #18181B; height: 20px;">4 · Passkey unsupported</div>
+     <div style="width: 390px; height: 844px; border-radius: 28px; border: 1px solid #D4D4D8; background: #FFFFFF; color: #18181B; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; position: relative;"><div style="flex: 1; display: flex; flex-direction: column; justify-content: space-between; padding: 60px 24px 32px; box-sizing: border-box; gap: 16px;"><div style="display: flex; flex-direction: column; gap: 20px;"><div style="display: flex; align-items: center; gap: 10px;"><div style="font-size: 15px; font-weight: 600;">TradeAgent</div></div><div style="font-size: 28px; line-height: 1.15; font-weight: 700; letter-spacing: -0.01em;">Use your phone for this one</div><div style="font-size: 16px; line-height: 1.45; color: #52525B; text-wrap: pretty;">This browser cannot create a passkey that unlocks a wallet. On desktop Chrome, save the passkey to Google Password Manager or use iCloud Keychain / 1Password. Easiest: open TradeAgent on your phone.</div>
+     <div style="width: 140px; height: 140px; border-radius: 16px; align-self: center; background: repeating-linear-gradient(135deg, #E4E4E7 0 6px, #F4F4F5 6px 12px);"></div><div style="font-size: 13px; color: #71717A;">QR to the app on your phone</div></div><div style="display: flex; flex-direction: column; gap: 12px;"><div style="height: 52px; border-radius: 12px; border: 1px solid #18181B; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 600;">Try again here</div></div></div></div>
+     <div style="font-size: 13px; line-height: 1.4; color: #71717A; min-height: 36px;">Desktop Chrome without PRF: honest, points to the phone.</div>
+   </div><div style="display: flex; flex-direction: column; align-items: center; justify-content: center; width: 110px; flex-shrink: 0; gap: 6px; padding-top: 30px;">
+     <div style="font-size: 12px; font-weight: 600; color: #3F3F46; text-align: center; line-height: 1.3;"></div>
+     <svg width="90" height="20" viewBox="0 0 90 20" fill="none" stroke="#18181B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10h78"></path><path d="M72 4l8 6-8 6"></path></svg>
+   </div><div style="display: flex; flex-direction: column; gap: 10px; width: 390px; flex-shrink: 0;">
+     <div style="font-size: 14px; font-weight: 600; color: #18181B; height: 20px;">5 · Passkey cancelled</div>
+     <div style="width: 390px; height: 844px; border-radius: 28px; border: 1px solid #D4D4D8; background: #FFFFFF; color: #18181B; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; position: relative;"><div style="flex: 1; display: flex; flex-direction: column; justify-content: space-between; padding: 60px 24px 32px; box-sizing: border-box; gap: 16px;"><div style="display: flex; flex-direction: column; gap: 20px;"><div style="display: flex; align-items: center; gap: 10px;"><div style="font-size: 15px; font-weight: 600;">TradeAgent</div></div><div style="font-size: 28px; line-height: 1.15; font-weight: 700; letter-spacing: -0.01em;">No passkey, no account</div><div style="font-size: 16px; line-height: 1.45; color: #52525B; text-wrap: pretty;">The passkey dialog was closed. Nothing was created. The passkey is the account: without it there is nothing to sign in to.</div></div><div style="display: flex; flex-direction: column; gap: 12px;"><div style="height: 52px; border-radius: 12px; background: #18181B; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 600;">Create account</div><div style="height: 44px; display: flex; align-items: center; justify-content: center; font-size: 15px; color: #52525B;">Why a passkey?</div></div></div></div>
+     <div style="font-size: 13px; line-height: 1.4; color: #71717A; min-height: 36px;">Nothing created, one way forward.</div>
+   </div></div>
+</div>
+</x-dc>
+</body>
+</html>
