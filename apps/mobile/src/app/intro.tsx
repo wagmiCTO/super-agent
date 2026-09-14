@@ -38,7 +38,7 @@ const SLIDES = [
 
 export default function IntroScreen() {
   const theme = useTheme();
-  const { prefs, markIntroSeen } = useOnboarding();
+  const { markIntroSeen } = useOnboarding();
   const [at, setAt] = useState(0);
   const slide = SLIDES[at];
 
@@ -53,7 +53,7 @@ export default function IntroScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s3 }}>
           <Mark size={24} />
           <Text variant="bodyStrong" style={{ fontSize: theme.type.tSm }}>TradeAgent</Text>
-          {prefs.network === 'testnet' ? <Badge>testnet</Badge> : null}
+          <Badge>testnet</Badge>
           <View style={{ flex: 1 }} />
           <Text variant="small" testID="intro-skip" onPress={leave}>Skip</Text>
         </View>

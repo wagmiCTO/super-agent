@@ -10,14 +10,19 @@ import * as SecureStore from 'expo-secure-store';
 export type NetworkChoice = 'testnet' | 'mainnet';
 
 export type OnboardingPrefs = {
-  network: NetworkChoice | null;
+  /**
+   * Which exchange the account lives on. Only testnet is built, so the first
+   * visit no longer asks — a choice with one answer is not a choice. The field
+   * stays because Account switches it once mainnet is reachable.
+   */
+  network: NetworkChoice;
   /** The promo is shown once; skipping counts as seeing it. */
   introSeen: boolean;
   /** The first strategy is taught once; skipping counts as learning it. */
   lessonSeen: boolean;
 };
 
-export const EMPTY_PREFS: OnboardingPrefs = { network: null, introSeen: false, lessonSeen: false };
+export const EMPTY_PREFS: OnboardingPrefs = { network: 'testnet', introSeen: false, lessonSeen: false };
 
 const KEY = 'tradeagent.onboarding';
 

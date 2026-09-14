@@ -9,12 +9,11 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-import { EMPTY_PREFS, loadPrefs, savePrefs, type NetworkChoice, type OnboardingPrefs } from '@/onboarding/prefs';
+import { EMPTY_PREFS, loadPrefs, savePrefs, type OnboardingPrefs } from '@/onboarding/prefs';
 
 export type OnboardingState = {
   ready: boolean;
   prefs: OnboardingPrefs;
-  chooseNetwork: (network: NetworkChoice) => Promise<void>;
   markIntroSeen: () => Promise<void>;
   markLessonSeen: () => Promise<void>;
 };
@@ -35,14 +34,6 @@ export function useOnboarding(): OnboardingState {
     };
   }, []);
 
-  const chooseNetwork = useCallback(async (network: NetworkChoice) => {
-    setPrefs((current) => {
-      const next = { ...current, network };
-      void savePrefs(next);
-      return next;
-    });
-  }, []);
-
   const markIntroSeen = useCallback(async () => {
     setPrefs((current) => {
       const next = { ...current, introSeen: true };
@@ -59,7 +50,7 @@ export function useOnboarding(): OnboardingState {
     });
   }, []);
 
-  return { ready, prefs, chooseNetwork, markIntroSeen, markLessonSeen };
+  return { ready, prefs, markIntroSeen, markLessonSeen };
 }
 
 /**
@@ -74,8 +65,7 @@ export function nextStep(
   prefs: OnboardingPrefs,
   hasAccount: boolean,
   exchangeReady: boolean,
-): '/network' | '/intro' | '/passkey' | '/enable' | '/lesson' | null {
-  if (!prefs.network) return '/network';
+): '/intro' | '/passkey' | '/enable' | '/lesson' | null {
   if (!prefs.introSeen) return '/intro';
   if (!hasAccount) return '/passkey';
   if (!exchangeReady) return '/enable';
