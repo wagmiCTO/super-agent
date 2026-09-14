@@ -16,6 +16,7 @@ export type OnboardingState = {
   prefs: OnboardingPrefs;
   chooseNetwork: (network: NetworkChoice) => Promise<void>;
   markIntroSeen: () => Promise<void>;
+  markLessonSeen: () => Promise<void>;
 };
 
 export function useOnboarding(): OnboardingState {
@@ -50,19 +51,34 @@ export function useOnboarding(): OnboardingState {
     });
   }, []);
 
-  return { ready, prefs, chooseNetwork, markIntroSeen };
+  const markLessonSeen = useCallback(async () => {
+    setPrefs((current) => {
+      const next = { ...current, lessonSeen: true };
+      void savePrefs(next);
+      return next;
+    });
+  }, []);
+
+  return { ready, prefs, chooseNetwork, markIntroSeen, markLessonSeen };
 }
 
 /**
  * The next screen of the first visit, or null once it is over.
  *
- * `hasAccount` comes from the account layer: a passkey that is remembered or
- * unlocked means the promo and the network question are behind us even if the
- * stored preferences were cleared.
+ * `hasAccount` is a passkey on the device; `exchangeReady` is that account
+ * opened on the exchange. They are separate: a passkey can exist while the
+ * three activation transactions have not run, and the visit is not over until
+ * the first strategy has been explained.
  */
-export function nextStep(prefs: OnboardingPrefs, hasAccount: boolean): '/network' | '/intro' | '/passkey' | null {
-  if (hasAccount) return null;
+export function nextStep(
+  prefs: OnboardingPrefs,
+  hasAccount: boolean,
+  exchangeReady: boolean,
+): '/network' | '/intro' | '/passkey' | '/enable' | '/lesson' | null {
   if (!prefs.network) return '/network';
   if (!prefs.introSeen) return '/intro';
-  return '/passkey';
+  if (!hasAccount) return '/passkey';
+  if (!exchangeReady) return '/enable';
+  if (!prefs.lessonSeen) return '/lesson';
+  return null;
 }

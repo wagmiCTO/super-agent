@@ -51,7 +51,14 @@ export default function Entry() {
   const account = useAccount();
   const { ready, prefs } = useOnboarding();
   const hasAccount = account.state.status === 'unlocked' || account.state.status === 'remembered';
-  const step = ready ? nextStep(prefs, hasAccount) : null;
+  // The exchange side is a separate fact from the passkey: an account can
+  // exist on the device while its three activation transactions have not run.
+  const gateTrading = useTrading('MON', 'direction');
+  const exchangeReady = Boolean(
+    gateTrading.state && gateTrading.state.account.status !== 'no_exchange_account' && gateTrading.state.account.status !== 'forwarding_disabled',
+  );
+  const settled = ready && (!hasAccount || gateTrading.state !== null);
+  const step = settled ? nextStep(prefs, hasAccount, exchangeReady) : null;
 
   useEffect(() => {
     if (step) router.replace(step);
@@ -59,7 +66,7 @@ export default function Entry() {
 
   // A1: the app's own ground while the answer is being worked out, so the
   // first frame is the app rather than a spinner on a foreign background.
-  if (!ready || account.state.status === 'loading' || step) return <Splash />;
+  if (!settled || account.state.status === 'loading' || step) return <Splash />;
   return <LobbyScreen />;
 }
 

@@ -12,9 +12,11 @@ export type OnboardingPrefs = {
   network: NetworkChoice | null;
   /** The promo is shown once; skipping counts as seeing it. */
   introSeen: boolean;
+  /** The first strategy is taught once; skipping counts as learning it. */
+  lessonSeen: boolean;
 };
 
-export const EMPTY_PREFS: OnboardingPrefs = { network: null, introSeen: false };
+export const EMPTY_PREFS: OnboardingPrefs = { network: null, introSeen: false, lessonSeen: false };
 
 const KEY = 'tradeagent.onboarding';
 
