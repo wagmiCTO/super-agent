@@ -10,7 +10,7 @@ import { StyleSheet, View } from 'react-native';
 import { api, ApiError, type MarketContext } from '@/api/client';
 import { ThemedText } from '@/components/themed-text';
 import { CONTEXT_POLL_MS } from '@/config';
-import { Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/legacy-theme';
 import { useTheme } from '@/hooks/use-theme';
 
 export function useMarketContext(symbol: string): MarketContext | null | 'unavailable' {

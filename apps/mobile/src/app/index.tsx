@@ -18,7 +18,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { styles as trading } from '@/components/trading';
 import { LEADERBOARD_POLL_MS, STRATEGY_NAMES } from '@/config';
-import { Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/legacy-theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useTrading } from '@/trading/useTrading';
 

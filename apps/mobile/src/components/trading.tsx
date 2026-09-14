@@ -8,7 +8,7 @@ import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import type { Market, Position, State, Trade } from '@/api/client';
 import { ThemedText } from '@/components/themed-text';
 import { DEFAULT_LEVERAGE } from '@/config';
-import { Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/legacy-theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { Notice } from '@/trading/useTrading';
 import { clock, multiply, trim } from './format';

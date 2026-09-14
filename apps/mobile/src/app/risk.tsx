@@ -20,7 +20,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { NoticeBox, ScreenHeader, styles, useCountdown } from '@/components/trading';
 import { STATE_POLL_MS, STRATEGY_NAMES } from '@/config';
-import { Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/legacy-theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { Notice } from '@/trading/useTrading';
 

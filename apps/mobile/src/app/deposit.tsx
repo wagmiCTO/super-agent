@@ -19,7 +19,7 @@ import { AccountSection } from '@/components/account';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { NoticeBox, PresetRow, ScreenHeader, SmallButton, styles } from '@/components/trading';
-import { Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/legacy-theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { Notice } from '@/trading/useTrading';
 

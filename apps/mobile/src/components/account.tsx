@@ -11,7 +11,7 @@ import type { KeyFamily, Wallet } from '@/account/derive';
 import type { useAccount } from '@/account/useAccount';
 import type { State } from '@/api/client';
 import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/legacy-theme';
 import { formatCollateral, formatNative, STEP_LABEL } from '@/exchange/activate';
 import { useActivation, type PendingStatus } from '@/exchange/useActivation';
 import { useEnabledStrategies, useStrategyKey } from '@/exchange/useStrategyKey';
