@@ -87,7 +87,7 @@ export function useTrading(symbol: string, strategy: string) {
   const position: Position | null = state?.positions.find((p) => p.symbol === symbol) ?? null;
 
   const open = useCallback(
-    async (side: 'long' | 'short', notional: string, horizonSeconds: number, maxLoss = '0') => {
+    async (side: 'long' | 'short', notional: string, horizonSeconds: number, maxLoss = '0', leverage = DEFAULT_LEVERAGE) => {
       setBusy(side === 'long' ? 'up' : 'down');
       setNotice(null);
       try {
@@ -95,7 +95,7 @@ export function useTrading(symbol: string, strategy: string) {
           symbol,
           side,
           notional,
-          leverage: DEFAULT_LEVERAGE,
+          leverage,
           horizon_seconds: horizonSeconds,
           strategy,
           ...(maxLoss !== '0' ? { max_loss: maxLoss } : {}),

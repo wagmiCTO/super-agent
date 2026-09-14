@@ -1,18 +1,28 @@
 import { expect, test } from '@playwright/test';
 
+import { openExchangeAccount } from './onboarded';
+
 /**
- * The first visit, end to end: an empty browser, three slides, a passkey, one
- * lesson, and the screen where the first tap happens.
+ * The first visit, end to end: an empty browser, three slides, a passkey, the
+ * account opened at the exchange, one lesson, and the screen where the first
+ * tap happens.
  *
- * The activation screen does not appear on testnet, and that is correct: Perpl
- * creates and funds a profile on first contact, so `/v1/state` comes back
- * `active` and there is nothing to approve. Its three transactions are a
- * mainnet concern, and the gate skips the screen when the exchange says the
- * account is ready.
+ * The activation screen is part of testnet, not a mainnet concern — this spec
+ * once claimed otherwise. Perpl funds a fresh wallet on first contact, but the
+ * wallet still needs a strategy key and three transactions of its own before
+ * an order is allowed, and `/v1/state` only says so when it is asked about
+ * *this* wallet. Asked without one it answers for the platform's own account,
+ * which is how the screen went missing.
  *
  * Deliberately seeds nothing — a cold browser is the state this flow exists
  * for. The virtual authenticator runs the same ceremony a real passkey
  * provider does, minus the biometric prompt.
+ *
+ * Every spec here mints a fresh wallet and opens a real account on Perpl
+ * testnet, so the whole file back to back trips the venue's edge rate limit
+ * (HTTP 429, Cloudflare 1015 on `/v1/auth/payload`) and the later specs fail
+ * on activation rather than on anything in the app. Run them one at a time, or
+ * leave a minute between runs.
  *
  * Nothing in the promo or the lesson is a gate: every step can be skipped, and
  * this asserts that too.
@@ -50,6 +60,10 @@ test('a first visit runs from the promo to the first tap', async ({ page, contex
   await expect(page.getByText('Your account is a passkey')).toBeVisible();
   await page.getByTestId('passkey-create').click();
 
+  // A5 — the account is opened at the exchange before anything can be tapped.
+  await expect(page.getByText('Open your account')).toBeVisible({ timeout: 30_000 });
+  await openExchangeAccount(page);
+
   // The lobby, as the design has it — and a strategy chosen there teaches
   // itself the first time.
   await expect(page.getByTestId('strategy-direction')).toBeVisible({ timeout: 60_000 });
@@ -78,6 +92,7 @@ test('every step of the first visit can be skipped', async ({ page, context }) =
   await expect(page.getByText('Be the smartest one in the market')).toHaveCount(0);
 
   await page.getByTestId('passkey-create').click();
+  await openExchangeAccount(page);
   await expect(page.getByTestId('strategy-direction')).toBeVisible({ timeout: 60_000 });
 
   // The lesson is not a gate either.
@@ -126,6 +141,7 @@ test('a device that already holds an account skips the promo', async ({ page, co
   await page.goto('/');
   await page.getByTestId('intro-skip').click();
   await page.getByTestId('passkey-create').click();
+  await openExchangeAccount(page);
   await expect(page.getByTestId('strategy-direction')).toBeVisible({ timeout: 60_000 });
 
   // Wipe what the app remembers about the visit, keep the passkey.
@@ -143,6 +159,7 @@ test('signing in with an existing passkey puts the first visit behind you', asyn
   await page.goto('/');
   await page.getByTestId('intro-skip').click();
   await page.getByTestId('passkey-create').click();
+  await openExchangeAccount(page);
   await expect(page.getByTestId('strategy-direction')).toBeVisible({ timeout: 60_000 });
 
   await page.evaluate(() => window.localStorage.clear());
@@ -175,6 +192,7 @@ test('the lobby is reachable from a strategy, and a reload stays put', async ({ 
   await page.goto('/');
   await page.getByTestId('intro-skip').click();
   await page.getByTestId('passkey-create').click();
+  await openExchangeAccount(page);
 
   // A new account lands in the lobby; choosing a strategy teaches it first.
   await expect(page.getByTestId('strategy-direction')).toBeVisible({ timeout: 30_000 });

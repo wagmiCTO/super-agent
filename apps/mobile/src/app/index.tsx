@@ -70,12 +70,10 @@ export default function Entry() {
   // activation step went missing.
   const wallet = account.state.status === 'unlocked' ? account.state.wallet.address.toLowerCase() : null;
   const heard = gateTrading.state !== null && gateTrading.stateFor?.toLowerCase() === wallet;
-  // A wallet with no strategy key cannot trade: the platform answers `no_key`
-  // rather than an account status. It is deliberately NOT a gate yet — the
-  // activation screen can enrol the key but cannot finish opening the exchange
-  // account (Perpl keeps answering "no exchange account yet"), so routing
-  // through it would park a new user on a screen with no way out. Until that
-  // is settled the lobby is reachable and activation is offered there.
+  // A wallet with no strategy key cannot trade at all: the platform answers
+  // `no_key` rather than an account status, so `locked` is what says the
+  // account still has to be opened.
+  const keyless = Boolean(wallet) && gateTrading.locked;
   // Not knowing is not the same as knowing the account is unopened: without an
   // answer the gate must not send anyone to the activation screen.
   const exchangeReady =
@@ -87,7 +85,7 @@ export default function Entry() {
   // the passkey screen: every route back to the lobby bounced off it.
   const accountKnown = account.state.status !== 'loading';
   const settled = ready && accountKnown && (!hasAccount || heard || gateTrading.offline || waited);
-  const step = settled ? nextStep(prefs, hasAccount, exchangeReady) : null;
+  const step = settled ? nextStep(prefs, hasAccount, exchangeReady && !keyless) : null;
 
   useEffect(() => {
     if (step) router.replace(step);

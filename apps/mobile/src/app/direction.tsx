@@ -8,8 +8,7 @@
  * which puts it through the policy engine before the venue; a refusal comes
  * back with the limit that was hit and is shown in words.
  */
-import { Link } from 'expo-router';
-import { useState } from 'react';
+import { Link, router } from 'expo-router';
 import { ScrollView, useColorScheme, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -25,23 +24,26 @@ import {
   LimitsFooter,
   NoticeBox,
   PositionCard,
-  PresetRow,
   ScreenHeader,
   styles,
 } from '@/components/trading';
-import { DEFAULT_STOP, DEFAULT_SYMBOL, HORIZON_PRESETS, horizonSeconds, NOTIONAL_PRESETS, STOP_PRESETS, stopFraction, type Horizon, type StopPreset } from '@/config';
+import { DEFAULT_SYMBOL } from '@/config';
+import { SettingsChip } from '@/trading/position-form';
+import { maxLossFraction, usePositionSettings } from '@/trading/useSettings';
 import { TVChart } from '@/components/TVChart';
 import { useTheme } from '@/hooks/use-theme';
 import { useTrading } from '@/trading/useTrading';
 
-type Notional = (typeof NOTIONAL_PRESETS)[number];
-
 export default function DirectionScreen() {
   const account = useAccount();
   const t = useTrading(DEFAULT_SYMBOL, 'direction');
-  const [notional, setNotional] = useState<Notional>('20');
-  const [horizon, setHorizon] = useState<Horizon>('15m');
-  const [stop, setStop] = useState<StopPreset>(DEFAULT_STOP);
+  // One standard position, set once on its own screen: the tap asks nothing
+  // but the direction.
+  const { settings } = usePositionSettings();
+  const notional = String(settings.size);
+  const maxLoss = maxLossFraction(settings);
+  const tap = (side: 'long' | 'short') =>
+    void t.open(side, notional, settings.horizonMinutes * 60, maxLoss, String(settings.leverage));
   const theme = useTheme();
   const dark = useColorScheme() === 'dark';
 
@@ -69,31 +71,39 @@ export default function DirectionScreen() {
 
           <ContextCard symbol={DEFAULT_SYMBOL} />
 
-          <PositionCard position={t.position} market={t.market} notional={notional} stop={stopFraction(stop)} state={t.state} />
+          <PositionCard
+            position={t.position}
+            market={t.market}
+            notional={notional}
+            stop={maxLoss}
+            state={t.state}
+            leverage={String(settings.leverage)}
+          />
 
           {t.position ? (
             <CloseButton busy={t.busy === 'close'} disabled={t.busy !== null} onPress={() => void t.close()} />
           ) : (
             <>
-              <PresetRow label="Amount" options={NOTIONAL_PRESETS} value={notional} onChange={setNotional} />
-              <PresetRow label="Horizon" options={HORIZON_PRESETS} value={horizon} onChange={setHorizon} />
-              <PresetRow label="Stop" options={STOP_PRESETS} value={stop} onChange={setStop} />
+              <ThemedText type="small" themeColor="textSecondary" style={styles.risks}>
+                {`Where does ${DEFAULT_SYMBOL} go in the next ${settings.horizonMinutes} minutes?`}
+              </ThemedText>
               <View style={styles.directions}>
                 <DirectionButton
                   label="Up"
                   color="#16a34a"
                   busy={t.busy === 'up'}
                   disabled={t.busy !== null}
-                  onPress={() => void t.open('long', notional, horizonSeconds(horizon), stopFraction(stop))}
+                  onPress={() => tap('long')}
                 />
                 <DirectionButton
                   label="Down"
                   color="#dc2626"
                   busy={t.busy === 'down'}
                   disabled={t.busy !== null}
-                  onPress={() => void t.open('short', notional, horizonSeconds(horizon), stopFraction(stop))}
+                  onPress={() => tap('short')}
                 />
               </View>
+              <SettingsChip onPress={() => router.push('/settings')} />
             </>
           )}
 

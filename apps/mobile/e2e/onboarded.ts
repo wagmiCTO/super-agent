@@ -58,3 +58,26 @@ export async function asReturningUser(page: Page, context: BrowserContext): Prom
   await page.getByTestId('passkey-create').click();
   await page.waitForURL((url) => !url.pathname.includes('passkey'));
 }
+
+/**
+ * The account, opened at the exchange.
+ *
+ * A wallet is not yet a trading account: the venue wants a strategy key, its
+ * testnet funding and three transactions before an order is allowed. The
+ * design gives that its own screen and one press, and the gate routes every
+ * fresh wallet through it — so a spec that walks the first visit has to walk
+ * this too. The work is on-chain, hence the patience.
+ */
+export async function openExchangeAccount(page: Page): Promise<void> {
+  const start = page.getByTestId('enable-start');
+  try {
+    // The gate needs a moment to decide, so the button is waited for rather
+    // than asked about: asking arrives before the screen does, and a skipped
+    // press then looks exactly like an activation that never finishes.
+    await start.waitFor({ state: 'visible', timeout: 20_000 });
+  } catch {
+    return; // never sent here — the exchange had nothing to open.
+  }
+  await start.click();
+  await page.waitForURL((url) => !url.pathname.includes('enable'), { timeout: 120_000 });
+}

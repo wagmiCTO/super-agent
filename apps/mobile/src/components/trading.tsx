@@ -34,6 +34,7 @@ export function PositionCard({
   notional,
   stop = '0',
   state = null,
+  leverage = DEFAULT_LEVERAGE,
 }: {
   position: Position | null;
   market: Market | null;
@@ -41,6 +42,8 @@ export function PositionCard({
   /** The stop the next tap arms, as a fraction of collateral ("0" = none). */
   stop?: string;
   state?: State | null;
+  /** The leverage the next tap opens at, as the standard position names it. */
+  leverage?: string;
 }) {
   const theme = useTheme();
   const closesIn = useCountdown(position?.closes_at ?? null);
@@ -76,7 +79,7 @@ export function PositionCard({
         {notional}
       </ThemedText>
       <ThemedText type="small" themeColor="textSecondary">
-        {fee !== null ? `round trip costs ${fee} (${bps} bps) · ${DEFAULT_LEVERAGE}x` : `${DEFAULT_LEVERAGE}x`}
+        {fee !== null ? `round trip costs ${fee} (${bps} bps) · ${leverage}x` : `${leverage}x`}
       </ThemedText>
       {risk ? (
         <ThemedText type="small" themeColor="textSecondary" testID="tap-risk">
@@ -331,6 +334,7 @@ export const styles = StyleSheet.create({
   presets: { flexDirection: 'row', gap: Spacing.two },
   preset: { flex: 1, paddingVertical: Spacing.two, borderRadius: 10, alignItems: 'center' },
   directions: { flexDirection: 'row', gap: Spacing.two },
+  risks: { textAlign: 'center' },
   direction: { flex: 1, paddingVertical: Spacing.four, borderRadius: 14, alignItems: 'center' },
   closeButton: { paddingVertical: Spacing.four, borderRadius: 14, alignItems: 'center', backgroundColor: '#374151' },
   smallButton: { paddingVertical: Spacing.one, paddingHorizontal: Spacing.two, borderRadius: 8, alignItems: 'center' },

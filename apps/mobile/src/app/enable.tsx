@@ -1,19 +1,25 @@
 /**
  * A6 — opening the account on the exchange.
  *
- * Three transactions the user did not ask about and should not have to think
- * about: approve the collateral, open the account, let the strategies forward
- * orders. The screen names them in plain words and shows the bar for the step
- * it is on filling within itself, rather than three lamps switching — a wait
- * that only switches looks stuck.
+ * Three things have to happen before a tap can reach the venue, and none of
+ * them is the user's problem:
+ *
+ *   1. a key for the strategy, so the platform can sign orders for this wallet
+ *   2. the venue's testnet funding, which arrives on first sign-in
+ *   3. three transactions from the wallet — approve the collateral, create the
+ *      account, let the strategies forward orders
+ *
+ * The screen names them in plain words and runs them as one press. The bar for
+ * the step it is on fills within itself: three lamps that only switch look
+ * stuck, and this genuinely takes a minute or two.
  */
 
 import { router } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { useAccount } from '@/account/useAccount';
-import { formatCollateral, type ActivationStep } from '@/exchange/activate';
+import { formatCollateral, formatNative } from '@/exchange/activate';
 import { useActivation } from '@/exchange/useActivation';
 import { useStrategyKey } from '@/exchange/useStrategyKey';
 import { useTrading } from '@/trading/useTrading';
@@ -22,49 +28,56 @@ import { Card, Progress, Screen } from '@/ui/surface';
 import { Text } from '@/ui/text';
 import { useTheme } from '@/theme';
 
-const ORDER: ActivationStep[] = ['approve', 'create', 'forward'];
-
-const LABELS: Record<ActivationStep, string> = {
-  approve: 'Signing in to the exchange',
-  create: 'Opening your account',
-  forward: 'Linking the strategies',
-};
+/** What the user is waiting for, in the order it happens. */
+const STEPS = ['Signing in to the exchange', 'Test money arriving', 'Opening your account'] as const;
 
 export default function EnableScreen() {
   const theme = useTheme();
   const account = useAccount();
   const wallet = account.state.status === 'unlocked' ? account.state.wallet : null;
+  const keys = account.state.status === 'unlocked' ? account.state.keys : null;
+
   const t = useTrading('MON', 'direction');
   const pending =
     t.state?.account.status === 'no_exchange_account' || t.state?.account.status === 'forwarding_disabled'
       ? t.state.account.status
       : null;
-  const { network, shortfall, funded, progress, busy, error, activate } = useActivation(wallet, pending);
 
-  // The first strategy's key. On testnet this is the whole of "opening your
-  // account": Perpl creates and funds the profile on first contact, so there
-  // is nothing on-chain to approve, but without a key the platform answers
-  // `no_key` and the wallet cannot trade — which is the step the user was
-  // having to do by hand on the strategy screen.
-  const keys = account.state.status === 'unlocked' ? account.state.keys : null;
   const key = useStrategyKey(keys, 'direction');
+  const { network, funding, funded, progress, busy, error, activate } = useActivation(wallet, pending);
+
+  const hasKey = key.state.status === 'enabled';
+  // Which of the three the screen is on. Without a key nothing else can even
+  // be asked; with a key but no funds the venue has not credited the wallet
+  // yet; with funds the transactions can run.
+  const at = !hasKey ? 0 : funded ? 2 : 1;
+  const running = key.busy || busy || progress !== null;
 
   // Activated: the design goes straight to the lobby from here.
-  const done = key.state.status === 'enabled' && !pending;
+  const done = hasKey && t.state !== null && !pending;
   useEffect(() => {
     if (done) router.replace('/');
   }, [done]);
 
-  const at = progress ? ORDER.indexOf(progress.step) : -1;
-  const running = busy || key.busy || at >= 0;
-  const failed = error ?? key.error;
+  // One press, then the screen carries on by itself: waiting for the venue to
+  // credit the wallet is not a decision, so it is not a second button.
+  const [started, setStarted] = useState(false);
+  const activating = useRef(false);
+  useEffect(() => {
+    if (!started || !hasKey || !funded || running || done || activating.current) return;
+    activating.current = true;
+    void activate();
+  }, [started, hasKey, funded, running, done, activate]);
 
   const start = () => {
-    // On mainnet the on-chain steps come first; the key is what makes the
-    // account usable either way.
-    if (pending) void activate();
-    else void key.enable();
+    setStarted(true);
+    // A second press is a retry, so the one-shot latch has to let go —
+    // otherwise a failed activation leaves a live button that does nothing.
+    activating.current = false;
+    if (!hasKey) void key.enable();
   };
+
+  const failed = key.error ?? error;
 
   return (
     <Screen>
@@ -72,38 +85,40 @@ export default function EnableScreen() {
         <View style={{ gap: theme.space.s3 }}>
           <Text variant="h1">Open your account</Text>
           <Text variant="body">
-            {funded
-              ? 'One tap. The exchange opens your account and links it to the strategies. About a minute.'
-              : 'One tap. The exchange opens your account and gives you practice money. About a minute.'}
+            One tap. The exchange opens your account and gives you practice money to trade with. About a minute.
           </Text>
         </View>
 
-        {running ? (
+        {started ? (
           <Card testID="enable-progress">
             <View style={{ flexDirection: 'row', gap: theme.space.s2 }}>
-              {ORDER.map((step, i) => (
+              {STEPS.map((step, i) => (
                 <Progress key={step} value={i < at ? 100 : i === at ? 55 : 0} />
               ))}
             </View>
             <View style={{ gap: theme.space.s2 }}>
-              {ORDER.map((step, i) => (
-                <Step key={step} label={LABELS[step]} state={i < at ? 'done' : i === at ? 'now' : 'todo'} />
+              {STEPS.map((step, i) => (
+                <Step
+                  key={step}
+                  label={i === 1 && network ? `Test money arriving: 10 000 ${network.collateral_symbol}` : step}
+                  state={i < at ? 'done' : i === at ? 'now' : 'todo'}
+                />
               ))}
             </View>
           </Card>
         ) : null}
 
         {failed ? (
-          <Card style={{ backgroundColor: theme.color.dangerSoft, borderColor: theme.color.danger }}>
-            <Text variant="body" style={{ fontSize: theme.type.tSm, color: theme.color.danger }}>{failed}</Text>
+          <Card testID="enable-error" style={{ backgroundColor: theme.color.dangerSoft, borderColor: theme.color.danger }}>
+            <Text variant="body" style={{ fontSize: theme.type.tSm, color: theme.color.danger }}>{inPlainWords(failed)}</Text>
           </Card>
         ) : null}
 
-        {network && shortfall && !funded ? (
-          <Card testID="enable-shortfall">
-            <Text variant="caps">Not enough to open an account</Text>
-            <Text variant="body" style={{ fontSize: theme.type.tSm }}>
-              {`Send ${formatCollateral(network, shortfall.collateral)} ${network.collateral_symbol} to your address first — Account has the details.`}
+        {network && funding ? (
+          <Card testID="enable-funding">
+            <Text variant="caps">In your wallet</Text>
+            <Text variant="num" style={{ fontSize: theme.type.tSm }}>
+              {`${formatCollateral(network, funding.collateral)} ${network.collateral_symbol} · ${formatNative(funding.native)} for gas`}
             </Text>
           </Card>
         ) : null}
@@ -114,12 +129,28 @@ export default function EnableScreen() {
           testID="enable-start"
           title={running ? 'Working…' : 'Open account'}
           busy={running}
-          disabled={running || (pending && network ? !funded : false)}
+          disabled={running}
           onPress={start}
         />
       </View>
     </Screen>
   );
+}
+
+/**
+ * The same venue failures, said for a screen that is opening an account.
+ *
+ * The shared message is written for the trading screen and starts "refused the
+ * order" — there is no order here. The one worth naming outright is the edge
+ * rate limit: it says nothing is wrong, only that too many accounts were
+ * opened from this machine just now, and waiting is the whole fix.
+ */
+function inPlainWords(message: string): string {
+  const text = message.replace(/^The exchange refused the order: /, '');
+  if (/\b429\b|error code: 1015/.test(text)) {
+    return 'The exchange is limiting how many accounts open at once. Wait a minute, then press again.';
+  }
+  return `The exchange refused: ${text}`;
 }
 
 function Step({ label, state }: { label: string; state: 'done' | 'now' | 'todo' }) {

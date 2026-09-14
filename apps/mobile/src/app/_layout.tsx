@@ -8,6 +8,7 @@ import { useEffect } from 'react';
 
 import { FONT_FACES } from '@/constants/theme';
 import { OnboardingProvider } from '@/onboarding/useOnboarding';
+import { PositionSettingsProvider } from '@/trading/useSettings';
 import { ThemeProvider, useThemeControls } from '@/theme';
 
 // The native splash stays up until the faces are in memory. Without this the
@@ -29,7 +30,9 @@ export default function RootLayout() {
   return (
     <ThemeProvider>
       <OnboardingProvider>
-        <Shell />
+        <PositionSettingsProvider>
+          <Shell />
+        </PositionSettingsProvider>
       </OnboardingProvider>
     </ThemeProvider>
   );
