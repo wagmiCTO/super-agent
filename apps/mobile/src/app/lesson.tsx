@@ -11,7 +11,6 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import { STRATEGY_NAMES } from '@/config';
-import { useOnboarding } from '@/onboarding/useOnboarding';
 import { Button } from '@/ui/button';
 import { CrossArt, DirectionIdea, DirectionShown, ReadyArt, RsiArt, RunArt } from '@/ui/lesson-art';
 import { Dots, Screen } from '@/ui/surface';
@@ -56,12 +55,7 @@ export default function LessonScreen() {
   const [at, setAt] = useState(0);
   const step = steps[at];
   const last = at === steps.length - 1;
-  const { markLessonSeen } = useOnboarding();
-
-  const leave = async () => {
-    await markLessonSeen();
-    router.replace(ROUTES[id]);
-  };
+  const leave = () => router.replace(ROUTES[id]);
 
   return (
     <Screen>
@@ -69,7 +63,7 @@ export default function LessonScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Text variant="caps">{`${STRATEGY_NAMES[id] ?? 'Direction'} · ${at + 1} of ${steps.length}`}</Text>
           <View style={{ flex: 1 }} />
-          <Text variant="small" testID="lesson-skip" onPress={() => void leave()}>Skip</Text>
+          <Text variant="small" testID="lesson-skip" onPress={leave}>Skip</Text>
         </View>
 
         <Art id={id} kind={step.art} />
@@ -86,7 +80,7 @@ export default function LessonScreen() {
         <Button
           testID="lesson-next"
           title={last ? 'Make your first tap' : 'Next'}
-          onPress={() => (last ? void leave() : setAt(at + 1))}
+          onPress={() => (last ? leave() : setAt(at + 1))}
         />
       </View>
     </Screen>

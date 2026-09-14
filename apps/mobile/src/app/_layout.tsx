@@ -7,6 +7,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
 import { FONT_FACES } from '@/constants/theme';
+import { OnboardingProvider } from '@/onboarding/useOnboarding';
 import { ThemeProvider, useThemeControls } from '@/theme';
 
 // The native splash stays up until the faces are in memory. Without this the
@@ -27,7 +28,9 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider>
-      <Shell />
+      <OnboardingProvider>
+        <Shell />
+      </OnboardingProvider>
     </ThemeProvider>
   );
 }

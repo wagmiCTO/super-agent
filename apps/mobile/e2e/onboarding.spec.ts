@@ -148,3 +148,38 @@ test('signing in with an existing passkey puts the first visit behind you', asyn
   await expect(page.getByText(/^STRATEGIES · THIS WEEK$/)).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText('Fifteen minutes. One call.')).toHaveCount(0);
 });
+
+/**
+ * Once the account exists, the app is open.
+ *
+ * This is the shape of three bugs that shipped together. The entry point acted
+ * before the account layer had finished loading and threw a signed-in user at
+ * the passkey screen, so every route back to the lobby bounced off it. The
+ * lesson was a gate condition, so leaving it by any other door led straight
+ * back. And the passkey screen's handoff re-ran whenever the stored
+ * preferences changed, dragging the user back from wherever they were.
+ *
+ * All three showed up as one complaint: the Lobby button does not work.
+ */
+test('the lobby is reachable from a strategy, and a reload stays put', async ({ page, context }) => {
+  await withPasskey(page, context);
+  await page.route('**/localhost:8080/**', (route) => route.abort());
+
+  await page.goto('/');
+  await page.getByTestId('intro-skip').click();
+  await page.getByTestId('passkey-create').click();
+
+  // A new account is offered the first strategy, and can leave it at once.
+  await expect(page.getByText('Fifteen minutes. One call.')).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId('lesson-skip').click();
+  await expect(page.getByText(/^DIRECTION · /)).toBeVisible({ timeout: 20_000 });
+
+  await page.getByRole('link', { name: /Lobby/ }).click();
+  await expect(page).toHaveURL(/\/$/, { timeout: 15_000 });
+  await expect(page.getByText(/^STRATEGIES · THIS WEEK$/)).toBeVisible({ timeout: 15_000 });
+
+  // And reloading the lobby keeps you in the lobby.
+  await page.reload();
+  await expect(page.getByText(/^STRATEGIES · THIS WEEK$/)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText('Your account is a passkey')).toHaveCount(0);
+});

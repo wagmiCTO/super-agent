@@ -71,7 +71,11 @@ export default function Entry() {
     !heard ||
     (gateTrading.state!.account.status !== 'no_exchange_account' &&
       gateTrading.state!.account.status !== 'forwarding_disabled');
-  const settled = ready && (!hasAccount || heard || gateTrading.offline || waited);
+  // The account layer starts at 'loading' and only then reads storage. Acting
+  // before it answers is how the entry point used to throw a signed-in user at
+  // the passkey screen: every route back to the lobby bounced off it.
+  const accountKnown = account.state.status !== 'loading';
+  const settled = ready && accountKnown && (!hasAccount || heard || gateTrading.offline || waited);
   const step = settled ? nextStep(prefs, hasAccount, exchangeReady) : null;
 
   useEffect(() => {
@@ -80,7 +84,7 @@ export default function Entry() {
 
   // A1: the app's own ground while the answer is being worked out, so the
   // first frame is the app rather than a spinner on a foreign background.
-  if (!settled || account.state.status === 'loading' || step) return <Splash />;
+  if (!settled || step) return <Splash />;
   return <LobbyScreen />;
 }
 

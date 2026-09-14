@@ -21,19 +21,27 @@ import { useTheme } from '@/theme';
 export default function PasskeyScreen() {
   const theme = useTheme();
   const { state, busy, error, create, signIn } = useAccount();
-  const { markReturning } = useOnboarding();
+  const { markReturning, markLessonSeen } = useOnboarding();
   const signedIn = state.status === 'unlocked' || state.status === 'remembered';
   // Which button was pressed, so the effect below can tell a new account from
   // one that already existed.
   const returning = useRef(false);
 
+  // Once. The handoff used to re-run whenever the preferences changed, because
+  // the callbacks it depends on are rebuilt on every write — so a user who had
+  // long since left was dragged back to the lesson from wherever they were.
+  const handedOff = useRef(false);
+
   useEffect(() => {
-    if (!signedIn) return;
-    // Someone signing in with a passkey they already had is not a beginner:
-    // the promo and the first lesson are behind them, even on a new device.
-    const done = returning.current ? markReturning() : Promise.resolve();
-    void done.then(() => router.replace('/'));
-  }, [signedIn, markReturning]);
+    if (!signedIn || handedOff.current) return;
+    handedOff.current = true;
+    // Someone signing in with a passkey they already had is not a beginner and
+    // goes straight to the app. A brand-new account is offered the first
+    // strategy — offered, not required: the lesson is a screen like any other
+    // and every way out of it leads into the app.
+    if (returning.current) void markReturning().then(() => router.replace('/'));
+    else void markLessonSeen().then(() => router.replace('/lesson'));
+  }, [signedIn, markReturning, markLessonSeen]);
 
   return (
     <Screen>
