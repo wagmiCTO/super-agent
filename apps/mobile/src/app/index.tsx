@@ -64,7 +64,18 @@ export default function Entry() {
     return () => clearTimeout(timer);
   }, []);
 
-  const heard = gateTrading.state !== null;
+  // Only an answer asked in this wallet's name says anything about it. A
+  // request without the wallet header is answered for the platform's own
+  // account, which is always open — reading that as the user's is how the
+  // activation step went missing.
+  const wallet = account.state.status === 'unlocked' ? account.state.wallet.address.toLowerCase() : null;
+  const heard = gateTrading.state !== null && gateTrading.stateFor?.toLowerCase() === wallet;
+  // A wallet with no strategy key cannot trade: the platform answers `no_key`
+  // rather than an account status. It is deliberately NOT a gate yet — the
+  // activation screen can enrol the key but cannot finish opening the exchange
+  // account (Perpl keeps answering "no exchange account yet"), so routing
+  // through it would park a new user on a screen with no way out. Until that
+  // is settled the lobby is reachable and activation is offered there.
   // Not knowing is not the same as knowing the account is unopened: without an
   // answer the gate must not send anyone to the activation screen.
   const exchangeReady =
@@ -103,6 +114,7 @@ function Splash() {
 
 function LobbyScreen() {
   const account = useAccount();
+  const { taught } = useOnboarding();
   const theme = useTheme();
   // The account section needs the state; the lobby trades nothing itself.
   const t = useTrading('MON', 'direction');
@@ -136,7 +148,7 @@ function LobbyScreen() {
             </ThemedText>
           ) : (
             boards.map((b) => (
-              <StrategyCard key={b.id} board={b} href={ROUTES[b.id] ?? '/'} pool={lb?.prize?.pools.find((p) => p.strategy === b.id)?.pool ?? null} />
+              <StrategyCard key={b.id} board={b} href={taught(b.id) ? (ROUTES[b.id] ?? '/') : { pathname: '/lesson', params: { strategy: b.id } }} pool={lb?.prize?.pools.find((p) => p.strategy === b.id)?.pool ?? null} />
             ))
           )}
 

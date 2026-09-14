@@ -21,7 +21,7 @@ import { useTheme } from '@/theme';
 export default function PasskeyScreen() {
   const theme = useTheme();
   const { state, busy, error, create, signIn } = useAccount();
-  const { markReturning, markLessonSeen } = useOnboarding();
+  const { markReturning } = useOnboarding();
   const signedIn = state.status === 'unlocked' || state.status === 'remembered';
   // Which button was pressed, so the effect below can tell a new account from
   // one that already existed.
@@ -39,9 +39,12 @@ export default function PasskeyScreen() {
     // goes straight to the app. A brand-new account is offered the first
     // strategy — offered, not required: the lesson is a screen like any other
     // and every way out of it leads into the app.
+    // Both land on the entry point, which decides what is still missing —
+    // activating the exchange account, most likely. The lesson is not offered
+    // here: in the design it opens from the lobby, when a strategy is chosen.
     if (returning.current) void markReturning().then(() => router.replace('/'));
-    else void markLessonSeen().then(() => router.replace('/lesson'));
-  }, [signedIn, markReturning, markLessonSeen]);
+    else router.replace('/');
+  }, [signedIn, markReturning]);
 
   return (
     <Screen>

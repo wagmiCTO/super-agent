@@ -20,9 +20,11 @@ export type OnboardingPrefs = {
   introSeen: boolean;
   /** The first strategy is taught once; skipping counts as learning it. */
   lessonSeen: boolean;
+  /** Which strategies have had their lesson offered, by id. */
+  taught: string[];
 };
 
-export const EMPTY_PREFS: OnboardingPrefs = { network: 'testnet', introSeen: false, lessonSeen: false };
+export const EMPTY_PREFS: OnboardingPrefs = { network: 'testnet', introSeen: false, lessonSeen: false, taught: [] };
 
 const KEY = 'tradeagent.onboarding';
 

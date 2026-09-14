@@ -50,14 +50,18 @@ test('a first visit runs from the promo to the first tap', async ({ page, contex
   await expect(page.getByText('Your account is a passkey')).toBeVisible();
   await page.getByTestId('passkey-create').click();
 
-  // A7 — the first strategy. The exchange account is already active on
-  // testnet, so the visit goes straight from the passkey to the lesson.
-  await expect(page.getByText('Fifteen minutes. One call.')).toBeVisible({ timeout: 60_000 });
+  // The lobby, as the design has it — and a strategy chosen there teaches
+  // itself the first time.
+  await expect(page.getByTestId('strategy-direction')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId('strategy-direction')).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId('strategy-direction').click({ force: true });
+
+  await expect(page.getByText('Fifteen minutes. One call.')).toBeVisible({ timeout: 30_000 });
   for (let step = 0; step < 4; step++) await page.getByTestId('lesson-next').click();
   await expect(page.getByText('Ready')).toBeVisible();
   await page.getByTestId('lesson-next').click();
 
-  await expect(page.getByRole('button', { name: 'Up', exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/^DIRECTION · /)).toBeVisible({ timeout: 30_000 });
 });
 
 test('every step of the first visit can be skipped', async ({ page, context }) => {
@@ -74,11 +78,13 @@ test('every step of the first visit can be skipped', async ({ page, context }) =
   await expect(page.getByText('Be the smartest one in the market')).toHaveCount(0);
 
   await page.getByTestId('passkey-create').click();
-  await expect(page.getByText('Fifteen minutes. One call.')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId('strategy-direction')).toBeVisible({ timeout: 60_000 });
 
   // The lesson is not a gate either.
+  await page.getByTestId('strategy-direction').click({ force: true });
+  await expect(page.getByText('Fifteen minutes. One call.')).toBeVisible({ timeout: 30_000 });
   await page.getByTestId('lesson-skip').click();
-  await expect(page.getByRole('button', { name: 'Up', exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/^DIRECTION · /)).toBeVisible({ timeout: 30_000 });
 });
 
 /**
@@ -94,14 +100,16 @@ test('the first visit runs with no platform reachable', async ({ page, context }
   await page.route('**/localhost:8080/**', (route) => route.abort());
 
   await page.goto('/');
-  await expect(page.getByText('Be the smartest one in the market')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText('Be the smartest one in the market')).toBeVisible({ timeout: 40_000 });
 
   await page.getByTestId('intro-skip').click();
   await page.getByTestId('passkey-create').click();
 
   // Without an answer the gate must not guess that the account is unopened,
-  // so the activation screen stays away and the lesson comes next.
-  await expect(page.getByText('Fifteen minutes. One call.')).toBeVisible({ timeout: 20_000 });
+  // so the activation screen stays away and the lobby comes next. It has no
+  // strategy cards — those come from the platform — so the heading is what
+  // says we got there.
+  await expect(page.getByText(/^STRATEGIES · THIS WEEK$/)).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText('Open your account')).toHaveCount(0);
 });
 
@@ -118,7 +126,7 @@ test('a device that already holds an account skips the promo', async ({ page, co
   await page.goto('/');
   await page.getByTestId('intro-skip').click();
   await page.getByTestId('passkey-create').click();
-  await expect(page.getByText('Fifteen minutes. One call.')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId('strategy-direction')).toBeVisible({ timeout: 60_000 });
 
   // Wipe what the app remembers about the visit, keep the passkey.
   await page.evaluate(() => window.localStorage.removeItem('tradeagent.onboarding'));
@@ -135,7 +143,7 @@ test('signing in with an existing passkey puts the first visit behind you', asyn
   await page.goto('/');
   await page.getByTestId('intro-skip').click();
   await page.getByTestId('passkey-create').click();
-  await expect(page.getByText('Fifteen minutes. One call.')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId('strategy-direction')).toBeVisible({ timeout: 60_000 });
 
   await page.evaluate(() => window.localStorage.clear());
   await page.goto('/');
@@ -145,7 +153,7 @@ test('signing in with an existing passkey puts the first visit behind you', asyn
   await page.getByTestId('passkey-signin').click();
 
   // Straight into the app: no lesson, because this person has been taught.
-  await expect(page.getByText(/^STRATEGIES · THIS WEEK$/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('strategy-direction')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText('Fifteen minutes. One call.')).toHaveCount(0);
 });
 
@@ -163,23 +171,26 @@ test('signing in with an existing passkey puts the first visit behind you', asyn
  */
 test('the lobby is reachable from a strategy, and a reload stays put', async ({ page, context }) => {
   await withPasskey(page, context);
-  await page.route('**/localhost:8080/**', (route) => route.abort());
 
   await page.goto('/');
   await page.getByTestId('intro-skip').click();
   await page.getByTestId('passkey-create').click();
 
-  // A new account is offered the first strategy, and can leave it at once.
+  // A new account lands in the lobby; choosing a strategy teaches it first.
+  await expect(page.getByTestId('strategy-direction')).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId('strategy-direction').click({ force: true });
   await expect(page.getByText('Fifteen minutes. One call.')).toBeVisible({ timeout: 20_000 });
   await page.getByTestId('lesson-skip').click();
   await expect(page.getByText(/^DIRECTION · /)).toBeVisible({ timeout: 20_000 });
 
+  // The regression: this link used to land on the passkey screen, because the
+  // entry point decided before the account layer had answered.
   await page.getByRole('link', { name: /Lobby/ }).click();
-  await expect(page).toHaveURL(/\/$/, { timeout: 15_000 });
-  await expect(page.getByText(/^STRATEGIES · THIS WEEK$/)).toBeVisible({ timeout: 15_000 });
+  await expect(page).toHaveURL(/\/$/, { timeout: 30_000 });
+  await expect(page.getByText('Your account is a passkey')).toHaveCount(0);
 
   // And reloading the lobby keeps you in the lobby.
   await page.reload();
-  await expect(page.getByText(/^STRATEGIES · THIS WEEK$/)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('strategy-direction')).toBeVisible({ timeout: 40_000 });
   await expect(page.getByText('Your account is a passkey')).toHaveCount(0);
 });

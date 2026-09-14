@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { api, ApiError, describeError, type Market, type Position, type State, type Trade } from '@/api/client';
+import { api, ApiError, currentAccountAddress, describeError, type Market, type Position, type State, type Trade } from '@/api/client';
 import { DEFAULT_LEVERAGE, STATE_POLL_MS } from '@/config';
 import { trim } from '@/components/format';
 
@@ -31,11 +31,17 @@ export function useTrading(symbol: string, strategy: string) {
   // announced once and not on every poll.
   const explainedClose = useRef<string | null>(null);
 
+  // Which wallet the last answer was about, or null when the request carried
+  // no wallet and the platform answered for its own account.
+  const [stateFor, setStateFor] = useState<string | null>(null);
+
   const refresh = useCallback(async () => {
     try {
+      const asked = currentAccountAddress();
       const s = await api.state(strategy);
       if (!mounted.current) return;
       setState(s);
+      setStateFor(asked);
       setOffline(false);
       setLocked(false);
       // The chart marks and the history list this strategy's round trips;
@@ -123,5 +129,5 @@ export function useTrading(symbol: string, strategy: string) {
     }
   }, [refresh, symbol, strategy]);
 
-  return { state, market, position, trades, busy, notice, offline, locked, refresh, open, close };
+  return { state, stateFor, market, position, trades, busy, notice, offline, locked, refresh, open, close };
 }

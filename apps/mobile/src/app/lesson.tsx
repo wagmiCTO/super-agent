@@ -7,10 +7,11 @@
  */
 
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
 import { STRATEGY_NAMES } from '@/config';
+import { useOnboarding } from '@/onboarding/useOnboarding';
 import { Button } from '@/ui/button';
 import { CrossArt, DirectionIdea, DirectionShown, ReadyArt, RsiArt, RunArt } from '@/ui/lesson-art';
 import { Dots, Screen } from '@/ui/surface';
@@ -55,6 +56,14 @@ export default function LessonScreen() {
   const [at, setAt] = useState(0);
   const step = steps[at];
   const last = at === steps.length - 1;
+  const { markTaught } = useOnboarding();
+
+  // Offered, not enforced: recorded on arrival, so leaving by any door — the
+  // Skip, the last step, or the back gesture — never brings it back.
+  useEffect(() => {
+    void markTaught(id);
+  }, [markTaught, id]);
+
   const leave = () => router.replace(ROUTES[id]);
 
   return (

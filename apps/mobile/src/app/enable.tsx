@@ -15,6 +15,7 @@ import { View } from 'react-native';
 import { useAccount } from '@/account/useAccount';
 import { formatCollateral, type ActivationStep } from '@/exchange/activate';
 import { useActivation } from '@/exchange/useActivation';
+import { useStrategyKey } from '@/exchange/useStrategyKey';
 import { useTrading } from '@/trading/useTrading';
 import { Button } from '@/ui/button';
 import { Card, Progress, Screen } from '@/ui/surface';
@@ -40,13 +41,30 @@ export default function EnableScreen() {
       : null;
   const { network, shortfall, funded, progress, busy, error, activate } = useActivation(wallet, pending);
 
-  const done = Boolean(t.state && !pending);
+  // The first strategy's key. On testnet this is the whole of "opening your
+  // account": Perpl creates and funds the profile on first contact, so there
+  // is nothing on-chain to approve, but without a key the platform answers
+  // `no_key` and the wallet cannot trade — which is the step the user was
+  // having to do by hand on the strategy screen.
+  const keys = account.state.status === 'unlocked' ? account.state.keys : null;
+  const key = useStrategyKey(keys, 'direction');
+
+  // Activated: the design goes straight to the lobby from here.
+  const done = key.state.status === 'enabled' && !pending;
   useEffect(() => {
     if (done) router.replace('/');
   }, [done]);
 
   const at = progress ? ORDER.indexOf(progress.step) : -1;
-  const running = busy || at >= 0;
+  const running = busy || key.busy || at >= 0;
+  const failed = error ?? key.error;
+
+  const start = () => {
+    // On mainnet the on-chain steps come first; the key is what makes the
+    // account usable either way.
+    if (pending) void activate();
+    else void key.enable();
+  };
 
   return (
     <Screen>
@@ -75,9 +93,9 @@ export default function EnableScreen() {
           </Card>
         ) : null}
 
-        {error ? (
+        {failed ? (
           <Card style={{ backgroundColor: theme.color.dangerSoft, borderColor: theme.color.danger }}>
-            <Text variant="body" style={{ fontSize: theme.type.tSm, color: theme.color.danger }}>{error}</Text>
+            <Text variant="body" style={{ fontSize: theme.type.tSm, color: theme.color.danger }}>{failed}</Text>
           </Card>
         ) : null}
 
@@ -96,8 +114,8 @@ export default function EnableScreen() {
           testID="enable-start"
           title={running ? 'Working…' : 'Open account'}
           busy={running}
-          disabled={running || (network ? !funded : false)}
-          onPress={() => void activate()}
+          disabled={running || (pending && network ? !funded : false)}
+          onPress={start}
         />
       </View>
     </Screen>

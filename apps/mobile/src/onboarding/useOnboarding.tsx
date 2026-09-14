@@ -22,6 +22,9 @@ export type OnboardingState = {
   prefs: OnboardingPrefs;
   markIntroSeen: () => Promise<void>;
   markLessonSeen: () => Promise<void>;
+  /** True once a strategy's lesson has been offered. */
+  taught: (strategy: string) => boolean;
+  markTaught: (strategy: string) => Promise<void>;
   /** Signing in with an existing passkey: the first visit is behind them. */
   markReturning: () => Promise<void>;
 };
@@ -59,7 +62,13 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
       prefs,
       markIntroSeen: () => patch({ introSeen: true }),
       markLessonSeen: () => patch({ lessonSeen: true }),
-      markReturning: () => patch({ introSeen: true, lessonSeen: true }),
+      taught: (strategy: string) => prefs.taught.includes(strategy),
+      markTaught: async (strategy: string) => {
+        const stored = await loadPrefs();
+        if (stored.taught.includes(strategy)) return;
+        await patch({ taught: [...stored.taught, strategy] });
+      },
+      markReturning: () => patch({ introSeen: true, lessonSeen: true, taught: ['direction', 'ma-cross', 'rsi'] }),
     }),
     [ready, prefs, patch],
   );
