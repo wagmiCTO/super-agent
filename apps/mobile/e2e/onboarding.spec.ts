@@ -80,3 +80,27 @@ test('every step of the first visit can be skipped', async ({ page, context }) =
   await page.getByTestId('lesson-skip').click();
   await expect(page.getByRole('button', { name: 'Up', exact: true })).toBeVisible({ timeout: 30_000 });
 });
+
+/**
+ * The splash is a decision, not a wait.
+ *
+ * A deployment with no platform behind it is a real situation — inflight.work
+ * was exactly that — and the gate used to hold the splash for ever waiting for
+ * an exchange state that was never coming. The first visit has to run whether
+ * or not anything answers.
+ */
+test('the first visit runs with no platform reachable', async ({ page, context }) => {
+  await withPasskey(page, context);
+  await page.route('**/localhost:8080/**', (route) => route.abort());
+
+  await page.goto('/');
+  await expect(page.getByText('Be the smartest one in the market')).toBeVisible({ timeout: 15_000 });
+
+  await page.getByTestId('intro-skip').click();
+  await page.getByTestId('passkey-create').click();
+
+  // Without an answer the gate must not guess that the account is unopened,
+  // so the activation screen stays away and the lesson comes next.
+  await expect(page.getByText('Fifteen minutes. One call.')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText('Open your account')).toHaveCount(0);
+});

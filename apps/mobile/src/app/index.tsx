@@ -52,12 +52,26 @@ export default function Entry() {
   const { ready, prefs } = useOnboarding();
   const hasAccount = account.state.status === 'unlocked' || account.state.status === 'remembered';
   // The exchange side is a separate fact from the passkey: an account can
-  // exist on the device while its three activation transactions have not run.
+  // exist on the device while its activation transactions have not run.
   const gateTrading = useTrading('MON', 'direction');
-  const exchangeReady = Boolean(
-    gateTrading.state && gateTrading.state.account.status !== 'no_exchange_account' && gateTrading.state.account.status !== 'forwarding_disabled',
-  );
-  const settled = ready && (!hasAccount || gateTrading.state !== null);
+
+  // A splash that waits for an answer can wait for ever — the platform may be
+  // unreachable, which is exactly the case on a deployment with no API behind
+  // it. After this the gate proceeds on what it knows.
+  const [waited, setWaited] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setWaited(true), 2500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const heard = gateTrading.state !== null;
+  // Not knowing is not the same as knowing the account is unopened: without an
+  // answer the gate must not send anyone to the activation screen.
+  const exchangeReady =
+    !heard ||
+    (gateTrading.state!.account.status !== 'no_exchange_account' &&
+      gateTrading.state!.account.status !== 'forwarding_disabled');
+  const settled = ready && (!hasAccount || heard || gateTrading.offline || waited);
   const step = settled ? nextStep(prefs, hasAccount, exchangeReady) : null;
 
   useEffect(() => {
