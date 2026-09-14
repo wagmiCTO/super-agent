@@ -104,3 +104,47 @@ test('the first visit runs with no platform reachable', async ({ page, context }
   await expect(page.getByText('Fifteen minutes. One call.')).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText('Open your account')).toHaveCount(0);
 });
+
+/**
+ * A returning user is not a beginner, and the app must not treat them as one.
+ *
+ * Two ways that happens: the device still holds the account but the stored
+ * preferences are gone, and a new device where the passkey syncs across but
+ * nothing else does. The first is silent; the second is the "I already have
+ * one" button.
+ */
+test('a device that already holds an account skips the promo', async ({ page, context }) => {
+  await withPasskey(page, context);
+  await page.goto('/');
+  await page.getByTestId('intro-skip').click();
+  await page.getByTestId('passkey-create').click();
+  await expect(page.getByText('Fifteen minutes. One call.')).toBeVisible({ timeout: 60_000 });
+
+  // Wipe what the app remembers about the visit, keep the passkey.
+  await page.evaluate(() => window.localStorage.removeItem('tradeagent.onboarding'));
+  await page.goto('/');
+
+  await expect(page.getByText('Be the smartest one in the market')).toHaveCount(0);
+});
+
+test('signing in with an existing passkey puts the first visit behind you', async ({ page, context }) => {
+  await withPasskey(page, context);
+
+  // Make the passkey exist, then arrive as if on a new device: same
+  // authenticator, nothing else remembered.
+  await page.goto('/');
+  await page.getByTestId('intro-skip').click();
+  await page.getByTestId('passkey-create').click();
+  await expect(page.getByText('Fifteen minutes. One call.')).toBeVisible({ timeout: 60_000 });
+
+  await page.evaluate(() => window.localStorage.clear());
+  await page.goto('/');
+  await expect(page.getByText('Be the smartest one in the market')).toBeVisible();
+  await page.getByTestId('intro-skip').click();
+
+  await page.getByTestId('passkey-signin').click();
+
+  // Straight into the app: no lesson, because this person has been taught.
+  await expect(page.getByText(/^STRATEGIES · THIS WEEK$/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('Fifteen minutes. One call.')).toHaveCount(0);
+});

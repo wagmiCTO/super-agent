@@ -16,6 +16,8 @@ export type OnboardingState = {
   prefs: OnboardingPrefs;
   markIntroSeen: () => Promise<void>;
   markLessonSeen: () => Promise<void>;
+  /** Signing in with an existing passkey: the first visit is behind them. */
+  markReturning: () => Promise<void>;
 };
 
 export function useOnboarding(): OnboardingState {
@@ -50,7 +52,15 @@ export function useOnboarding(): OnboardingState {
     });
   }, []);
 
-  return { ready, prefs, markIntroSeen, markLessonSeen };
+  const markReturning = useCallback(async () => {
+    setPrefs((current) => {
+      const next = { ...current, introSeen: true, lessonSeen: true };
+      void savePrefs(next);
+      return next;
+    });
+  }, []);
+
+  return { ready, prefs, markIntroSeen, markLessonSeen, markReturning };
 }
 
 /**
@@ -66,7 +76,10 @@ export function nextStep(
   hasAccount: boolean,
   exchangeReady: boolean,
 ): '/intro' | '/passkey' | '/enable' | '/lesson' | null {
-  if (!prefs.introSeen) return '/intro';
+  // The promo is for people the app does not recognise. A device that already
+  // holds an account has met them, so clearing the stored preferences must not
+  // turn a returning user back into a stranger.
+  if (!prefs.introSeen && !hasAccount) return '/intro';
   if (!hasAccount) return '/passkey';
   if (!exchangeReady) return '/enable';
   if (!prefs.lessonSeen) return '/lesson';

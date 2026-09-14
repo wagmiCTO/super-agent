@@ -7,10 +7,11 @@
  */
 
 import { router } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { View } from 'react-native';
 
 import { useAccount } from '@/account/useAccount';
+import { useOnboarding } from '@/onboarding/useOnboarding';
 import { Button } from '@/ui/button';
 import { Mark } from '@/ui/mark';
 import { Card, Screen } from '@/ui/surface';
@@ -20,13 +21,19 @@ import { useTheme } from '@/theme';
 export default function PasskeyScreen() {
   const theme = useTheme();
   const { state, busy, error, create, signIn } = useAccount();
+  const { markReturning } = useOnboarding();
   const signedIn = state.status === 'unlocked' || state.status === 'remembered';
+  // Which button was pressed, so the effect below can tell a new account from
+  // one that already existed.
+  const returning = useRef(false);
 
   useEffect(() => {
-    // The passkey prompt is the last step of the first visit; once it answers,
-    // the app proper takes over.
-    if (signedIn) router.replace('/');
-  }, [signedIn]);
+    if (!signedIn) return;
+    // Someone signing in with a passkey they already had is not a beginner:
+    // the promo and the first lesson are behind them, even on a new device.
+    const done = returning.current ? markReturning() : Promise.resolve();
+    void done.then(() => router.replace('/'));
+  }, [signedIn, markReturning]);
 
   return (
     <Screen>
@@ -50,12 +57,12 @@ export default function PasskeyScreen() {
         <View style={{ flex: 1 }} />
 
         <View style={{ gap: theme.space.s3 }}>
-          <Button testID="passkey-create" title="Create account" busy={busy} onPress={() => void create()} />
+          <Button testID="passkey-create" title="Create account" busy={busy} onPress={() => { returning.current = false; void create(); }} />
           <Text
             testID="passkey-signin"
             variant="small"
             style={{ textAlign: 'center', paddingVertical: theme.space.s2 }}
-            onPress={busy ? undefined : () => void signIn()}
+            onPress={busy ? undefined : () => { returning.current = true; void signIn(); }}
           >
             I already have one · Sign in
           </Text>
