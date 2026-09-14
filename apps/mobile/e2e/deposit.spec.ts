@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+import { asReturningUser } from './onboarded';
+
 /**
  * Any-chain deposits over Aurora Intents: the screen lists what can be
  * sent from which chain, and a quote for a signed-in wallet reaches Aurora
@@ -13,7 +15,7 @@ test('the deposit screen lists origins and relays Aurora’s answer', async ({ p
     options: { protocol: 'ctap2', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, hasPrf: true, automaticPresenceSimulation: true },
   });
 
-  await page.goto('/');
+  await asReturningUser(page, context);
   await page.getByTestId('deposit-link').click();
   await expect(page.getByTestId('deposit')).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText(/Arrives as USDC on Monad/)).toBeVisible();

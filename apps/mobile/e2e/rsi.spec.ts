@@ -1,11 +1,13 @@
 import { expect, test } from '@playwright/test';
 
+import { asReturningUser } from './onboarded';
+
 /**
  * Strategy #3 renders from the platform's live RSI signal: the thermometer,
  * the chart, and either a zone window with a one-sided entry or the wait.
  */
-test('RSI screen shows the index and offers only the zone side', async ({ page }) => {
-  await page.goto('/');
+test('RSI screen shows the index and offers only the zone side', async ({ page, context }) => {
+  await asReturningUser(page, context);
   await page.getByRole('link', { name: 'Play RSI Bounce', exact: true }).click();
   await expect(page.getByText(/^RSI BOUNCE · MON$/)).toBeVisible();
   await expect(page.getByTestId('signal-rsi')).toHaveText(/^RSI\(14\) · 1m · zones 30 \/ 70$/, { timeout: 20_000 });

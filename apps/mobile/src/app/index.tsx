@@ -3,7 +3,7 @@
  * made for everyone, who is up, how many are in right now. The number people
  * argue about is the strategy's total, not any one player's.
  */
-import { Link, type Href } from 'expo-router';
+import { Link, router, type Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -21,6 +21,10 @@ import { LEADERBOARD_POLL_MS, STRATEGY_NAMES } from '@/config';
 import { Spacing } from '@/constants/legacy-theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useTrading } from '@/trading/useTrading';
+import { nextStep, useOnboarding } from '@/onboarding/useOnboarding';
+import { Mark } from '@/ui/mark';
+import { Text } from '@/ui/text';
+import { useTheme as useTheme2 } from '@/theme';
 
 const ROUTES: Record<string, Href> = { direction: '/direction', 'ma-cross': '/ma-cross', rsi: '/rsi' };
 
@@ -34,7 +38,45 @@ function factionLine(boards: Board[]): string | null {
   return `${lead.name} leads this week with ${Number(lead.pnl) >= 0 ? '+' : ''}${trim(lead.pnl)}${rest.length ? ` · ${rest.join(' · ')}` : ''}`;
 }
 
-export default function LobbyScreen() {
+/**
+ * The entry point decides whether this is a first visit.
+ *
+ * The onboarding is linear, so the question is asked here rather than in a
+ * router of its own: a cold start or a reload lands wherever the visit had got
+ * to instead of replaying the promo. Once there is a passkey — remembered or
+ * unlocked — the first visit is over for good, even if the stored preferences
+ * were cleared.
+ */
+export default function Entry() {
+  const account = useAccount();
+  const { ready, prefs } = useOnboarding();
+  const hasAccount = account.state.status === 'unlocked' || account.state.status === 'remembered';
+  const step = ready ? nextStep(prefs, hasAccount) : null;
+
+  useEffect(() => {
+    if (step) router.replace(step);
+  }, [step]);
+
+  // A1: the app's own ground while the answer is being worked out, so the
+  // first frame is the app rather than a spinner on a foreign background.
+  if (!ready || account.state.status === 'loading' || step) return <Splash />;
+  return <LobbyScreen />;
+}
+
+function Splash() {
+  const theme = useTheme2();
+  return (
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: theme.space.s5, backgroundColor: theme.color.ground }}>
+      <Mark size={84} />
+      <Text variant="h1" style={{ fontSize: theme.type.tXl }}>TradeAgent</Text>
+      <View style={{ width: 120, height: 3, borderRadius: 999, backgroundColor: theme.color.hair, overflow: 'hidden' }}>
+        <View style={{ height: 3, width: '40%', backgroundColor: theme.color.accent }} />
+      </View>
+    </View>
+  );
+}
+
+function LobbyScreen() {
   const account = useAccount();
   const theme = useTheme();
   // The account section needs the state; the lobby trades nothing itself.

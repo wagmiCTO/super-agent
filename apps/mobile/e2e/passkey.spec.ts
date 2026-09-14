@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+import { skipOnboarding } from './onboarded';
+
 /**
  * The account layer, end to end, with a virtual authenticator that supports
  * the PRF extension — the same ceremony a real passkey provider runs, minus
@@ -24,6 +26,8 @@ test.describe('Passkey account', () => {
         automaticPresenceSimulation: true,
       },
     });
+
+    await skipOnboarding(page);
 
     await page.goto('/');
     await expect(page.getByText('No account')).toBeVisible();

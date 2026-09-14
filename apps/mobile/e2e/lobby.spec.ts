@@ -1,11 +1,13 @@
 import { expect, test } from '@playwright/test';
 
+import { asReturningUser } from './onboarded';
+
 /**
  * The lobby lists every strategy with this week's board, straight from the
  * platform's ledger, and opens the strategy's own screen on a tap.
  */
-test('the lobby shows each strategy with its week and opens it', async ({ page }) => {
-  await page.goto('/');
+test('the lobby shows each strategy with its week and opens it', async ({ page, context }) => {
+  await asReturningUser(page, context);
   await expect(page.getByText(/^STRATEGIES · THIS WEEK$/)).toBeVisible();
   await expect(page.getByText(/^Balance /)).toBeVisible();
 
@@ -27,8 +29,8 @@ test('the lobby shows each strategy with its week and opens it', async ({ page }
 
 // The chain's record of the prize pools, from the indexer, sits under the
 // strategies: before the first settlement it says so.
-test('the lobby shows the on-chain prize pools from the indexer', async ({ page }) => {
-  await page.goto('/');
+test('the lobby shows the on-chain prize pools from the indexer', async ({ page, context }) => {
+  await asReturningUser(page, context);
   const past = page.getByTestId('past-weeks');
   await expect(past).toBeVisible({ timeout: 20_000 });
   await expect(past).toContainText(/PRIZE POOLS/);

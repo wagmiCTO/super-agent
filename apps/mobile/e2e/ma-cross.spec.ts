@@ -1,13 +1,15 @@
 import { expect, test } from '@playwright/test';
 
+import { asReturningUser } from './onboarded';
+
 /**
  * Strategy #2 renders from the platform's live signal: the chart, which
  * average is on top, and either an open window with a one-sided entry or the
  * wait for the next cross. A cross cannot be forced on testnet, so the entry
  * itself is exercised by the Direction tests through the same trading hook.
  */
-test('MA Cross screen shows the live signal and offers only the cross side', async ({ page }) => {
-  await page.goto('/');
+test('MA Cross screen shows the live signal and offers only the cross side', async ({ page, context }) => {
+  await asReturningUser(page, context);
   await page.getByRole('link', { name: 'Play MA Cross', exact: true }).click();
   await expect(page.getByText(/^MA CROSS · MON$/)).toBeVisible();
   // The stack keeps Direction mounted underneath; the balance line on top is this screen's.
