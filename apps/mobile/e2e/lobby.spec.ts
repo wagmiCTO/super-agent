@@ -8,23 +8,25 @@ import { asReturningUser } from './onboarded';
  */
 test('the lobby shows each strategy with its week and opens it', async ({ page, context }) => {
   await asReturningUser(page, context);
-  await expect(page.getByText(/^STRATEGIES · THIS WEEK$/)).toBeVisible();
-  await expect(page.getByText(/^Balance /)).toBeVisible();
+  await expect(page.getByText('Choose a strategy')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('balance')).toHaveText(/^[\d.]+ AUSD$|^offline$|^…$/);
 
   for (const id of ['direction', 'ma-cross', 'rsi']) {
     const card = page.getByTestId(`strategy-${id}`);
     await expect(card).toBeVisible();
-    await expect(card.getByTestId(`board-pnl-${id}`)).toHaveText(/^[+-]?\d+(\.\d+)?$/);
-    await expect(card.getByText(/\d+ (player|players) · \d+ (trade|trades) · /)).toBeVisible();
+    // The week, in the design's money: a real minus sign and two decimals.
+    await expect(card.getByTestId(`board-pnl-${id}`)).toHaveText(/^[+\u2212]?\d+\.\d\d this week · \d+ (trade|trades)$/);
+    // The card's second line: the pool and who is in it.
+    await expect(card.getByTestId(`prize-pool-${id}`)).toHaveText(/(Pool [\d.]+ AUSD|No pool yet) · \d+ (player|players)/);
   }
 
-  // The weekly prize lives in a contract; each card shows its pool.
-  await expect(page.getByTestId('prize-pool-direction')).toHaveText(/^Prize pool [\d.]+ AUSD$/);
   await expect(page.getByTestId('leaderboard-source')).toHaveText(/^Prizes paid by contract 0x[0-9a-f]{4}…[0-9a-f]{4} · week \d+/);
 
-  await page.getByRole('link', { name: 'Play Direction', exact: true }).click();
-  await expect(page.getByText(/^DIRECTION · MON$/)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Up', exact: true })).toBeVisible();
+  await page.getByTestId('strategy-direction').click({ force: true });
+  // The lobby stays mounted under the strategy in the navigator stack, so the
+  // name appears twice — the screen on top is the last one.
+  await expect(page).toHaveURL(/\/direction$/, { timeout: 20_000 });
+  await expect(page.getByTestId('key-up').last()).toBeVisible({ timeout: 20_000 });
 });
 
 // The chain's record of the prize pools, from the indexer, sits under the

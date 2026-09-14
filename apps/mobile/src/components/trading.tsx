@@ -12,6 +12,9 @@ import { Spacing } from '@/constants/legacy-theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { Notice } from '@/trading/useTrading';
 import { clock, multiply, trim } from './format';
+import { useCountdown } from '@/ui/countdown';
+
+export { useCountdown };
 
 /** Strategy name and balance line, at the top of every screen. */
 export function ScreenHeader({ title, state, offline, locked = false }: { title: string; state: State | null; offline: boolean; locked?: boolean }) {
@@ -314,16 +317,7 @@ function fmt(v: number): string {
 }
 
 /** A mm:ss (or h:mm:ss) countdown to an ISO time; null without one. */
-export function useCountdown(until: string | null): string | null {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!until) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [until]);
-  if (!until) return null;
-  return clock((new Date(until).getTime() - now) / 1000);
-}
+
 
 export const styles = StyleSheet.create({
   root: { flex: 1 },

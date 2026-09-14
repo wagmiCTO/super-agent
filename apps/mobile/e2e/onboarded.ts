@@ -10,7 +10,7 @@
  * does not use this.
  */
 
-import type { BrowserContext, Page } from '@playwright/test';
+import { expect, type BrowserContext, type Page } from '@playwright/test';
 
 const KEY = 'tradeagent.onboarding';
 
@@ -24,19 +24,29 @@ export async function skipOnboarding(page: Page, network: 'testnet' | 'mainnet' 
         // Blocked storage: the spec will land on the promo and say so loudly.
       }
     },
-    [KEY, JSON.stringify({ network, introSeen: true })] as const,
+    // Taught, too: a returning user has met the strategies, and the lobby
+    // sends anyone who has not to the lesson first — which is correct, and
+    // not what a spec about the app is asking about.
+    [KEY, JSON.stringify({ network, introSeen: true, lessonSeen: true, taught: ['direction', 'ma-cross', 'rsi'] })] as const,
   );
 }
 
 /**
  * A returning user: the promo behind them and a passkey on the device.
  *
+ * Every spec that calls this mints a fresh wallet and opens a real account on
+ * Perpl testnet, so a long run trips the venue's edge rate limit (HTTP 429,
+ * Cloudflare 1015 on `/v1/auth/payload`) and the later specs fail on
+ * activation rather than on anything they are testing. Run a file at a time,
+ * or leave a minute between runs.
+ *
  * The lobby is only reachable with an account — that is the point of the
  * onboarding — so a spec about the app has to arrive with one. The virtual
  * authenticator runs the same ceremony a real provider does, minus the
  * biometric prompt.
  *
- * Leaves the page on the lobby.
+ * Leaves the page on the lobby, activation included: see
+ * `openExchangeAccount` below for why that is part of arriving.
  */
 export async function asReturningUser(page: Page, context: BrowserContext): Promise<void> {
   const cdp = await context.newCDPSession(page);
@@ -57,6 +67,9 @@ export async function asReturningUser(page: Page, context: BrowserContext): Prom
   await page.goto('/');
   await page.getByTestId('passkey-create').click();
   await page.waitForURL((url) => !url.pathname.includes('passkey'));
+  // A fresh wallet is not yet a trading account, and the gate routes it
+  // through activation before the lobby — so arriving means going through it.
+  await openExchangeAccount(page);
 }
 
 /**
@@ -70,14 +83,16 @@ export async function asReturningUser(page: Page, context: BrowserContext): Prom
  */
 export async function openExchangeAccount(page: Page): Promise<void> {
   const start = page.getByTestId('enable-start');
-  try {
-    // The gate needs a moment to decide, so the button is waited for rather
-    // than asked about: asking arrives before the screen does, and a skipped
-    // press then looks exactly like an activation that never finishes.
-    await start.waitFor({ state: 'visible', timeout: 20_000 });
-  } catch {
-    return; // never sent here — the exchange had nothing to open.
-  }
+  const lobby = page.getByText('Choose a strategy');
+
+  // Wait for whichever the gate decides on. Waiting for the button alone and
+  // giving up quietly is worse than useless: a slow platform then looks
+  // exactly like an account that needed nothing, and the spec fails later,
+  // somewhere else, on a splash screen.
+  await expect(start.or(lobby)).toBeVisible({ timeout: 60_000 });
+  if (!(await start.isVisible())) return;
+
   await start.click();
   await page.waitForURL((url) => !url.pathname.includes('enable'), { timeout: 120_000 });
+  await expect(lobby).toBeVisible({ timeout: 30_000 });
 }

@@ -6,24 +6,25 @@
 import { Link, router, type Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { Wallet } from '@/account/derive';
 import { useAccount } from '@/account/useAccount';
 import { api, ApiError, describeError, type Board, type Leaderboard, type PrizeHistory } from '@/api/client';
-import { claimPrize, fetchMyPrizes, type MyPrizes } from '@/exchange/prize';
+import { claimPrize, fetchMyPrizes, type MyPrizes as PrizeList } from '@/exchange/prize';
 import { AccountSection } from '@/components/account';
 import { trim } from '@/components/format';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
 import { styles as trading } from '@/components/trading';
 import { LEADERBOARD_POLL_MS, STRATEGY_NAMES } from '@/config';
 import { Spacing } from '@/constants/legacy-theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useTrading } from '@/trading/useTrading';
 import { nextStep, useOnboarding } from '@/onboarding/useOnboarding';
-import { Mark } from '@/ui/mark';
-import { Text } from '@/ui/text';
+import { Mark, RiskDial } from '@/ui/mark';
+import { StrategyTile, type GlyphId } from '@/ui/glyph';
+import { Badge, Screen } from '@/ui/surface';
+import { riskPercent } from '@/strategy/risk';
+import { Text, money } from '@/ui/text';
 import { useTheme as useTheme2 } from '@/theme';
 
 const ROUTES: Record<string, Href> = { direction: '/direction', 'ma-cross': '/ma-cross', rsi: '/rsi' };
@@ -34,8 +35,8 @@ function factionLine(boards: Board[]): string | null {
   if (played.length === 0) return null;
   const sorted = [...played].sort((a, b) => Number(b.pnl) - Number(a.pnl));
   const lead = sorted[0];
-  const rest = sorted.slice(1).map((b) => `${b.name} ${Number(b.pnl) >= 0 ? '+' : ''}${trim(b.pnl)}`);
-  return `${lead.name} leads this week with ${Number(lead.pnl) >= 0 ? '+' : ''}${trim(lead.pnl)}${rest.length ? ` · ${rest.join(' · ')}` : ''}`;
+  const rest = sorted.slice(1).map((b) => `${b.name} ${money(Number(b.pnl))}`);
+  return `${lead.name} leads this week with ${money(Number(lead.pnl))}${rest.length ? ` · ${rest.join(' · ')}` : ''}`;
 }
 
 /**
@@ -113,85 +114,108 @@ function Splash() {
 function LobbyScreen() {
   const account = useAccount();
   const { taught } = useOnboarding();
-  const theme = useTheme();
-  // The account section needs the state; the lobby trades nothing itself.
+  const theme = useTheme2();
+  // The lobby trades nothing itself; it reads the state for the balance, the
+  // risk dial and whether a strategy has a position open right now.
   const t = useTrading('MON', 'direction');
   const lb = useLeaderboard();
   const boards = lb?.boards ?? null;
+  const open = (id: string) => t.state?.positions.find(() => id === 'direction') ?? null;
 
   return (
-    <ThemedView style={trading.root}>
-      <SafeAreaView style={trading.safe}>
-        <ScrollView contentContainerStyle={trading.content}>
-          <View style={trading.header}>
-            <ThemedText type="smallBold" themeColor="textSecondary">
-              STRATEGIES · THIS WEEK
-            </ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              {t.state ? `Balance ${trim(t.state.account.balance)}` : t.offline ? 'Server unreachable' : 'Loading…'}
-            </ThemedText>
-          </View>
+    <Screen>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: 52, paddingHorizontal: theme.space.s5, paddingBottom: theme.space.s6, gap: theme.space.s4 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s3 }}>
+          <Mark size={28} />
+          <Badge>TESTNET</Badge>
+          <View style={{ flex: 1 }} />
+          <Text variant="num" style={{ fontSize: theme.type.tSm }} testID="balance">
+            {t.state ? `${Number(t.state.account.balance).toFixed(2)} AUSD` : t.offline ? 'offline' : '…'}
+          </Text>
+          <Pressable onPress={() => router.push('/risk')} testID="risk-dial" accessibilityRole="button" accessibilityLabel="Risk and performance">
+            <RiskDial percent={riskPercent(t.state)} />
+          </Pressable>
+        </View>
 
-          <AccountSection account={account} state={t.state} onChange={t.refresh} />
-
+        <View style={{ gap: 2 }}>
+          <Text variant="h1" style={{ fontSize: theme.type.tXl }}>Choose a strategy</Text>
           {boards && factionLine(boards) ? (
-            <ThemedText type="smallBold" style={trading.footer} testID="faction-line">
-              {factionLine(boards)}
-            </ThemedText>
-          ) : null}
-
-          {boards === null ? (
-            <ThemedText type="small" themeColor="textSecondary" style={trading.footer}>
-              Loading strategies…
-            </ThemedText>
+            <Text variant="small" testID="faction-line">{factionLine(boards)}</Text>
           ) : (
-            boards.map((b) => (
-              <StrategyCard key={b.id} board={b} href={taught(b.id) ? (ROUTES[b.id] ?? '/') : { pathname: '/lesson', params: { strategy: b.id } }} pool={lb?.prize?.pools.find((p) => p.strategy === b.id)?.pool ?? null} />
-            ))
+            <Text variant="small">One tap opens a position. The platform closes it for you.</Text>
           )}
+        </View>
 
-          {account.state.status === 'unlocked' && lb?.prize ? (
-            <MyPrizes wallet={account.state.wallet} address={account.state.stored.address} contract={lb.prize.contract} />
-          ) : null}
+        {boards === null ? (
+          <Text variant="small">Loading strategies…</Text>
+        ) : (
+          boards.map((b, i) => (
+            <StrategyCard
+              key={b.id}
+              board={b}
+              lead={i === 0 && !taught(b.id)}
+              openPnl={open(b.id)?.unrealized_pnl ?? null}
+              href={taught(b.id) ? (ROUTES[b.id] ?? '/') : { pathname: '/lesson', params: { strategy: b.id } }}
+              pool={lb?.prize?.pools.find((p) => p.strategy === b.id)?.pool ?? null}
+            />
+          ))
+        )}
 
-          <Link href="/risk" asChild>
-            <Pressable accessibilityRole="button" accessibilityLabel="Risk and performance" testID="risk-link">
-              {({ pressed }) => (
-                <View style={[styles.card, { backgroundColor: theme.backgroundElement, opacity: pressed ? 0.7 : 1 }]}>
-                  <ThemedText type="smallBold">Risk & performance →</ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    What is at risk now, today&apos;s loss budget, how each strategy has done, and one button that closes everything.
-                  </ThemedText>
-                </View>
-              )}
-            </Pressable>
-          </Link>
+        {/* Named in the design, and honest about not being here yet. */}
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: theme.space.s3,
+            paddingHorizontal: theme.space.s4,
+            paddingVertical: theme.space.s3,
+            borderRadius: theme.radius.rLg,
+            borderWidth: theme.size.bw,
+            borderColor: theme.color.line,
+            backgroundColor: theme.color.cardBg,
+          }}
+        >
+          <View
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: theme.radius.rSm,
+              borderWidth: theme.size.bw,
+              borderStyle: 'dashed',
+              borderColor: theme.color.line,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Text variant="body" style={{ color: theme.color.muted }}>+</Text>
+          </View>
+          <Text variant="body" numberOfLines={1} style={{ flex: 1, fontSize: theme.type.tSm }}>Build your own strategy</Text>
+          <Text variant="small" numberOfLines={1} style={{ fontSize: theme.type.t2xs }}>coming soon</Text>
+        </View>
 
-          <PastWeeks />
+        {account.state.status === 'unlocked' && lb?.prize ? (
+          <MyPrizes wallet={account.state.wallet} address={account.state.stored.address} contract={lb.prize.contract} />
+        ) : null}
 
-          <Link href="/deposit" asChild>
-            <Pressable accessibilityRole="button" accessibilityLabel="Deposit from any chain" testID="deposit-link">
-              {({ pressed }) => (
-                <View style={[styles.card, { backgroundColor: theme.backgroundElement, opacity: pressed ? 0.7 : 1 }]}>
-                  <ThemedText type="smallBold">Deposit from any chain →</ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    Send USDC, ETH or a stable from Base, Arbitrum, Ethereum and more; it lands in this wallet on Monad.
-                  </ThemedText>
-                </View>
-              )}
-            </Pressable>
-          </Link>
+        {/* Below the fold: what the design gives its own screens, until they
+            have them. The account lives here rather than nowhere. */}
+        <AccountSection account={account} state={t.state} onChange={t.refresh} />
+        <PastWeeks />
 
-          {lb ? (
-            <ThemedText type="small" themeColor="textSecondary" style={trading.footer} testID="leaderboard-source">
-              {lb.prize
-                ? `Prizes paid by contract ${short(lb.prize.contract)} · week ${lb.prize.week}${lb.prize.winners.length ? ` · last week: ${lb.prize.winners.length} winners` : ''}`
-                : 'No prize pool this week'}
-            </ThemedText>
-          ) : null}
-        </ScrollView>
-      </SafeAreaView>
-    </ThemedView>
+        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: theme.space.s5 }}>
+          <Text variant="small" testID="risk-link" onPress={() => router.push('/risk')} style={{ color: theme.color.accent }}>Risk</Text>
+          <Text variant="small" testID="deposit-link" onPress={() => router.push('/deposit')} style={{ color: theme.color.accent }}>Add funds</Text>
+        </View>
+
+        {lb ? (
+          <Text variant="small" style={{ textAlign: 'center', fontSize: theme.type.t2xs }} testID="leaderboard-source">
+            {lb.prize
+              ? `Prizes paid by contract ${short(lb.prize.contract)} · week ${lb.prize.week}${lb.prize.winners.length ? ` · last week: ${lb.prize.winners.length} winners` : ''}`
+              : 'No prize pool this week'}
+          </Text>
+        ) : null}
+      </ScrollView>
+    </Screen>
   );
 }
 
@@ -214,55 +238,65 @@ function useLeaderboard(): Leaderboard | null {
   return lb;
 }
 
-/** One strategy: what it is, what it made this week, who is up, who is in. */
-function StrategyCard({ board, href, pool }: { board: Board; href: Href; pool: string | null }) {
-  const theme = useTheme();
-  const pnl = Number(board.pnl);
-  const color = pnl > 0 ? '#16a34a' : pnl < 0 ? '#dc2626' : theme.text;
+/**
+ * One strategy: its sign, its name, what the week has in it, and one line of
+ * what the strategy actually asks of you.
+ *
+ * The first card a new player sees carries START HERE; a card with a position
+ * open says so instead — that is the one thing more urgent than starting.
+ */
+function StrategyCard({ board, href, pool, lead, openPnl }: { board: Board; href: Href; pool: string | null; lead: boolean; openPnl: string | null }) {
+  const theme = useTheme2();
+  const sub = [
+    pool !== null ? `Pool ${trim(pool)} AUSD` : 'No pool yet',
+    `${board.players} ${board.players === 1 ? 'player' : 'players'}`,
+    board.active_now > 0 ? `${board.active_now} in now` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
   return (
     <Link href={href} asChild>
       <Pressable accessibilityRole="button" accessibilityLabel={`Play ${board.name}`} testID={`strategy-${board.id}`}>
         {({ pressed }) => (
-          <View style={[styles.card, { backgroundColor: theme.backgroundElement, opacity: pressed ? 0.7 : 1 }]}>
-            <View style={trading.header}>
-              <ThemedText type="subtitle">{board.name}</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                {board.active_now > 0 ? `${board.active_now} in now` : 'nobody in'}
-              </ThemedText>
-            </View>
-            <ThemedText type="small" themeColor="textSecondary">
-              {board.tagline}
-            </ThemedText>
-            {pool !== null ? (
-              <ThemedText type="smallBold" testID={`prize-pool-${board.id}`}>
-                Prize pool {trim(pool)} AUSD
-              </ThemedText>
-            ) : null}
-            <View style={trading.header}>
-              <ThemedText type="title" style={{ color }} testID={`board-pnl-${board.id}`}>
-                {pnl > 0 ? '+' : ''}
-                {trim(board.pnl)}
-              </ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                {board.players} {board.players === 1 ? 'player' : 'players'} · {board.trades} {board.trades === 1 ? 'trade' : 'trades'} · {board.rhythm}
-              </ThemedText>
-            </View>
-            {board.top.slice(0, 3).map((s, i) => (
-              <View key={s.wallet} style={trading.header}>
-                <ThemedText type="code">
-                  {i + 1}. {short(s.wallet)}
-                </ThemedText>
-                <ThemedText type="code" style={{ color: Number(s.pnl) >= 0 ? '#16a34a' : '#dc2626' }}>
-                  {Number(s.pnl) > 0 ? '+' : ''}
-                  {trim(s.pnl)} · {s.trades}
-                </ThemedText>
+          <View
+            style={{
+              gap: theme.space.s2,
+              paddingHorizontal: theme.space.s4,
+              paddingVertical: theme.space.s3,
+              borderRadius: theme.radius.rLg,
+              borderWidth: lead ? 2 : theme.size.bw,
+              borderColor: lead ? theme.color.accent : theme.color.hair,
+              backgroundColor: theme.color.raised,
+              opacity: pressed ? 0.7 : 1,
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s3 }}>
+              <StrategyTile id={glyphOf(board.id)} size={56} />
+              <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
+                <Text variant="bodyStrong" numberOfLines={1} style={{ fontSize: theme.type.tLg }}>{board.name}</Text>
+                <Text variant="small" numberOfLines={1} style={{ fontSize: theme.type.tXs }} testID={`prize-pool-${board.id}`}>{sub}</Text>
               </View>
-            ))}
+              {openPnl !== null ? (
+                <Badge strong>{`OPEN · ${money(Number(openPnl))}`}</Badge>
+              ) : lead ? (
+                <Badge strong>START HERE</Badge>
+              ) : null}
+            </View>
+            <Text variant="body" style={{ fontSize: theme.type.tSm }}>{board.tagline}</Text>
+            <Text variant="num" signOf={Number(board.pnl)} style={{ fontSize: theme.type.tXs }} testID={`board-pnl-${board.id}`}>
+              {`${money(Number(board.pnl))} this week · ${board.trades} ${board.trades === 1 ? 'trade' : 'trades'}`}
+            </Text>
           </View>
         )}
       </Pressable>
     </Link>
   );
+}
+
+/** The board ids the platform uses, as the three signs the lobby draws. */
+function glyphOf(id: string): GlyphId {
+  return id === 'ma-cross' || id === 'rsi' ? id : 'direction';
 }
 
 /**
@@ -271,7 +305,7 @@ function StrategyCard({ board, href, pool }: { board: Board; href: Href; pool: s
  */
 function MyPrizes({ wallet, address, contract }: { wallet: Wallet; address: string; contract: string }) {
   const theme = useTheme();
-  const [mine, setMine] = useState<MyPrizes | null>(null);
+  const [mine, setMine] = useState<PrizeList | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const load = useCallback(() => {

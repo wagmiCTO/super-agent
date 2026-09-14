@@ -9,7 +9,9 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './e2e',
-  timeout: 90_000,
+  // These open real accounts on a testnet: a passkey, a strategy key, the
+  // venue's funding and three transactions, before a spec's own work starts.
+  timeout: 180_000,
   expect: { timeout: 30_000 },
   retries: 0,
   workers: 1,

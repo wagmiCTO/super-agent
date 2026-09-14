@@ -7,94 +7,94 @@ import { expect, test, type Page } from '@playwright/test';
  * Requires the platform on :8080 with testnet credentials and a funded
  * account. Every assertion reads what the screen shows the player; the
  * server log is not consulted.
+ *
+ * The screen asks nothing before the tap — size, leverage, stop and horizon
+ * are the standard position, set once on `/settings` — so these specs press
+ * the key and read the result, which is the whole interaction now.
  */
+
 /**
  * Waits until the screen is flat, closing a leftover position if there is one.
  * The venue's position snapshot lags a close by a poll or two, so a test that
- * starts right after another one's close must not assume the presets are back.
+ * starts right after another one's close must not assume the keys are back.
  */
 async function ensureFlat(page: Page) {
-  const closeButton = page.getByRole('button', { name: 'Close position', exact: true });
-  const noPosition = page.getByText('No position');
-  await expect(closeButton.or(noPosition)).toBeVisible();
-  if (await closeButton.isVisible()) {
-    await closeButton.click();
-  }
-  await expect(noPosition).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Up', exact: true })).toBeVisible();
+  const close = page.getByTestId('close-position');
+  const up = page.getByTestId('key-up');
+  await expect(close.or(up)).toBeVisible({ timeout: 30_000 });
+  if (await close.isVisible()) await close.click();
+  await expect(up).toBeVisible({ timeout: 30_000 });
 }
 
 test.describe('Direction screen', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/direction');
-    // The balance line only appears once /v1/state has answered.
-    await expect(page.getByText(/^Balance /)).toBeVisible();
+    // The keys only come alive once /v1/state has answered.
+    await expect(page.getByTestId('key-up').or(page.getByTestId('close-position'))).toBeVisible({ timeout: 30_000 });
+  });
+
+  test('asks its question and says what a tap opens', async ({ page }) => {
+    await ensureFlat(page);
+    await expect(page.getByTestId('says')).toHaveText(/^Where does MON go in the next \d+ minutes\?$/);
+    // The standard position, on the screen, before anything is pressed.
+    await expect(page.getByTestId('settings-chip')).toContainText('AUSD');
+    await expect(page.getByTestId('settings-chip')).toContainText(/At risk/i);
+    await expect(page.getByText(/^Up to \d+ per position · /)).toBeVisible();
   });
 
   test('shows what the crowd on-chain is doing with the asset', async ({ page }) => {
-    await page.goto('/direction');
     const card = page.getByTestId('context-card');
     await expect(card).toBeVisible({ timeout: 30_000 });
+    // Folded: the lean and the day's flow. It opens on a tap.
+    await expect(page.getByTestId('context-lean')).toHaveText(/Buyers ahead|Sellers ahead|Even/);
+    await card.click();
     await expect(page.getByTestId('context-headline')).toHaveText(/WMON is .* on \$[\d.]+[kMB]? of volume in 24h\./);
-    await expect(page.getByTestId('context-lean')).toHaveText(/buyers ahead|sellers ahead|even/);
-    await expect(card).toContainText(/Nansen ·/);
-  });
-
-  test('shows the cost of a round trip before any position exists', async ({ page }) => {
-    await ensureFlat(page);
-    // Fee line comes from the venue's live schedule, not a constant in the app.
-    await expect(page.getByText(/round trip costs .* \(\d+(\.\d+)? bps\)/)).toBeVisible();
-    await expect(page.getByText(/^Limits: up to /)).toBeVisible();
+    await expect(card).toContainText(/Nansen/);
   });
 
   test('opens on Up, shows unrealized PnL, closes on Close', async ({ page }) => {
     await ensureFlat(page);
-
-    await page.getByRole('button', { name: 'Amount 20', exact: true }).click();
-    await expect(page.getByTestId('big-number')).toHaveText('20');
-    await page.getByRole('button', { name: 'Up', exact: true }).click();
+    await page.getByTestId('key-up').click();
 
     // A fill is reported with size and price; the venue's fee is shown too.
-    await expect(page.getByText(/^Filled \d+ @ [\d.]+, fee [\d.]+$/)).toBeVisible();
+    await expect(page.getByTestId('notice')).toHaveText(/^Filled \d+ @ [\d.]+, fee [\d.]+$/, { timeout: 40_000 });
 
-    // The one number: a signed unrealized PnL under a position caption.
-    await expect(page.getByText(/^Up · \d+ MON @ [\d.]+ · 2x$/)).toBeVisible();
-    await expect(page.getByText(/^unrealized · fees paid [\d.]+( · stop at -[\d.]+)?( · closes in \d+:\d\d)?$/)).toBeVisible();
+    // The screen becomes the position: one signed number and its caption.
+    await expect(page.getByTestId('open-position')).toContainText(/^Up/, { timeout: 30_000 });
+    // A typographic minus, not a hyphen: the design's money() says so.
+    await expect(page.getByTestId('big-number')).toHaveText(/^[+\u2212]?[\d.]+$/);
+    await expect(page.getByTestId('position-footer')).toHaveText(/^AUSD · in at [\d.]+ · fees [\d.]+$/);
 
-    // Buttons flip: no Up/Down while a position is open, only Close.
-    await expect(page.getByRole('button', { name: 'Up', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Close position', exact: true })).toBeVisible();
-
-    await page.getByRole('button', { name: 'Close position', exact: true }).click();
-    // The screen shows the fee the close was charged (the builder fee since
-    // trades go through the platform's own key).
-    await expect(page.getByText(/^Closed \d+ @ [\d.]+, fee [\d.]+$/)).toBeVisible();
-    await expect(page.getByText('No position')).toBeVisible();
+    // The keys are gone while a position is open: the only call left is Close.
+    await expect(page.getByTestId('key-up')).toHaveCount(0);
+    await page.getByTestId('close-position').click();
+    await expect(page.getByTestId('notice')).toHaveText(/^Closed \d+ @ [\d.]+, fee [\d.]+$/, { timeout: 40_000 });
+    await expect(page.getByTestId('key-up')).toBeVisible({ timeout: 30_000 });
   });
 
   test('a policy refusal is shown in words, with the limit', async ({ page }) => {
     await ensureFlat(page);
-    // A cooldown from the previous test may still be running; let it lapse.
     await page.waitForTimeout(6_000);
 
-    await page.getByRole('button', { name: 'Amount 5', exact: true }).click();
-    await page.getByRole('button', { name: 'Down', exact: true }).click();
-    await expect(page.getByText(/^Down · \d+ MON/)).toBeVisible();
-    await page.getByRole('button', { name: 'Close position', exact: true }).click();
-    await expect(page.getByText('No position')).toBeVisible();
+    await page.getByTestId('key-down').click();
+    await expect(page.getByTestId('open-position')).toContainText(/^Down/, { timeout: 40_000 });
+    await page.getByTestId('close-position').click();
+    await expect(page.getByTestId('key-up')).toBeVisible({ timeout: 30_000 });
 
     // The open above started a 5s cooldown; a second open inside it is refused.
-    await page.getByRole('button', { name: 'Up', exact: true }).click();
-    await expect(page.getByText(/^Wait \d+s before opening again$/)).toBeVisible();
+    await page.getByTestId('key-up').click();
+    await expect(page.getByTestId('notice')).toHaveText(/^Wait \d+s before opening again$/, { timeout: 20_000 });
   });
 
-  // The horizon is the strategy's exit. The screen sends it with the tap,
-  // counts down to it, and explains the close after the platform made it.
-  // The presets are minutes long; this opens through the API with the
-  // shortest horizon the platform accepts so the test sees the whole arc.
+  /**
+   * The horizon is the strategy's exit. The screen sends it with the tap,
+   * counts down to it, and explains the close after the platform made it.
+   * The standard position's horizon is minutes long; this opens through the
+   * API with the shortest horizon the platform accepts so the test sees the
+   * whole arc inside one run.
+   */
   test('a horizon closes the position and the screen says so', async ({ page }) => {
     await ensureFlat(page);
-    await expect(page.getByRole('button', { name: 'Horizon 15m', exact: true })).toBeVisible();
 
     // The previous test's refusal leaves a cooldown running; wait it out.
     let status = 0;
@@ -112,13 +112,13 @@ test.describe('Direction screen', () => {
       }
     }
     expect(status).toBe(200);
-    await expect(page.getByTestId('position-footer')).toHaveText(/closes in 00:(0|1)\d/, { timeout: 15_000 });
+    await expect(page.getByTestId('open-position')).toContainText(/Closes in/, { timeout: 15_000 });
     await expect(page.getByTestId('notice')).toHaveText(/^Closed by timer @ [\d.]+, [+-]?[\d.]+$/, { timeout: 40_000 });
-    await expect(page.getByText('No position')).toBeVisible();
+    await expect(page.getByTestId('key-up')).toBeVisible({ timeout: 30_000 });
 
     // The round trip is in this strategy's history, on both tabs.
-    await expect(page.getByTestId('history-position').first()).toContainText(/Up · \d+ @ [\d.]+ → [\d.]+/);
-    await page.getByRole('button', { name: 'History Orders', exact: true }).click();
-    await expect(page.getByTestId('history-order').first()).toContainText(/Close Up · timer/);
+    await expect(page.getByTestId('history-position').first()).toContainText(/Up · [\d.]+ → [\d.]+/);
+    await page.getByTestId('history-orders').click();
+    await expect(page.getByTestId('history-order').first()).toContainText(/Close Up · @ [\d.]+/);
   });
 });
