@@ -1,0 +1,148 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 620,
+      "h": 660,
+      "title": "The four directions"
+    },
+    {
+      "file": "TerminalLobby.dc.html",
+      "x": 0,
+      "y": 760,
+      "w": 390,
+      "h": 844,
+      "title": "Terminal · Lobby"
+    },
+    {
+      "file": "TerminalStrategy.dc.html",
+      "x": 470,
+      "y": 760,
+      "w": 390,
+      "h": 844,
+      "title": "Terminal · Strategy"
+    },
+    {
+      "file": "TerminalPosition.dc.html",
+      "x": 940,
+      "y": 760,
+      "w": 390,
+      "h": 844,
+      "title": "Terminal · Position"
+    },
+    {
+      "file": "DeskLobby.dc.html",
+      "x": 0,
+      "y": 1734,
+      "w": 390,
+      "h": 844,
+      "title": "Desk · Lobby"
+    },
+    {
+      "file": "DeskStrategy.dc.html",
+      "x": 470,
+      "y": 1734,
+      "w": 390,
+      "h": 844,
+      "title": "Desk · Strategy"
+    },
+    {
+      "file": "DeskPosition.dc.html",
+      "x": 940,
+      "y": 1734,
+      "w": 390,
+      "h": 844,
+      "title": "Desk · Position"
+    },
+    {
+      "file": "CalmLobby.dc.html",
+      "x": 0,
+      "y": 2708,
+      "w": 390,
+      "h": 844,
+      "title": "Calm · Lobby"
+    },
+    {
+      "file": "CalmStrategy.dc.html",
+      "x": 470,
+      "y": 2708,
+      "w": 390,
+      "h": 844,
+      "title": "Calm · Strategy"
+    },
+    {
+      "file": "CalmPosition.dc.html",
+      "x": 940,
+      "y": 2708,
+      "w": 390,
+      "h": 844,
+      "title": "Calm · Position"
+    },
+    {
+      "file": "PaperLobby.dc.html",
+      "x": 0,
+      "y": 3682,
+      "w": 390,
+      "h": 844,
+      "title": "Paper · Lobby"
+    },
+    {
+      "file": "PaperStrategy.dc.html",
+      "x": 470,
+      "y": 3682,
+      "w": 390,
+      "h": 844,
+      "title": "Paper · Strategy"
+    },
+    {
+      "file": "PaperPosition.dc.html",
+      "x": 940,
+      "y": 3682,
+      "w": 390,
+      "h": 844,
+      "title": "Paper · Position"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "dir-terminal",
+      "x": 1450,
+      "y": 800,
+      "w": 300,
+      "text": "Terminal — after Hyperliquid\n\nNear-black with one mint accent, dense rows, monospaced numbers. Reads as an instrument: the number is the product and nothing competes with it.\n\nCosts: Unforgiving to a beginner. Looks like something you need a licence to operate — the opposite of what onboarding promises."
+    },
+    {
+      "id": "dir-desk",
+      "x": 1450,
+      "y": 1774,
+      "w": 300,
+      "text": "Desk — after Bybit\n\nExchange grammar: charcoal, gold accent, green and red up-down, tight radii, badges everywhere. Instantly legible to anyone who has used an exchange.\n\nCosts: Familiar to the 5% who already trade, invisible to everyone else. Gold plus green plus red is three accents fighting for the same eye."
+    },
+    {
+      "id": "dir-calm",
+      "x": 1450,
+      "y": 2748,
+      "w": 300,
+      "text": "Calm — after Robinhood\n\nBlack, one green, enormous type and space. One thing per screen, a hand-sized button. The direction that fits \"three minutes to your first trade\".\n\nCosts: Space costs rows: the strategy list and the trade detail get tight. Green as both accent and \"up\" makes the neutral state read as profit."
+    },
+    {
+      "id": "dir-paper",
+      "x": 1450,
+      "y": 3722,
+      "w": 300,
+      "text": "Paper — after Monad\n\nOff-white paper with Monad purple, geometric type, generous corners. The only light direction and the only one that says which chain this is without a logo.\n\nCosts: Light screens are worse at 2am and worse under a bar light. Purple carries no market meaning, so up and down need their own colours anyway."
+    },
+    {
+      "id": "how-to-read",
+      "x": 700,
+      "y": 60,
+      "w": 320,
+      "text": "Every row carries identical copy and identical numbers. If one row reads better, that is the design language, not the content.\n\nPick one row. The chosen one becomes the token set in constants/theme.ts; the other three go to a second page or get deleted."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

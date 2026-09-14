@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Space Grotesk', system-ui, sans-serif; }
+    a { color: #836EF9; } a:hover { color: #0E100F; }
+  </style>
+</helmet>
+<div style="width:640px;height:600px;box-sizing:border-box;background:#FBFAF9;color:#0E100F;padding:26px;display:flex;flex-direction:column;gap:13px;overflow:hidden">
+  <div style="display:flex;flex-direction:column;gap:5px">
+    <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#8A857F">Stage 2 · the two chosen directions</div>
+    <div style="font-size:25px;font-weight:700;letter-spacing:-0.01em">Ten screens, two skins</div>
+    <div style="font-size:13px;line-height:1.5;color:#5C5752">Every artboard below is a snapshot of the clickable prototype with the theme switched — same markup, same copy, same numbers. Top row Terminal, bottom row Paper; left to right follows the path: lobby, strategy, position, result, settings, lesson, leaderboard, history, risk, account.</div>
+  </div>
+  
+    <div style="display:flex;flex-direction:column;gap:9px;padding:16px;border-radius:14px;border:1px solid #E3DFDA;background:#FFFFFF">
+      <div style="display:flex;align-items:baseline;gap:8px">
+        <div style="font-size:19px;font-weight:700;color:#0E100F">Terminal</div>
+        <div style="font-size:12px;color:#8A857F">after Hyperliquid · Archivo</div>
+        <div style="margin-left:auto;display:flex;gap:5px"><div title="--ground" style="width:22px;height:22px;border-radius:6px;background:#060F0D;border:1px solid rgba(0,0,0,0.14)"></div><div title="--paper" style="width:22px;height:22px;border-radius:6px;background:#0C1917;border:1px solid rgba(0,0,0,0.14)"></div><div title="--accent" style="width:22px;height:22px;border-radius:6px;background:#50D2C1;border:1px solid rgba(0,0,0,0.14)"></div><div title="--fill" style="width:22px;height:22px;border-radius:6px;background:#50D2C1;border:1px solid rgba(0,0,0,0.14)"></div><div title="--up" style="width:22px;height:22px;border-radius:6px;background:#50D2C1;border:1px solid rgba(0,0,0,0.14)"></div><div title="--down" style="width:22px;height:22px;border-radius:6px;background:#F0728A;border:1px solid rgba(0,0,0,0.14)"></div></div>
+      </div>
+      <div style="font-size:13px;line-height:1.5;color:#3F3B37">Near-black with one mint accent and monospaced numbers. The accent and the fill are the same colour, so the primary button IS the brand — a single loud thing per screen.</div>
+      <div style="font-size:12px;line-height:1.45;color:#8A857F"><span style="color:#DC5546;font-weight:600">Costs:</span> Unforgiving to a beginner. Mint doubles as "up", so a neutral highlight can read as profit.</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:9px;padding:16px;border-radius:14px;border:1px solid #E3DFDA;background:#FFFFFF">
+      <div style="display:flex;align-items:baseline;gap:8px">
+        <div style="font-size:19px;font-weight:700;color:#0E100F">Paper</div>
+        <div style="font-size:12px;color:#8A857F">after Monad · Space Grotesk</div>
+        <div style="margin-left:auto;display:flex;gap:5px"><div title="--ground" style="width:22px;height:22px;border-radius:6px;background:#EFEDE9;border:1px solid rgba(0,0,0,0.14)"></div><div title="--paper" style="width:22px;height:22px;border-radius:6px;background:#FFFFFF;border:1px solid rgba(0,0,0,0.14)"></div><div title="--accent" style="width:22px;height:22px;border-radius:6px;background:#836EF9;border:1px solid rgba(0,0,0,0.14)"></div><div title="--fill" style="width:22px;height:22px;border-radius:6px;background:#836EF9;border:1px solid rgba(0,0,0,0.14)"></div><div title="--up" style="width:22px;height:22px;border-radius:6px;background:#1C9A6B;border:1px solid rgba(0,0,0,0.14)"></div><div title="--down" style="width:22px;height:22px;border-radius:6px;background:#DC5546;border:1px solid rgba(0,0,0,0.14)"></div></div>
+      </div>
+      <div style="font-size:13px;line-height:1.5;color:#3F3B37">Off-white with Monad purple. The fill is near-black and the accent is purple, so buttons stay calm and the brand shows up only where something is live: the signal, the prize, a selected chip.</div>
+      <div style="font-size:12px;line-height:1.45;color:#8A857F"><span style="color:#DC5546;font-weight:600">Costs:</span> Worse at 2am and under a bar light. Purple carries no market meaning, so up and down need their own green and red.</div>
+    </div>
+  <div style="margin-top:auto;font-size:12px;line-height:1.45;color:#8A857F">Both rows are driven by one token block in <code>design/path/tradeagent-proto.html</code>. A colour changed there changes both the clickable prototype and this canvas — there is no second copy to keep in sync.</div>
+</div>
+</x-dc>
+</body>
+</html>

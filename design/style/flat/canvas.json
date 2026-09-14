@@ -1,0 +1,184 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 640,
+      "h": 600,
+      "title": "Two directions"
+    },
+    {
+      "file": "TerminalLobby.dc.html",
+      "x": 0,
+      "y": 720,
+      "w": 390,
+      "h": 844,
+      "title": "Terminal · Lobby"
+    },
+    {
+      "file": "TerminalStrategy.dc.html",
+      "x": 470,
+      "y": 720,
+      "w": 390,
+      "h": 844,
+      "title": "Terminal · Strategy"
+    },
+    {
+      "file": "TerminalPosition.dc.html",
+      "x": 940,
+      "y": 720,
+      "w": 390,
+      "h": 844,
+      "title": "Terminal · Position"
+    },
+    {
+      "file": "TerminalResult.dc.html",
+      "x": 1410,
+      "y": 720,
+      "w": 390,
+      "h": 844,
+      "title": "Terminal · Result"
+    },
+    {
+      "file": "TerminalSettings.dc.html",
+      "x": 1880,
+      "y": 720,
+      "w": 390,
+      "h": 844,
+      "title": "Terminal · Settings"
+    },
+    {
+      "file": "TerminalLesson.dc.html",
+      "x": 2350,
+      "y": 720,
+      "w": 390,
+      "h": 844,
+      "title": "Terminal · Lesson"
+    },
+    {
+      "file": "TerminalLeaderboard.dc.html",
+      "x": 2820,
+      "y": 720,
+      "w": 390,
+      "h": 844,
+      "title": "Terminal · Leaderboard"
+    },
+    {
+      "file": "TerminalHistory.dc.html",
+      "x": 3290,
+      "y": 720,
+      "w": 390,
+      "h": 844,
+      "title": "Terminal · History"
+    },
+    {
+      "file": "TerminalRisk.dc.html",
+      "x": 3760,
+      "y": 720,
+      "w": 390,
+      "h": 844,
+      "title": "Terminal · Risk"
+    },
+    {
+      "file": "TerminalAccount.dc.html",
+      "x": 4230,
+      "y": 720,
+      "w": 390,
+      "h": 844,
+      "title": "Terminal · Account"
+    },
+    {
+      "file": "PaperLobby.dc.html",
+      "x": 0,
+      "y": 1694,
+      "w": 390,
+      "h": 844,
+      "title": "Paper · Lobby"
+    },
+    {
+      "file": "PaperStrategy.dc.html",
+      "x": 470,
+      "y": 1694,
+      "w": 390,
+      "h": 844,
+      "title": "Paper · Strategy"
+    },
+    {
+      "file": "PaperPosition.dc.html",
+      "x": 940,
+      "y": 1694,
+      "w": 390,
+      "h": 844,
+      "title": "Paper · Position"
+    },
+    {
+      "file": "PaperResult.dc.html",
+      "x": 1410,
+      "y": 1694,
+      "w": 390,
+      "h": 844,
+      "title": "Paper · Result"
+    },
+    {
+      "file": "PaperSettings.dc.html",
+      "x": 1880,
+      "y": 1694,
+      "w": 390,
+      "h": 844,
+      "title": "Paper · Settings"
+    },
+    {
+      "file": "PaperLesson.dc.html",
+      "x": 2350,
+      "y": 1694,
+      "w": 390,
+      "h": 844,
+      "title": "Paper · Lesson"
+    },
+    {
+      "file": "PaperLeaderboard.dc.html",
+      "x": 2820,
+      "y": 1694,
+      "w": 390,
+      "h": 844,
+      "title": "Paper · Leaderboard"
+    },
+    {
+      "file": "PaperHistory.dc.html",
+      "x": 3290,
+      "y": 1694,
+      "w": 390,
+      "h": 844,
+      "title": "Paper · History"
+    },
+    {
+      "file": "PaperRisk.dc.html",
+      "x": 3760,
+      "y": 1694,
+      "w": 390,
+      "h": 844,
+      "title": "Paper · Risk"
+    },
+    {
+      "file": "PaperAccount.dc.html",
+      "x": 4230,
+      "y": 1694,
+      "w": 390,
+      "h": 844,
+      "title": "Paper · Account"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "how-to-read",
+      "x": 700,
+      "y": 60,
+      "w": 330,
+      "text": "Compare down a column, not across a row: the same screen in both skins, one above the other.\n\nWhat to look for: does the eye land on the number that matters, is the accent doing one job or three, and does a dense screen (history, leaderboard) still breathe."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

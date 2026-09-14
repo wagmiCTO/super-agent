@@ -1,92 +1,229 @@
+<meta charset="utf-8">
 <title>TradeAgent Prototype</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap">
 <style>
   /* Gray on purpose: the prototype checks order, words and feel, not the look. */
-  :root { --ink: #18181B; --body: #3F3F46; --muted: #71717A; --line: #D4D4D8; --hair: #E4E4E7; --soft: #F4F4F5; --paper: #FFFFFF; --ground: #E9E9EC; --danger: #DC2626; --danger-soft: #FEE2E2; }
+  /* Every colour, size and face the prototype uses. Nothing below this block
+     names a literal colour: swapping a theme means swapping this block only.
+     `data-theme` on <html> selects a set; the gray set is the control. */
+  :root {
+    /* surfaces, back to front */
+    --ground: #E9E9EC; --paper: #FFFFFF; --raised: #FAFAFA; --soft: #F4F4F5;
+    /* lines */
+    --line: #D4D4D8; --hair: #E4E4E7;
+    /* text, strongest to weakest */
+    --ink: #18181B; --body: #3F3F46; --text2: #52525B; --muted: #71717A; --dim: #A1A1AA;
+    /* text drawn on an ink-filled surface */
+    --onInk: #FFFFFF;
+    /* brand accent — kept apart from up/down on purpose: when they share a
+       value, reusing one for the other silently turns "accent" into "profit" */
+    --accent: #18181B; --onAccent: #FFFFFF;
+    /* the strong filled surface: buttons, banners, the splash, toasts.
+       On gray it is the text colour; on a real theme it is not. */
+    --fill: #18181B; --onFill: #FFFFFF;
+    --up: #18181B; --onUp: #FFFFFF; --down: #18181B; --onDown: #FFFFFF;
+    /* states */
+    --danger: #DC2626; --danger-soft: #FEE2E2; --onDanger: #FFFFFF;
+    --risk-calm: #18181B; --risk-warm: #18181B; --risk-hot: #18181B;
+    /* overlays and depth */
+    --scrim: rgba(24,24,27,0.35); --glass: rgba(255,255,255,0.85);
+    --glow: rgba(255,255,255,0.25); --chip: rgba(24,24,27,0.8); --onChip: #FFFFFF;
+    --shadow-phone: rgba(24,24,27,0.18); --shadow-menu: rgba(24,24,27,0.16);
+    --ring: rgba(24,24,27,0.35); --ring-0: rgba(24,24,27,0);
+    /* chart */
+    --chart-line: #18181B; --chart-grid: #E4E4E7; --chart-axis: #D4D4D8;
+    --chart-up: #3F3F46; --chart-down: #A1A1AA; --chart-zone: rgba(24,24,27,0.06);
+    --chart-band: #E4E4E7;
+    --chart-line2: #A1A1AA; --onAccentDim: #D4D4D8; --btn-line: #18181B;
+    /* type */
+    --font-display: system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-num: var(--font-display);
+    /* shape, rhythm and type are part of the theme, not of the markup:
+       Terminal is an instrument and packs tighter; Paper is paper and breathes. */
+    --r-xs: 2px; --r-sm: 6px; --r-md: 10px; --r-lg: 12px; --r-xl: 16px;
+    --s1: 4px; --s2: 8px; --s3: 12px; --s4: 14px; --s5: 20px; --s6: 24px;
+    --t-2xs: 10px; --t-xs: 12px; --t-sm: 14px; --t-md: 15px; --t-lg: 17px;
+    --t-xl: 20px; --t-2xl: 28px; --t-3xl: 32px; --t-hero: 44px; --t-mega: 56px;
+    --h1-weight: 700; --h1-track: -0.01em; --bw: 1px;
+    --elev: none; --elev-lift: none;
+    --card-bg: var(--soft); --card-line: transparent;
+    --btn-h: 52px; --btn-weight: 600; --ud-h: 76px; --track: 0.04em;
+  }
+
+  /* Terminal — dark, one mint accent, monospaced numbers. */
+  html[data-theme="terminal"] {
+    --ground: #060F0D; --paper: #0C1917; --raised: #112421; --soft: #142925;
+    --line: #23453E; --hair: #1A3831;
+    --ink: #E4F3F0; --body: #C2DBD6; --text2: #A6C6C0; --muted: #7CA29B; --dim: #5C807A;
+    --onInk: #05201C;
+    --accent: #50D2C1; --onAccent: #05201C;
+    --fill: #50D2C1; --onFill: #05201C;
+    --up: #50D2C1; --onUp: #05201C; --down: #F0728A; --onDown: #2A0810;
+    --danger: #F0728A; --danger-soft: #3A1520; --onDanger: #2A0810;
+    --risk-calm: #50D2C1; --risk-warm: #E8B84B; --risk-hot: #F0728A;
+    --scrim: rgba(3,10,9,0.62); --glass: rgba(12,25,23,0.88);
+    --glow: rgba(80,210,193,0.30); --chip: rgba(6,15,13,0.88); --onChip: #E4F3F0;
+    --shadow-phone: rgba(0,0,0,0.55); --shadow-menu: rgba(0,0,0,0.45);
+    --ring: rgba(80,210,193,0.38); --ring-0: rgba(80,210,193,0);
+    --chart-line: #50D2C1; --chart-grid: #17332D; --chart-axis: #23453E;
+    --chart-up: #50D2C1; --chart-down: #F0728A; --chart-zone: rgba(80,210,193,0.09);
+    --chart-band: #112421;
+    --chart-line2: #7FA29B; --onAccentDim: #2E6F65; --btn-line: #23453E;
+    --font-display: 'Archivo', system-ui, sans-serif;
+    --font-num: 'JetBrains Mono', ui-monospace, monospace;
+    --r-xs: 2px; --r-sm: 4px; --r-md: 6px; --r-lg: 8px; --r-xl: 10px;
+    --s1: 3px; --s2: 6px; --s3: 9px; --s4: 12px; --s5: 16px; --s6: 20px;
+    --t-2xs: 10px; --t-xs: 11px; --t-sm: 13px; --t-md: 14px; --t-lg: 16px;
+    --t-xl: 19px; --t-2xl: 24px; --t-3xl: 29px; --t-hero: 40px; --t-mega: 50px;
+    --h1-weight: 600; --h1-track: -0.005em; --bw: 1px;
+    --elev: none; --elev-lift: none;
+    --card-bg: var(--soft); --card-line: var(--hair);
+    --btn-h: 48px; --btn-weight: 600; --ud-h: 68px; --track: 0.07em;
+  }
+
+  /* Paper — off-white, Monad purple as the accent, near-black as the fill. */
+  html[data-theme="paper"] {
+    --ground: #EFEDE9; --paper: #FFFFFF; --raised: #FBFAF9; --soft: #F3F1EE;
+    --line: #DAD5CE; --hair: #E8E4DE;
+    --ink: #0E100F; --body: #3A3733; --text2: #514C46; --muted: #6E6862; --dim: #97918A;
+    --onInk: #FBFAF9;
+    --accent: #836EF9; --onAccent: #FFFFFF;
+    --fill: #836EF9; --onFill: #FFFFFF;
+    --up: #1C9A6B; --onUp: #FFFFFF; --down: #DC5546; --onDown: #FFFFFF;
+    --danger: #DC5546; --danger-soft: #FBE7E4; --onDanger: #FFFFFF;
+    --risk-calm: #1C9A6B; --risk-warm: #C8890A; --risk-hot: #DC5546;
+    --scrim: rgba(14,16,15,0.38); --glass: rgba(255,255,255,0.90);
+    --glow: rgba(131,110,249,0.28); --chip: rgba(14,16,15,0.82); --onChip: #FFFFFF;
+    --shadow-phone: rgba(14,16,15,0.16); --shadow-menu: rgba(14,16,15,0.14);
+    --ring: rgba(131,110,249,0.35); --ring-0: rgba(131,110,249,0);
+    --chart-line: #0E100F; --chart-grid: #E8E4DE; --chart-axis: #DAD5CE;
+    --chart-up: #1C9A6B; --chart-down: #DC5546; --chart-zone: rgba(131,110,249,0.08);
+    --chart-band: #F3F1EE;
+    --chart-line2: #97918A; --onAccentDim: #CFC4FC; --btn-line: #DAD5CE;
+    --font-display: 'Space Grotesk', system-ui, sans-serif;
+    --font-num: 'Space Mono', ui-monospace, monospace;
+    --r-xs: 4px; --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-xl: 22px;
+    --s1: 5px; --s2: 10px; --s3: 14px; --s4: 18px; --s5: 22px; --s6: 28px;
+    --t-2xs: 11px; --t-xs: 12px; --t-sm: 14px; --t-md: 16px; --t-lg: 18px;
+    --t-xl: 22px; --t-2xl: 29px; --t-3xl: 34px; --t-hero: 46px; --t-mega: 60px;
+    --h1-weight: 700; --h1-track: -0.025em; --bw: 1px;
+    --elev: 0 1px 2px rgba(14,16,15,0.05), 0 8px 24px rgba(14,16,15,0.05);
+    --card-bg: var(--paper); --card-line: transparent;
+    --btn-h: 56px; --btn-weight: 700; --ud-h: 82px; --track: 0.05em;
+    --elev-lift: 0 2px 6px rgba(14,16,15,0.07), 0 14px 34px rgba(14,16,15,0.08);
+  }
   html, body { height: 100%; }
-  body { margin: 0; background: var(--ground); color: var(--ink); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
-  #stage { min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 24px 16px; box-sizing: border-box; }
-  #phone { width: 390px; height: 844px; max-width: 100%; background: var(--paper); border-radius: 36px; border: 1px solid var(--line); box-shadow: 0 30px 80px rgba(24,24,27,0.18); overflow: hidden; position: relative; display: flex; flex-direction: column; }
+  body { margin: 0; background: var(--ground); color: var(--ink); font-family: var(--font-display); -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
+  #stage { min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: var(--s6) var(--s4); box-sizing: border-box; }
+  #phone { width: 390px; height: 844px; max-width: 100%; background: var(--paper); border-radius: 36px; border: 1px solid var(--line); box-shadow: 0 30px 80px var(--shadow-phone); overflow: hidden; position: relative; display: flex; flex-direction: column; }
   @media (max-width: 480px) { #stage { padding: 0; align-items: stretch; } #phone { width: 100%; height: 100dvh; border-radius: 0; border: 0; box-shadow: none; } }
   #screen { flex: 1; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; -webkit-overflow-scrolling: touch; }
   #overlay { position: absolute; inset: 0; pointer-events: none; }
   #overlay > * { pointer-events: auto; }
-  .num { font-variant-numeric: tabular-nums; }
-  .ph { background: repeating-linear-gradient(135deg, #E4E4E7 0 6px, #F4F4F5 6px 12px); }
+  .num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+  .ph { background: repeating-linear-gradient(135deg, var(--hair) 0 7px, var(--soft) 7px 14px); border: var(--bw) solid var(--hair); box-sizing: border-box; }
   [data-a] { cursor: pointer; user-select: none; -webkit-user-select: none; }
   [data-a]:active { opacity: 0.7; }
-  .page { flex: 1; display: flex; flex-direction: column; justify-content: space-between; padding: 56px 24px 28px; box-sizing: border-box; gap: 16px; }
-  .top { display: flex; flex-direction: column; gap: 18px; }
-  .bottom { display: flex; flex-direction: column; gap: 12px; }
-  .h1 { font-size: 28px; line-height: 1.15; font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }
-  .p { font-size: 16px; line-height: 1.45; color: #52525B; text-wrap: pretty; }
-  .small { font-size: 13px; line-height: 1.4; color: var(--muted); }
-  .btn { height: 52px; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 17px; font-weight: 600; box-sizing: border-box; }
-  .btn.primary { background: var(--ink); color: #fff; }
-  .btn.outline { border: 1px solid var(--ink); }
-  .btn.disabled { background: var(--hair); color: #A1A1AA; }
-  .btn.danger { background: var(--danger); color: #fff; }
-  .link { height: 44px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 15px; color: #52525B; }
-  .card { display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 14px; background: var(--soft); }
-  .row { display: flex; justify-content: space-between; align-items: center; font-size: 14px; color: var(--body); }
+  .page { flex: 1; display: flex; flex-direction: column; justify-content: space-between; padding: 56px var(--s6) var(--s6); box-sizing: border-box; gap: var(--s4); }
+  .top { display: flex; flex-direction: column; gap: var(--s5); }
+  .bottom { display: flex; flex-direction: column; gap: var(--s3); }
+  .h1 { font-size: var(--t-2xl); line-height: 1.15; font-weight: var(--h1-weight); letter-spacing: var(--h1-track); text-wrap: balance; }
+  .p { font-size: var(--t-md); line-height: 1.45; color: var(--text2); text-wrap: pretty; }
+  .small { font-size: var(--t-sm); line-height: 1.4; color: var(--muted); }
+  .btn { height: var(--btn-h); border-radius: var(--r-lg); display: flex; align-items: center; justify-content: center; gap: var(--s2); font-size: var(--t-lg); font-weight: var(--btn-weight); box-sizing: border-box; }
+  .btn.primary { background: var(--fill); color: var(--onFill); }
+  .btn.outline { border: var(--bw) solid var(--btn-line); }
+  .btn.disabled { background: var(--hair); color: var(--dim); }
+  .btn.danger { background: var(--danger); color: var(--onDanger); }
+  .link { height: 44px; display: flex; align-items: center; justify-content: center; gap: var(--s2); font-size: var(--t-md); color: var(--text2); }
+  .card { display: flex; flex-direction: column; gap: var(--s3); padding: var(--s4); border-radius: var(--r-lg); background: var(--card-bg); border: var(--bw) solid var(--card-line); box-shadow: var(--elev); box-sizing: border-box; }
+  .row { display: flex; justify-content: space-between; align-items: center; font-size: var(--t-sm); color: var(--body); }
   .row b { font-weight: 600; color: var(--ink); }
-  .badge { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); color: #52525B; white-space: nowrap; }
-  .badge.dark { background: var(--ink); color: #fff; border-color: var(--ink); }
-  .head { display: flex; align-items: center; gap: 10px; }
-  .head .title { font-size: 15px; font-weight: 600; }
-  .head .back { font-size: 14px; color: var(--muted); padding: 6px 0; }
-  .head .right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
-  .qmark { width: 28px; height: 28px; border-radius: 14px; border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; font-size: 14px; color: #52525B; }
-  .pill { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 16px; border: 1px solid var(--line); font-size: 13px; font-weight: 600; }
-  .chip { padding: 8px 12px; border-radius: 10px; font-size: 13px; font-weight: 600; border: 1px solid var(--line); color: var(--body); }
-  .chip.on { background: var(--ink); color: #fff; border-color: var(--ink); }
-  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
-  .mark { width: 28px; height: 28px; border-radius: 8px; background: var(--ink); flex-shrink: 0; }
-  .term { border-bottom: 1px dashed #A1A1AA; }
-  .toast { padding: 12px 14px; border-radius: 12px; background: var(--soft); font-size: 14px; line-height: 1.4; }
+  .badge { font-size: var(--t-xs); font-weight: 600; letter-spacing: var(--track); padding: var(--s1) var(--s2); border-radius: var(--r-sm); border: 1px solid var(--line); color: var(--text2); white-space: nowrap; }
+  .badge.dark { background: var(--accent); color: var(--onAccent); border-color: var(--accent); }
+  .head { display: flex; align-items: center; gap: var(--s3); min-width: 0; overflow: hidden; }
+  .head .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .head .chips { flex-wrap: nowrap; }
+  .head .chip { padding: var(--s1) var(--s2); font-size: var(--t-xs); }
+  .head .title { font-size: var(--t-md); font-weight: 600; }
+  .head .back { font-size: var(--t-sm); color: var(--muted); padding: var(--s2) 0; white-space: nowrap; }
+  .head .right { margin-left: auto; display: flex; align-items: center; gap: var(--s2); white-space: nowrap; flex-shrink: 0; }
+  .head .right .num { font-size: var(--t-xs); }
+  .qmark { width:28px;height:28px;border-radius:50%; border: var(--bw) solid var(--line); display: flex; align-items: center; justify-content: center; font-size: var(--t-sm); color: var(--text2); }
+  .pill { display: flex; align-items: center; gap: var(--s2); padding: var(--s2) var(--s3); border-radius: 999px; border: var(--bw) solid var(--line); font-size: var(--t-sm); font-weight: 600; }
+  .chip { padding: var(--s2) var(--s3); border-radius: var(--r-md); font-size: var(--t-sm); font-weight: 600; border: var(--bw) solid var(--line); color: var(--body); white-space: nowrap; }
+  .chip.on { background: var(--accent); color: var(--onAccent); border-color: var(--accent); }
+  .chips { display: flex; gap: var(--s2); flex-wrap: wrap; }
+  .term { border-bottom: var(--bw) dashed var(--dim); text-underline-offset: 3px; }
+  .toast { padding: var(--s3) var(--s4); border-radius: var(--r-lg); background: var(--card-bg); border: var(--bw) solid var(--card-line); font-size: var(--t-sm); line-height: 1.4; }
   .toast.error { background: var(--danger-soft); }
-  .updown { display: flex; gap: 12px; }
-  .ud { flex: 1; height: 76px; border-radius: 16px; border: 2px solid var(--ink); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; box-sizing: border-box; }
-  .ud .l { font-size: 22px; font-weight: 700; }
-  .ud .s { font-size: 12px; color: var(--muted); }
-  .ud.fill { background: var(--ink); color: #fff; }
-  .ud.fill .s { color: #D4D4D8; }
+  .updown { display: flex; gap: var(--s3); }
+  .ud { flex: 1; height: var(--ud-h); border-radius: var(--r-xl); border: 2px solid transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; box-sizing: border-box; background: var(--up); color: var(--onUp); transition: background .18s, color .18s, border-color .18s; }
+  .ud[data-side="down"] { background: var(--down); color: var(--onDown); }
+  .ud .l { font-size: var(--t-xl); font-weight: 700; }
+  .ud .s { font-size: var(--t-xs); color: currentColor; opacity: 0.7; }
+  /* the side the signal does not name steps back to an outline, same size */
+  .ud.ghost { background: transparent; color: var(--up); border-color: var(--up); }
+  .ud.ghost[data-side="down"] { background: transparent; color: var(--down); border-color: var(--down); }
   .dim { opacity: 0.4; pointer-events: none; }
-  .sheetbg { position: absolute; inset: 0; background: rgba(24,24,27,0.35); display: flex; align-items: flex-end; }
-  .sheet { width: 100%; border-radius: 20px 20px 0 0; background: #fff; padding: 20px 20px 28px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; }
-  .grab { width: 36px; height: 4px; border-radius: 2px; background: var(--line); align-self: center; }
-  .dots { display: flex; gap: 6px; }
-  .dot { width: 22px; height: 4px; border-radius: 2px; background: var(--hair); }
-  .dot.on { background: var(--ink); }
-  .list > div { padding: 10px 0; border-bottom: 1px solid var(--hair); }
-  .toggle { width: 44px; height: 26px; border-radius: 13px; background: var(--hair); position: relative; flex-shrink: 0; transition: background .15s; }
-  .toggle.on { background: var(--ink); }
-  .toggle::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 10px; background: #fff; transition: transform .15s; }
+  .sheetbg { position: absolute; inset: 0; background: var(--scrim); display: flex; align-items: flex-end; }
+  .sheet { width: 100%; border-radius: var(--r-xl) var(--r-xl) 0 0; box-shadow: var(--elev-lift); background: var(--paper); padding: var(--s5) var(--s5) var(--s6); box-sizing: border-box; display: flex; flex-direction: column; gap: var(--s3); }
+  .grab { width:36px;height:4px;border-radius:999px; background: var(--line); align-self: center; }
+  .dots { display: flex; gap: var(--s2); }
+  .dot { width:22px;height:4px;border-radius:999px; background: var(--hair); }
+  .dot.on { background: var(--accent); }
+  .list > div { padding: var(--s3) 0; border-bottom: var(--bw) solid var(--hair); }
+  .toggle { width:44px;height:26px;border-radius:999px; background: var(--line); position: relative; flex-shrink: 0; transition: background .15s; }
+  .toggle.on { background: var(--accent); }
+  .toggle::after { content: ""; position: absolute; top: 3px; left: 3px; width:20px;height:20px;border-radius:50%; background: var(--paper); transition: transform .15s; }
   .toggle.on::after { transform: translateX(18px); }
-  input[type=number] { font: inherit; font-size: 32px; font-weight: 700; letter-spacing: -0.01em; border: 0; outline: 0; width: 120px; background: transparent; color: var(--ink); padding: 0; }
-  input[type=range] { width: 100%; accent-color: var(--ink); }
-  .stepper { display: flex; align-items: center; gap: 12px; }
-  .stepper div[data-a] { width: 32px; height: 32px; border-radius: 16px; border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; font-size: 18px; }
-  .pinned { position: sticky; bottom: 0; background: #fff; border-top: 1px solid var(--hair); margin: 8px -20px 0; padding: 12px 20px 0; display: flex; flex-direction: column; gap: 10px; }
-  .footer-links { display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: var(--muted); }
-  .footer-links div[data-a] { padding: 6px 0; }
-  .focus:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
-  #note { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10; }
+  input[type=number] { font: inherit; font-size: var(--t-3xl); font-weight: 700; letter-spacing: -0.01em; border: 0; outline: 0; width: 120px; background: transparent; color: var(--ink); padding: 0; }
+  /* Exchange-style slider: a thin track, a filled left half, a square-ish
+     grip. The browser default reads as a form control, not an instrument. */
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 22px; background: transparent; margin: 0; }
+  input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 999px;
+    background: linear-gradient(to right, var(--accent) var(--p, 0%), var(--hair) var(--p, 0%)); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; margin-top: -7px;
+    border-radius: var(--r-sm); background: var(--accent); border: 2px solid var(--paper); box-shadow: 0 1px 4px var(--shadow-menu); cursor: pointer; }
+  input[type=range]::-moz-range-track { height: 4px; border-radius: 999px; background: var(--hair); }
+  input[type=range]::-moz-range-progress { height: 4px; border-radius: 999px; background: var(--accent); }
+  input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border-radius: var(--r-sm); background: var(--accent); border: 2px solid var(--paper); cursor: pointer; }
+  input[type=number] { -moz-appearance: textfield; }
+  input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .stepper { display: flex; align-items: center; gap: var(--s3); }
+  .stepper div[data-a] { width:32px;height:32px;border-radius:50%; border: var(--bw) solid var(--line); display: flex; align-items: center; justify-content: center; font-size: var(--t-lg); }
+  .pinned { position: sticky; bottom: 0; background: var(--paper); margin: var(--s2) calc(-1 * var(--s5)) 0; padding: var(--s3) var(--s5) 0; display: flex; flex-direction: column; gap: var(--s3); }
+  .footer-links { display: flex; align-items: center; justify-content: space-between; font-size: var(--t-sm); color: var(--muted); }
+  .footer-links div[data-a] { padding: var(--s2) 0; }
+  .focus:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #note { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--fill); color: var(--onFill); padding: var(--s3) var(--s4); border-radius: var(--r-md); font-size: var(--t-sm); opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10; }
   #note.show { opacity: 1; }
-  #tools { position: fixed; top: 10px; right: 12px; display: flex; gap: 6px; z-index: 9; }
-  #tools div { padding: 6px 10px; border-radius: 8px; background: rgba(24,24,27,0.8); color: #fff; font-size: 12px; font-weight: 600; cursor: pointer; }
+  #tools { position: fixed; top: 10px; right: 12px; display: flex; gap: var(--s2); z-index: 9; }
+  #tools div { padding: var(--s2) var(--s3); border-radius: var(--r-md); background: var(--chip); color: var(--onChip); font-size: var(--t-xs); font-weight: 600; cursor: pointer; }
+  #tools .th { opacity: 0.55; }
+  #tools .th.on { opacity: 1; background: var(--accent); color: var(--onAccent); }
   @media (max-width: 480px) { #tools { top: auto; bottom: 10px; right: 10px; opacity: 0.85; } }
-  @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(24,24,27,0.35); } 50% { box-shadow: 0 0 0 8px rgba(24,24,27,0); } }
+  @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--ring); } 50% { box-shadow: 0 0 0 8px var(--ring-0); } }
   @keyframes slide { from { background-position: 0 0; } to { background-position: 40px 0; } }
+  @keyframes shimmer { 0% { transform: translateX(-120%); } 55%, 100% { transform: translateX(320%); } }
+  @keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: .72; } }
+  .signal { position: relative; overflow: hidden; }
+  .signal::after { content: ""; position: absolute; top: 0; bottom: 0; width: 28%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.28), transparent);
+    animation: shimmer 2.6s ease-in-out infinite; pointer-events: none; }
+  .signal .live { animation: breathe 1.4s ease-in-out infinite; }
   .pulse { animation: pulse 1.2s ease-out infinite; }
-  .busy { background-image: repeating-linear-gradient(90deg, #18181B 0 12px, #52525B 12px 20px); background-size: 40px 6px; animation: slide 0.8s linear infinite; }
-  .menu { position: absolute; top: 36px; left: 38px; width: 250px; border-radius: 14px; background: #fff; border: 1px solid var(--line); box-shadow: 0 12px 30px rgba(24,24,27,0.16); padding: 6px; display: flex; flex-direction: column; gap: 2px; z-index: 2; }
-  .menu > div { padding: 10px 12px; border-radius: 10px; display: flex; flex-direction: column; gap: 2px; }
+  .busy { background-image: repeating-linear-gradient(90deg, var(--ink) 0 12px, var(--text2) 12px 20px); background-size: 40px 6px; animation: slide 0.8s linear infinite; }
+  .menu { position: absolute; top: 36px; left: 38px; width: 250px; border-radius: var(--r-lg); background: var(--paper); border: 1px solid var(--line); box-shadow: 0 12px 30px var(--shadow-menu); padding: var(--s2); display: flex; flex-direction: column; gap: 2px; z-index: 2; }
+  .menu > div { padding: var(--s3) var(--s3); border-radius: var(--r-md); display: flex; flex-direction: column; gap: 2px; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>
 
 <div id="stage"><div id="phone"><div id="screen"></div><div id="overlay"></div></div></div>
-<div id="tools"><div data-a="reset">Restart</div></div>
+<div id="tools"><div class="th on" data-a="theme" data-v="gray">Gray</div><div class="th" data-a="theme" data-v="terminal">Terminal</div><div class="th" data-a="theme" data-v="paper">Paper</div><div data-a="reset">Restart</div></div>
 <div id="note"></div>
 
 <script>
@@ -98,6 +235,21 @@ const FEE_BPS = 3.45;             // round trip, taker, both legs
 const MARKET = { symbol: 'BTC', maxLev: 15 };
 const NAMES = { direction: 'Direction', ma: 'MA Cross', rsi: 'RSI Bounce' };
 const el = (id) => document.getElementById(id);
+const fillOf = (v, min, max) => `--p:${Math.round((v - min) / (max - min) * 100)}%`;
+// The official mark, inline so it picks up the theme's tokens like anything
+// else on screen. Generated from design/brand/mark.mjs — do not edit the paths.
+const LOGO = (size = 28, ink = 'var(--ink)', acc = 'var(--accent)') =>
+  `<svg viewBox="0 0 64 64" width="${size}" height="${size}" style="display:block;flex-shrink:0" aria-label="TradeAgent"><circle cx="32" cy="32" r="26.5" fill="none" stroke="${acc}" stroke-width="3"/> <path d="M32 5.5v4.4M58.5 32h-4.4M32 58.5v-4.4M5.5 32h4.4" fill="none" stroke="${acc}" stroke-width="2.1" stroke-linecap="round"/> <g transform="translate(11.5 10.5) scale(0.64)"><path d="M18.4 24.6C13 23 8 19.6 5.4 13.4c5.6 3 10.2 6 14.2 8Z" fill="${ink}"/> <path d="M45.6 24.6c5.4-1.6 10.4-5 13-11.2-5.6 3-10.2 6-14.2 8Z" fill="${ink}"/> <path d="M18 26c0-5 3.5-8 8-8.5h12c4.5.5 8 3.5 8 8.5v6c0 9-5.5 15.5-14 18-8.5-2.5-14-9-14-18Z" fill="${ink}"/> <path d="M20.5 29 43.5 27.4l.5 5.1c-4 4-8 5-10.4 2.3-1-1-2.2-1-3.2 0-2.4 2.7-6.4 1.7-10.4-2.3Z" fill="${acc}"/> <path d="M32 51.2 24.5 56v-7.4L32 51.4l7.5-2.8V56Z" fill="${acc}"/></g></svg>`;
+
+// Colours the canvas and inline SVG need as plain strings: CSS var() is not
+// valid in a presentation attribute or a 2d context, so they are resolved
+// from :root at render time and re-resolve when the theme changes.
+let _css = getComputedStyle(document.documentElement), _ctheme = null, _cache = {};
+const C = (name) => {
+  const t = document.documentElement.dataset.theme || '';
+  if (t !== _ctheme) { _ctheme = t; _cache = {}; _css = getComputedStyle(document.documentElement); }
+  return _cache[name] ?? (_cache[name] = _css.getPropertyValue(name).trim());
+};
 let st;
 
 function fresh() {
@@ -127,20 +279,53 @@ const money = (n) => Math.round(n).toLocaleString('en-US').replace(/,/g, ' ');
 const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const hm = (t) => { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 const testnet = () => st.network === 'testnet';
+// How much of today can still go wrong, as one number: what the open trades
+// can still lose plus what the day has already lost, against the daily budget.
+const riskPct = () => {
+  const atStake = st.positions.reduce((a, p) => a + (p.stopOn ? p.amount * p.stop / 100 : p.amount), 0);
+  return Math.min(100, Math.round((atStake + st.budgetSpent) / 50 * 100));
+};
+// A speedometer small enough to live next to the balance: the arc fills and
+// the colour changes as the day heats up, so the state reads without opening
+// anything. Calm, warm and hot are colours of their own, never up/down — a
+// quiet day must not be readable as a profitable one.
+const riskDial = (size = 26) => {
+  const p = riskPct();
+  const col = p < 34 ? 'var(--risk-calm)' : p < 67 ? 'var(--risk-warm)' : 'var(--risk-hot)';
+  const LEN = 25.13;                       // half a circle of radius 8
+  const shown = Math.max(8, p);            // never a colourless gauge
+  const a = Math.PI * (1 - shown / 100);
+  const ex = (12 + 8 * Math.cos(a)).toFixed(2), ey = (18 - 8 * Math.sin(a)).toFixed(2);
+  return `<div data-a="go" data-v="risk" title="Risk ${p}%" style="display:flex;align-items:center;flex-shrink:0;padding-right:2px">
+    <svg width="${size}" height="${size}" viewBox="0 0 24 24" style="display:block">
+      <g transform="translate(0 -2)">
+        <path d="M4 18a8 8 0 0 1 16 0" fill="none" stroke="var(--hair)" stroke-width="3.2" stroke-linecap="round"/>
+        <path d="M4 18a8 8 0 0 1 16 0" fill="none" stroke="${col}" stroke-width="3.2" stroke-linecap="round"
+              stroke-dasharray="${LEN}" stroke-dashoffset="${(LEN * (1 - shown / 100)).toFixed(2)}"/>
+        <circle cx="${ex}" cy="${ey}" r="2.8" fill="${col}" stroke="var(--paper)" stroke-width="1.4"/>
+      </g>
+    </svg>
+  </div>`;
+};
 const badge = (long = false) => testnet() ? `<div class="badge">${long ? 'TESTNET · TEST MONEY' : 'TESTNET'}</div>` : '';
 const balance = () => (testnet() ? 10001 : 101) + st.trades.reduce((a, t) => a + (t.id.startsWith('n') ? t.pnl : 0), 0);
 const put = () => st.settings.size / st.settings.lev;
 const risk = () => { const s = st.settings; return s.stopOn ? put() * s.stop / 100 : put(); };
-const possible = () => { const s = st.settings; const win = s.tpOn ? `+${(put() * s.tp / 100).toFixed(2)} · at +${s.tp}%` : `+${(s.size / 100).toFixed(2)} per 1% of BTC · no cap`; return `<div id="possible" style="display:flex;gap:8px"><div class="card" style="flex:1;gap:2px;padding:12px 14px"><div class="small" style="font-size:11px;font-weight:600;letter-spacing:.04em">POSSIBLE WIN</div><div class="num" style="font-size:15px;font-weight:700">${win}</div></div><div class="card" style="flex:1;gap:2px;padding:12px 14px"><div class="small" style="font-size:11px;font-weight:600;letter-spacing:.04em">POSSIBLE LOSS</div><div class="num" style="font-size:15px;font-weight:700">−${risk().toFixed(2)} at most</div></div></div>`; };
-const ANALYSIS = { headline: 'Whales bought the dip this morning; retail is still selling.', flows: 'buys $4.2M · sells $2.9M', lean: 'buyers ahead', who: 'Buying: Wintermute $1.1M, 0x9a…f2 $640K · Selling: Jump $780K', strategies: 'A trend day: crosses paid 3 of 4 so far, RSI zones came once. MA Cross fits today better than RSI.' };
+const possible = () => { const s = st.settings; const win = s.tpOn ? `+${(put() * s.tp / 100).toFixed(2)} · at +${s.tp}%` : `+${(s.size / 100).toFixed(2)} per 1% of BTC · no cap`; return `<div id="possible" style="display:flex;gap:var(--s2)"><div class="card" style="flex:1;gap:2px;padding:var(--s3) var(--s4)"><div class="small" style="font-size:var(--t-xs);font-weight:600;letter-spacing:.04em">POSSIBLE WIN</div><div class="num" style="font-size:var(--t-md);font-weight:700">${win}</div></div><div class="card" style="flex:1;gap:2px;padding:var(--s3) var(--s4)"><div class="small" style="font-size:var(--t-xs);font-weight:600;letter-spacing:.04em">POSSIBLE LOSS</div><div class="num" style="font-size:var(--t-md);font-weight:700">−${risk().toFixed(2)} at most</div></div></div>`; };
+const ANALYSIS = { buy: '$4.2M', sell: '$2.9M', share: 59, wallets: [
+  { name: 'Wintermute', side: 'buy', size: '1.1M' },
+  { name: '0x9a…f2 · smart money', side: 'buy', size: '640K' },
+  { name: 'Jump Trading', side: 'sell', size: '780K' },
+], headline: 'Whales bought the dip this morning; retail is still selling.', flows: 'buys $4.2M · sells $2.9M', lean: 'buyers ahead', who: 'Buying: Wintermute $1.1M, 0x9a…f2 $640K · Selling: Jump $780K', strategies: 'A trend day: crosses paid 3 of 4 so far, RSI zones came once. MA Cross fits today better than RSI.' };
 const notionalOf = (p) => p.amount * p.lev;
 const pnlOf = (p) => { const move = st.price / p.entry - 1; return notionalOf(p) * (p.side === 'up' ? move : -move) - notionalOf(p) * FEE_BPS / 10000; };
 const openPos = (s = st.strategy) => st.positions.find((p) => p.strategy === s) || null;
 const note = (t) => { const n = el('note'); n.textContent = t; n.classList.add('show'); clearTimeout(note.t); note.t = setTimeout(() => n.classList.remove('show'), 1600); };
 const go = (screen, push = true) => { if (push && st.screen !== screen) st.stack.push(st.screen); st.screen = screen; st.sheet = null; render(); el('screen').scrollTop = 0; };
 const back = () => { st.screen = st.stack.pop() || 'lobby'; st.sheet = null; render(); };
+const pnlCol = (v) => (v > 0.005 ? 'var(--up)' : v < -0.005 ? 'var(--down)' : 'var(--ink)');
 const term = (t, k) => `<span class="term" data-a="term" data-v="${k}">${t}</span>`;
-const share = () => `<div class="pill" data-a="sheet" data-v="share"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#18181B" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"></path><path d="M12 15V3"></path><path d="M8 7l4-4 4 4"></path></svg>Share</div>`;
+const share = () => `<div class="pill" data-a="sheet" data-v="share"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${C('--ink')}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"></path><path d="M12 15V3"></path><path d="M8 7l4-4 4 4"></path></svg>Share</div>`;
 
 const TERMS = () => ({
   lev: ['Leverage', `A ${st.settings.size} AUSD position at ${st.settings.lev}x takes ${put().toFixed(0)} AUSD of your own. A 1% move in Bitcoin is ${(st.settings.size / 100).toFixed(2)} AUSD for you, up or down. The stop keeps the downside capped.`],
@@ -153,21 +338,21 @@ const TERMS = () => ({
 const V = {};
 
 V.start = () => `<div class="page"><div class="top">
-  <div style="display:flex;align-items:center;gap:10px"><div class="mark"></div><div style="font-size:15px;font-weight:600">TradeAgent · prototype</div></div>
+  <div style="display:flex;align-items:center;gap:var(--s3)">${LOGO(28)}<div style="font-size:var(--t-md);font-weight:600">TradeAgent · prototype</div></div>
   <div class="h1">Two things to click through</div>
   <div class="p">Gray on purpose. Everything works, nothing is real: the price is a random walk, 15 minutes take 45 seconds, the money is fake.</div>
-  <div class="card" data-a="mode" data-v="onboarding"><div style="font-size:18px;font-weight:700">Onboarding</div><div class="small">Splash → practice or real → intro → passkey → open account → lobby → lesson → first tap → position → result. Continues into the app.</div></div>
-  <div class="card" data-a="mode" data-v="app"><div style="font-size:18px;font-weight:700">The app</div><div class="small">Returning user with a history. Lobby, three strategies, position settings, live positions, leaderboard with a prize to claim, history, risk board, account and withdraw, lessons, the own-strategy stub. Test clock: MA Cross and RSI signal every 5 s for 10 s.</div></div>
+  <div class="card" data-a="mode" data-v="onboarding"><div style="font-size:var(--t-lg);font-weight:700">Onboarding</div><div class="small">Splash → practice or real → intro → passkey → open account → lobby → lesson → first tap → position → result. Continues into the app.</div></div>
+  <div class="card" data-a="mode" data-v="app"><div style="font-size:var(--t-lg);font-weight:700">The app</div><div class="small">Returning user with a history. Lobby, three strategies, position settings, live positions, leaderboard with a prize to claim, history, risk board, account and withdraw, lessons, the own-strategy stub. Test clock: MA Cross and RSI signal every 5 s for 10 s.</div></div>
 </div><div class="small" style="text-align:center">«Restart» in the corner brings you back here.</div></div>`;
 
-V.splash = () => `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:#18181B;color:#fff">
-  <div style="width:72px;height:72px;border-radius:20px;background:#fff"></div><div style="font-size:22px;font-weight:700">TradeAgent</div>
-  <div style="width:120px;height:3px;border-radius:2px;background:#3F3F46;overflow:hidden"><div style="height:3px;width:${Math.min(100, st.splash * 100 / 15)}%;background:#fff"></div></div></div>`;
+V.splash = () => `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--s5);background:var(--ground);color:var(--ink)">
+  ${LOGO(84)}<div style="font-size:var(--t-xl);font-weight:var(--h1-weight);letter-spacing:var(--h1-track)">TradeAgent</div>
+  <div style="width:120px;height:3px;border-radius:999px;background:var(--hair);overflow:hidden"><div style="height:3px;width:${Math.min(100, st.splash * 100 / 15)}%;background:var(--accent);transition:width .1s linear"></div></div></div>`;
 
 V.network = () => `<div class="page"><div class="top">
   <div class="h1">How do you want to start?</div>
-  <div class="card" data-a="net" data-v="testnet" style="border:2px solid var(--ink);background:#FAFAFA;gap:8px"><div class="head"><div style="font-size:19px;font-weight:700">Practice</div><div class="right"><div class="badge">⬡ MONAD TESTNET</div></div></div><div style="font-size:15px;line-height:1.4;color:var(--body)">Practice money from the exchange. Real prices, real strategies, nothing to lose.</div></div>
-  <div class="card" data-a="net" data-v="mainnet" style="border:1px solid var(--line);background:#FAFAFA;gap:8px"><div class="head"><div style="font-size:19px;font-weight:700">Real money</div><div class="right"><div class="badge dark">⬡ MONAD MAINNET</div></div></div><div style="font-size:15px;line-height:1.4;color:var(--body)">Your own money on a real exchange. You deposit it, every win and loss is real, and you can withdraw any time.</div></div>
+  <div class="card" data-a="net" data-v="testnet" style="border:2px solid var(--ink);background:var(--raised);gap:var(--s2)"><div class="head"><div style="font-size:var(--t-lg);font-weight:700">Practice</div><div class="right"><div class="badge">⬡ MONAD TESTNET</div></div></div><div style="font-size:var(--t-md);line-height:1.4;color:var(--body)">Practice money from the exchange. Real prices, real strategies, nothing to lose.</div></div>
+  <div class="card" data-a="net" data-v="mainnet" style="border:1px solid var(--line);background:var(--raised);gap:var(--s2)"><div class="head"><div style="font-size:var(--t-lg);font-weight:700">Real money</div><div class="right"><div class="badge dark">⬡ MONAD MAINNET</div></div></div><div style="font-size:var(--t-md);line-height:1.4;color:var(--body)">Your own money on a real exchange. You deposit it, every win and loss is real, and you can withdraw any time.</div></div>
 </div><div class="small" style="text-align:center">You can switch any time in Account.</div></div>`;
 
 const INTRO = [
@@ -176,14 +361,14 @@ const INTRO = [
   ['This is where you get good', 'A plan on every trade, a stop, a daily budget. A streak to protect, a board to climb. Discipline you can feel in a week.'],
 ];
 V.intro = () => { const [t, b] = INTRO[st.intro]; return `<div class="page"><div class="top">
-  <div class="head"><div class="mark" style="width:22px;height:22px;border-radius:6px"></div><div class="title">TradeAgent</div>${badge()}<div class="right"><div class="small" data-a="go" data-v="passkey">Skip</div></div></div>
-  <div class="ph" style="height:250px;border-radius:20px"></div>
+  <div class="head">${LOGO(24)}<div class="title">TradeAgent</div>${badge()}<div class="right"><div class="small" data-a="go" data-v="passkey">Skip</div></div></div>
+  ${[ART.crowd, ART.copilot, ART.discipline][st.intro]()}
   <div class="dots">${INTRO.map((_, i) => `<div class="dot ${i <= st.intro ? 'on' : ''}"></div>`).join('')}</div>
-  <div class="h1" style="font-size:30px">${t}</div><div class="p" style="font-size:17px;color:var(--body)">${b}</div>
+  <div class="h1" style="font-size:var(--t-3xl)">${t}</div><div class="p" style="font-size:var(--t-lg);color:var(--body)">${b}</div>
 </div><div class="bottom"><div class="btn primary" data-a="introNext">${st.intro < 2 ? 'Next' : "Let's go"}</div></div></div>`; };
 
 V.passkey = () => `<div class="page"><div class="top">
-  <div style="width:64px;height:64px;border-radius:16px;border:1px solid var(--line)"></div>
+  ${LOGO(64)}
   <div class="h1">Your account is a passkey</div>
   <div class="p">No password, no seed phrase. The key is created on this device and Face ID unlocks it. Nobody else, including us, can withdraw.</div>
 </div><div class="bottom"><div class="btn primary" data-a="dialog">Create account</div><div class="link" data-a="dialog">I already have one · Sign in</div></div></div>`;
@@ -191,105 +376,459 @@ V.passkey = () => `<div class="page"><div class="top">
 V.realmoney = () => `<div class="page"><div class="top">
   <div class="h1">This is real money</div>
   <div class="p">Trades here use real dollars on a real exchange. A losing trade loses money. Every trade has a stop, and you never risk more than the screen says.</div>
-  <div class="card" style="font-size:14px;color:var(--body)"><div>· Your first trade risks at most 25 AUSD</div><div>· You can close any trade at any moment</div><div>· One button closes everything</div></div>
+  <div class="card" style="font-size:var(--t-sm);color:var(--body)"><div>· Your first trade risks at most 25 AUSD</div><div>· You can close any trade at any moment</div><div>· One button closes everything</div></div>
 </div><div class="bottom"><div class="btn primary" data-a="go" data-v="money">I understand</div>${st.mode === 'app' ? `<div class="link" data-a="back">Stay on practice</div>` : ''}</div></div>`;
 
 V.money = () => { const m = st.money; return `<div class="page"><div class="top">
   <div class="h1">Add funds</div><div class="p">Send from any chain or exchange. It arrives in your account as AUSD, a dollar stablecoin.</div>
-  ${m === 'pick' ? `<div><div class="small">From</div><div class="chips" style="margin-top:8px">${['monad', 'base', 'arbitrum', 'ethereum'].map((c) => `<div class="chip ${st.moneyFrom === c ? 'on' : ''}" data-a="moneyfrom" data-v="${c}">${c[0].toUpperCase() + c.slice(1)}</div>`).join('')}</div></div>
-    ${st.moneyFrom === 'monad' ? `<div class="card"><div class="small">Send AUSD on Monad to your address</div><div class="num" style="font-size:15px;font-weight:600;word-break:break-all">0x3f9a 2c41 8b7e d0f5 6a1c 93e2 47b8 c5d1 0a4f e6b2</div><div style="display:flex;gap:8px"><div class="chip" data-a="note" data-v="Copied">Copy</div><div class="chip" data-a="note" data-v="QR: not in the prototype">QR</div></div></div><div class="small">No bridge, no swap: it lands in a minute. Minimum 100 AUSD to open the account.</div>` : `<div><div class="small">Asset and amount</div><div style="display:flex;gap:8px;align-items:center;margin-top:8px"><div class="chip on">USDC</div><div class="chip">ETH</div><div class="num" style="margin-left:auto;padding:10px 14px;border-radius:10px;border:1px solid var(--line);font-size:16px;min-width:80px;text-align:right">100</div></div><div class="small" style="margin-top:8px">Minimum 100. The exchange needs it to open your account.</div></div>`}`
-  : m === 'wait' ? `<div class="card"><div class="small">Send 100 USDC on Base to</div><div class="num" style="font-size:15px;font-weight:600;word-break:break-all">0x3f9a 2c41 8b7e d0f5 6a1c 93e2 47b8 c5d1 0a4f e6b2</div><div class="chip" style="align-self:flex-start" data-a="note" data-v="Copied">Copy</div></div><div class="small">Waiting for your transfer. Usually under two minutes.</div>`
-  : m === 'done' ? `<div class="card"><div class="small">Arrived</div><div class="num" style="font-size:28px;font-weight:700">100 AUSD</div></div><div class="small">Preparing your account… a few seconds.</div>`
-  : `<div class="card"><div class="small">Arrived</div><div class="num" style="font-size:28px;font-weight:700">100 AUSD</div></div>`}
+  ${m === 'pick' ? `<div><div class="small">From</div><div class="chips" style="margin-top:var(--s2)">${['monad', 'base', 'arbitrum', 'ethereum'].map((c) => `<div class="chip ${st.moneyFrom === c ? 'on' : ''}" data-a="moneyfrom" data-v="${c}">${c[0].toUpperCase() + c.slice(1)}</div>`).join('')}</div></div>
+    ${st.moneyFrom === 'monad' ? `<div class="card"><div class="small">Send AUSD on Monad to your address</div><div class="num" style="font-size:var(--t-md);font-weight:600;word-break:break-all">0x3f9a 2c41 8b7e d0f5 6a1c 93e2 47b8 c5d1 0a4f e6b2</div><div style="display:flex;gap:var(--s2)"><div class="chip" data-a="note" data-v="Copied">Copy</div><div class="chip" data-a="note" data-v="QR: not in the prototype">QR</div></div></div><div class="small">No bridge, no swap: it lands in a minute. Minimum 100 AUSD to open the account.</div>` : `<div><div class="small">Asset and amount</div><div style="display:flex;gap:var(--s2);align-items:center;margin-top:var(--s2)"><div class="chip on">USDC</div><div class="chip">ETH</div><div class="num" style="margin-left:auto;padding:var(--s3) var(--s4);border-radius:var(--r-md);border:1px solid var(--line);font-size:var(--t-md);min-width:80px;text-align:right">100</div></div><div class="small" style="margin-top:var(--s2)">Minimum 100. The exchange needs it to open your account.</div></div>`}`
+  : m === 'wait' ? `<div class="card"><div class="small">Send 100 USDC on Base to</div><div class="num" style="font-size:var(--t-md);font-weight:600;word-break:break-all">0x3f9a 2c41 8b7e d0f5 6a1c 93e2 47b8 c5d1 0a4f e6b2</div><div class="chip" style="align-self:flex-start" data-a="note" data-v="Copied">Copy</div></div><div class="small">Waiting for your transfer. Usually under two minutes.</div>`
+  : m === 'done' ? `<div class="card"><div class="small">Arrived</div><div class="num" style="font-size:var(--t-2xl);font-weight:700">100 AUSD</div></div><div class="small">Preparing your account… a few seconds.</div>`
+  : `<div class="card"><div class="small">Arrived</div><div class="num" style="font-size:var(--t-2xl);font-weight:700">100 AUSD</div></div>`}
 </div><div class="bottom">${m === 'pick' ? (st.moneyFrom === 'monad' ? `<div class="btn outline" data-a="money" data-v="done">Prototype: transfer arrives</div>` : `<div class="btn primary" data-a="money" data-v="wait">Get address</div>`) : m === 'wait' ? `<div class="btn outline" data-a="money" data-v="done">Prototype: transfer arrives</div>` : m === 'done' ? `<div class="btn disabled">Preparing…</div>` : `<div class="btn primary" data-a="go" data-v="${st.mode === 'app' ? 'account' : 'enable'}">Continue</div>`}</div></div>`; };
 
 V.enable = () => { const e = st.enable, third = 30; const stage = e === 0 ? 0 : Math.min(3, Math.floor(e / third) + 1);
   const labels = testnet() ? ['', 'Signing in to the exchange', 'Test money arriving: 10 000 AUSD', 'Opening your account'] : ['', 'Signing in to the exchange', 'Opening your account', 'Linking the strategies'];
+  // Three steps, each filling as it runs: the bar shows progress inside the
+  // step you are on, not just which step it is.
+  const seg = (i) => {
+    const from = (i - 1) * third, into = Math.max(0, Math.min(third, e - from));
+    return `<div style="flex:1;height:6px;border-radius:999px;background:var(--hair);overflow:hidden"><div class="${stage === i ? 'busy' : ''}" style="height:6px;width:${Math.round(into / third * 100)}%;background:var(--accent);border-radius:999px;transition:width .12s linear"></div></div>`;
+  };
+  const step = (i) => `<div style="display:flex;align-items:center;gap:var(--s2);font-size:var(--t-sm);color:${stage === i ? 'var(--ink)' : stage > i ? 'var(--muted)' : 'var(--dim)'};${stage === i ? 'font-weight:600' : ''}">
+      <div style="width:14px;display:flex;align-items:center;justify-content:center;color:${stage >= i ? 'var(--accent)' : 'var(--dim)'}">${stage > i ? '✓' : stage === i ? '<div class="pulse" style="width:8px;height:8px;border-radius:50%;background:var(--accent)"></div>' : '○'}</div>
+      <div style="flex:1">${labels[i]}</div>
+      ${stage === i ? `<div class="num" style="color:var(--muted)">${Math.max(0, Math.ceil((i * third - e) / 10))} s</div>` : ''}
+    </div>`;
   return `<div class="page"><div class="top">
   <div class="h1">Open your account</div>
   <div class="p">${testnet() ? 'One tap. The exchange opens your account and gives you 10 000 AUSD of practice money. About a minute.' : 'One tap. The exchange opens your account and links it to the strategies. About a minute.'}</div>
-  ${e > 0 ? `<div class="card"><div style="display:flex;gap:6px">${[1, 2, 3].map((i) => `<div class="${stage === i ? 'busy' : ''}" style="flex:1;height:6px;border-radius:3px;background:${e >= i * third ? 'var(--ink)' : 'var(--line)'}"></div>`).join('')}</div><div style="display:flex;align-items:center;gap:10px"><div class="pulse" style="width:10px;height:10px;border-radius:5px;background:var(--ink)"></div><div style="font-size:15px;font-weight:600">${labels[stage]}</div></div><div style="display:flex;flex-direction:column;gap:4px" class="small">${[1, 2, 3].map((i) => `<div style="${stage === i ? 'color:var(--ink)' : ''}">${stage > i ? '✓' : stage === i ? '●' : '○'} ${labels[i]}${stage === i ? ` · ${Math.ceil((i * third - e) / 10)} s` : ''}</div>`).join('')}</div></div>` : ''}
+  ${e > 0 ? `<div class="card" style="gap:var(--s3)">
+    <div style="display:flex;gap:var(--s2)">${[1, 2, 3].map(seg).join('')}</div>
+    <div style="display:flex;flex-direction:column;gap:var(--s2)">${[1, 2, 3].map(step).join('')}</div>
+  </div>` : ''}
 </div><div class="bottom">${e > 0 ? `<div class="btn disabled">Working…</div>` : `<div class="btn primary" data-a="startEnable">Open account</div>`}</div></div>`; };
 
-const strategyCard = (key, sub, line, lead) => `<div data-a="strategy" data-v="${key}" style="display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:14px;border:${lead ? '2px solid var(--ink)' : '1px solid var(--hair)'};background:#FAFAFA">
-  <div style="display:flex;align-items:center;gap:10px"><div class="ph" style="width:56px;height:56px;border-radius:12px"></div><div style="display:flex;flex-direction:column;gap:2px"><div style="font-size:17px;font-weight:700">${NAMES[key]}</div><div class="small">${sub}</div></div>${lead ? `<div class="badge dark" style="margin-left:auto">START HERE</div>` : openPos(key) ? `<div class="badge" style="margin-left:auto">OPEN · ${fmt(pnlOf(openPos(key)))}</div>` : ''}</div>
-  <div style="font-size:14px;line-height:1.4;color:var(--body)">${line}</div></div>`;
-V.lobby = () => { const week = st.trades.filter((t) => t.closed > Date.now() - 7 * 86400e3); const wp = week.reduce((a, t) => a + t.pnl, 0); return `<div class="page" style="justify-content:flex-start;padding:52px 20px 24px;gap:14px">
-  <div class="head" style="position:relative"><div class="mark"></div><div class="badge ${testnet() ? '' : 'dark'}" data-a="netmenu" style="display:flex;align-items:center;gap:6px">${testnet() ? 'TESTNET' : 'MAINNET'} <span style="font-size:9px">▼</span></div><div class="right num small">${money(balance())} AUSD</div>${st.netMenu ? `<div class="menu"><div data-a="switch" data-v="testnet" style="background:${testnet() ? 'var(--soft)' : '#fff'}"><div style="font-size:14px;font-weight:600">Practice ${testnet() ? '✓' : ''}</div><div class="small" style="font-size:12px">Monad testnet · practice money</div></div><div data-a="switch" data-v="mainnet" style="background:${testnet() ? '#fff' : 'var(--soft)'}"><div style="font-size:14px;font-weight:600">Real money ${testnet() ? '' : '✓'}</div><div class="small" style="font-size:12px">Monad mainnet · your own money</div></div></div>` : ''}</div>
-  ${st.prize > 0 && !st.firstVisit ? `<div data-a="go" data-v="leaderboard" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-radius:12px;border:2px solid var(--ink);font-size:14px;font-weight:600"><div>Prize of the week: ${st.prize.toFixed(2)} AUSD</div><div>Claim</div></div>` : ''}
-  <div><div style="font-size:22px;font-weight:700">Choose a strategy</div><div class="small">Direction leads this week with +12.3 · MA Cross +2.1 · RSI −0.4</div></div>
+// Each strategy gets a drawn mark, not a hatched "image goes here" square:
+// on a themed screen a placeholder reads as unfinished, and these three are the
+// first thing a new user looks at.
+const GLYPH = {
+  direction: `<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 20h24"/><path d="M24 12l8 8-8 8"/><path d="M16 12l-8 8 8 8" opacity=".35"/></svg>`,
+  ma: `<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 28c5-1 7-13 13-13s8 12 13 11"/><path d="M7 15c6 2 9 11 13 11s8-9 13-8" opacity=".35"/><circle cx="20" cy="21" r="3.2" fill="currentColor" stroke="none"/></svg>`,
+  rsi: `<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 13h28" stroke-dasharray="3 3" opacity=".4"/><path d="M6 27h28" stroke-dasharray="3 3" opacity=".4"/><path d="M7 20c3 8 6 9 8 5s3-13 6-13 4 12 6 14 4-3 6-6"/></svg>`,
+};
+const tile = (key, size) => `<div style="width:${size}px;height:${size}px;border-radius:var(--r-lg);background:var(--soft);border:var(--bw) solid var(--hair);color:var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-sizing:border-box"><div style="width:${Math.round(size * 0.64)}px;height:${Math.round(size * 0.64)}px">${GLYPH[key]}</div></div>`;
+
+// ---------------------------------------------------------------- artwork
+// The illustrations are real charts, not drawings of charts: one seeded price
+// series, candles with wicks and bodies, moving averages computed from the
+// closes, an RSI panel under the price. Everything is drawn from the theme's
+// tokens, so the chain the app ships on gives the scene its character.
+
+const rnd = (seed) => () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+
+// One walk, reused everywhere, so the lessons all talk about the same market.
+const ohlc = (n, seed, drift = 0, vol = 1) => {
+  const r = rnd(seed); let p = 100; const out = [];
+  for (let i = 0; i < n; i++) {
+    const o = p, c = o + (r() - 0.5) * 3.4 * vol + drift;
+    out.push({ o, c, h: Math.max(o, c) + r() * 1.5 * vol, l: Math.min(o, c) - r() * 1.5 * vol });
+    p = c;
+  }
+  return out;
+};
+const sma = (d, n) => d.map((_, i) => {
+  const a = d.slice(Math.max(0, i - n + 1), i + 1);
+  return a.reduce((x, y) => x + y.c, 0) / a.length;
+});
+const rsiOf = (d, n = 14) => d.map((_, i) => {
+  const a = d.slice(Math.max(1, i - n + 1), i + 1);
+  let up = 0, dn = 0;
+  a.forEach((c, k) => { const prev = d[Math.max(0, i - a.length + 1 + k - 1)].c; const m = c.c - prev; m >= 0 ? up += m : dn -= m; });
+  return dn === 0 ? 100 : 100 - 100 / (1 + up / dn);
+});
+
+const grid = (x0, y0, w, h, rows = 4) => Array.from({ length: rows - 1 }, (_, k) =>
+  `<line x1="${x0}" y1="${(y0 + h / rows * (k + 1)).toFixed(1)}" x2="${x0 + w}" y2="${(y0 + h / rows * (k + 1)).toFixed(1)}" stroke="var(--hair)" stroke-width="1"/>`).join('');
+
+// Candles, the way a chart draws them: a wick through the range, a body
+// between open and close, coloured by which way the bar went.
+const candles = (d, x0, y0, w, h, o = {}) => {
+  const hi = Math.max(...d.map((x) => x.h)), lo = Math.min(...d.map((x) => x.l));
+  const pad = (hi - lo) * 0.09 || 1, top = hi + pad, bot = lo - pad;
+  const Y = (v) => y0 + h - ((v - bot) / (top - bot)) * h;
+  const step = w / d.length, bw = Math.max(2.2, step * 0.56);
+  const body = d.map((c, i) => {
+    const x = x0 + step * (i + 0.5), up = c.c >= c.o;
+    const col = up ? 'var(--up)' : 'var(--down)';
+    const t = Y(Math.max(c.o, c.c)), b = Y(Math.min(c.o, c.c));
+    return `<line x1="${x.toFixed(1)}" y1="${Y(c.h).toFixed(1)}" x2="${x.toFixed(1)}" y2="${Y(c.l).toFixed(1)}" stroke="${col}" stroke-width="1.5" opacity="${o.faded ? 0.5 : 1}"/>`
+         + `<rect x="${(x - bw / 2).toFixed(1)}" y="${t.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1.5, b - t).toFixed(1)}" fill="${col}" opacity="${o.faded ? 0.5 : 1}"/>`;
+  }).join('');
+  return { svg: body, Y, step, x: (i) => x0 + step * (i + 0.5) };
+};
+
+const frame = (h, inner, vb = '0 0 320 200') =>
+  `<div style="height:${h}px;border-radius:var(--r-xl);background:var(--card-bg);border:var(--bw) solid var(--hair);overflow:hidden">
+     <svg viewBox="${vb}" preserveAspectRatio="none" style="display:block;width:100%;height:100%">${inner}</svg>
+   </div>`;
+
+const tag = (x, y, text, col = 'var(--accent)', on = 'var(--onAccent)', w = 58) =>
+  `<rect x="${x - w / 2}" y="${y - 11}" width="${w}" height="22" rx="7" fill="${col}"/>
+   <text x="${x}" y="${y + 4}" font-size="11" font-weight="700" text-anchor="middle" font-family="monospace" fill="${on}">${text}</text>`;
+
+const BARS = ohlc(46, 7, 0.12, 1);
+// a walk that finishes oversold, so the RSI lesson shows the state it describes
+const COLD_BARS = ohlc(46, 23, -0.78, 1.15);
+
+const ART = {
+  // A market of people guessing, and one of them actually reading it.
+  crowd: () => {
+    const c = candles(BARS, 10, 30, 300, 150, { faded: true });
+    const dots = [];
+    for (let r = 0; r < 4; r++) for (let k = 0; k < 12; k++) {
+      if (r === 1 && k === 5) continue;
+      dots.push(`<circle cx="${26 + k * 24}" cy="${44 + r * 34}" r="4" fill="var(--dim)" opacity="0.18"/>`);
+    }
+    return frame(250, `${grid(10, 30, 300, 150)}${dots.join('')}${c.svg}
+      <circle cx="146" cy="78" r="20" fill="none" stroke="var(--accent)" stroke-width="2.5"/>
+      <path d="M146 53v7M171 78h-7M146 103v-7M121 78h7" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="146" cy="78" r="7" fill="var(--accent)"/>
+      ${tag(146, 22, 'YOU', 'var(--accent)', 'var(--onAccent)', 44)}`);
+  },
+
+  // Three strategies on the bench; one of them is calling you right now.
+  copilot: () => frame(250, `
+    ${[0, 1, 2].map((i) => {
+      const y = 30 + i * 48, lit = i === 1;
+      const mini = candles(ohlc(16, 11 + i * 5, i === 1 ? 0.5 : -0.1, 0.8), 214, y + 5, 64, 28, { faded: !lit });
+      return `<rect x="24" y="${y}" width="272" height="38" rx="9" fill="${lit ? 'var(--accent)' : 'var(--soft)'}"/>
+        <circle cx="46" cy="${y + 19}" r="9" fill="${lit ? 'var(--onAccent)' : 'var(--dim)'}" opacity="${lit ? 1 : 0.5}"/>
+        <rect x="64" y="${y + 12}" width="${lit ? 92 : 70 + i * 14}" height="6" rx="3" fill="${lit ? 'var(--onAccent)' : 'var(--dim)'}" opacity="${lit ? 0.9 : 0.45}"/>
+        <rect x="64" y="${y + 22}" width="${lit ? 58 : 42}" height="4" rx="2" fill="${lit ? 'var(--onAccent)' : 'var(--dim)'}" opacity="${lit ? 0.55 : 0.28}"/>
+        ${mini.svg}`;
+    }).join('')}
+    ${tag(160, 188, 'SIGNAL · UP', 'var(--accent)', 'var(--onAccent)', 96)}
+    <path d="M160 176v-8" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/>`),
+
+  // A week you did not break, and a floor under every trade.
+  discipline: () => {
+    const c = candles(BARS.slice(10), 10, 74, 300, 92);
+    return frame(250, `
+      ${[0, 1, 2, 3, 4, 5, 6].map((i) => `<rect x="${24 + i * 39}" y="22" width="30" height="30" rx="9"
+          fill="${i < 5 ? 'var(--accent)' : 'var(--soft)'}"/>${i < 5
+          ? `<path d="M${32 + i * 39} 37l5 5 9-10" fill="none" stroke="var(--onAccent)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>` : ''}`).join('')}
+      ${grid(10, 74, 300, 92)}${c.svg}
+      <line x1="10" y1="172" x2="310" y2="172" stroke="var(--down)" stroke-width="2.5" stroke-dasharray="7 6"/>
+      <rect x="10" y="172" width="300" height="20" fill="var(--down)" opacity="0.1"/>
+      <text x="16" y="186" font-size="11" font-family="monospace" fill="var(--down)">stop · the floor you set</text>`);
+  },
+
+  // Fifteen minutes from now it is higher or lower, and you call which.
+  direction: () => {
+    const past = BARS.slice(0, 30);
+    const c = candles(past, 10, 26, 180, 148);
+    const last = c.Y(past[past.length - 1].c), lx = c.x(past.length - 1);
+    return frame(200, `${grid(10, 26, 300, 148)}${c.svg}
+      <rect x="192" y="26" width="118" height="148" fill="var(--accent)" opacity="0.07"/>
+      <line x1="192" y1="20" x2="192" y2="180" stroke="var(--accent)" stroke-width="2" stroke-dasharray="5 5"/>
+      <text x="198" y="34" font-size="11" font-family="monospace" fill="var(--accent)">next 15 min</text>
+      <path d="M${lx.toFixed(1)} ${last.toFixed(1)}L250 ${(last - 44).toFixed(1)}L302 ${(last - 64).toFixed(1)}" fill="none" stroke="var(--up)" stroke-width="3" stroke-linecap="round" stroke-dasharray="6 6"/>
+      <path d="M${lx.toFixed(1)} ${last.toFixed(1)}L250 ${(last + 40).toFixed(1)}L302 ${(last + 58).toFixed(1)}" fill="none" stroke="var(--down)" stroke-width="3" stroke-linecap="round" stroke-dasharray="6 6"/>
+      <circle cx="302" cy="${(last - 64).toFixed(1)}" r="8" fill="var(--up)"/>
+      <circle cx="302" cy="${(last + 58).toFixed(1)}" r="8" fill="var(--down)"/>
+      <circle cx="${lx.toFixed(1)}" cy="${last.toFixed(1)}" r="5" fill="var(--ink)"/>`);
+  },
+
+  // The fast line crosses the slow one — on the real closes, at a real bar.
+  ma: () => {
+    const d = BARS, c = candles(d, 10, 22, 300, 152, { faded: true });
+    const f = sma(d, 5), sl = sma(d, 13);
+    const line = (vals, col, w) => `<polyline points="${vals.map((v, i) => `${c.x(i).toFixed(1)},${c.Y(v).toFixed(1)}`).join(' ')}" fill="none" stroke="${col}" stroke-width="${w}" stroke-linejoin="round"/>`;
+    let k = -1;
+    for (let i = d.length - 2; i > 14; i--) if ((f[i] - sl[i]) * (f[i - 1] - sl[i - 1]) < 0) { k = i; break; }
+    const cx = c.x(k), cy = c.Y(sl[k]);
+    return frame(200, `${grid(10, 22, 300, 152)}${c.svg}
+      ${line(sl, 'var(--dim)', 2.5)}${line(f, 'var(--accent)', 3.2)}
+      <circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="12" fill="none" stroke="var(--accent)" stroke-width="3"/>
+      <circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="4.5" fill="var(--accent)"/>
+      <line x1="${cx.toFixed(1)}" y1="${(cy - 12).toFixed(1)}" x2="${cx.toFixed(1)}" y2="34" stroke="var(--accent)" stroke-width="2"/>
+      ${tag(Math.min(270, Math.max(50, cx)), 22, 'CROSS', 'var(--accent)', 'var(--onAccent)', 62)}
+      <text x="306" y="188" font-size="11" text-anchor="end" font-family="monospace" fill="var(--accent)">MA 5</text>
+      <text x="262" y="188" font-size="11" text-anchor="end" font-family="monospace" fill="var(--dim)">MA 13</text>`);
+  },
+
+  // Price on top, the crowd thermometer underneath — the app's own layout,
+  // on a stretch that actually ends oversold.
+  rsi: () => {
+    const d = COLD_BARS, c = candles(d, 10, 16, 300, 96, { faded: true });
+    const r = rsiOf(d);
+    const RY = (v) => 192 - (v / 100) * 60;
+    // the first bars have no window behind them, so the line starts where the
+    // indicator becomes meaningful rather than at a fabricated 100
+    const from = 14;
+    const pts = r.slice(from).map((v, i) => `${c.x(i + from).toFixed(1)},${RY(v).toFixed(1)}`).join(' ');
+    const lastR = Math.round(r[r.length - 1]);
+    return frame(200, `${grid(10, 16, 300, 96)}${c.svg}
+      <rect x="10" y="126" width="300" height="70" fill="var(--soft)"/>
+      <rect x="10" y="${RY(100).toFixed(1)}" width="300" height="${(RY(70) - RY(100)).toFixed(1)}" fill="var(--down)" opacity="0.16"/>
+      <rect x="10" y="${RY(30).toFixed(1)}" width="300" height="${(RY(0) - RY(30)).toFixed(1)}" fill="var(--up)" opacity="0.2"/>
+      <polyline points="${pts}" fill="none" stroke="var(--ink)" stroke-width="2.5" stroke-linejoin="round"/>
+      <text x="16" y="${(RY(70) - 4).toFixed(1)}" font-size="10" font-family="monospace" fill="var(--down)">70 overbought</text>
+      <text x="16" y="${(RY(30) + 13).toFixed(1)}" font-size="10" font-family="monospace" fill="var(--up)">30 oversold</text>
+      <circle cx="${c.x(r.length - 1).toFixed(1)}" cy="${RY(r[r.length - 1]).toFixed(1)}" r="5" fill="var(--accent)"/>
+      ${tag(272, 138, `RSI ${lastR}`, 'var(--accent)', 'var(--onAccent)', 62)}`);
+  },
+
+  // You tap; the rest happens without you.
+  run: () => {
+    const c = candles(BARS.slice(20), 10, 20, 300, 96, { faded: true });
+    return frame(200, `${grid(10, 20, 300, 96)}${c.svg}
+      <line x1="40" y1="150" x2="280" y2="150" stroke="var(--hair)" stroke-width="3"/>
+      <line x1="40" y1="150" x2="160" y2="150" stroke="var(--accent)" stroke-width="3"/>
+      ${[['40', 'tap'], ['160', 'filled'], ['280', 'closed']].map(([x, l], i) => `
+        <circle cx="${x}" cy="150" r="${i === 1 ? 12 : 10}" fill="${i < 2 ? 'var(--accent)' : 'var(--soft)'}" stroke="${i === 2 ? 'var(--hair)' : 'none'}" stroke-width="3"/>
+        ${i < 2 ? `<path d="M${+x - 4.5} 150l3.5 3.5 6.5-7" fill="none" stroke="var(--onAccent)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>` : ''}
+        <text x="${x}" y="178" font-size="11" text-anchor="middle" font-family="monospace" fill="var(--muted)">${l}</text>`).join('')}
+      <text x="160" y="134" font-size="11" text-anchor="middle" font-family="monospace" fill="var(--muted)">watched every second</text>`);
+  },
+
+  // Your link goes out; a share of what they pay comes back.
+  referral: () => frame(150, `
+    <rect x="26" y="52" width="92" height="76" rx="16" fill="var(--accent)"/>
+    <circle cx="72" cy="80" r="13" fill="var(--onAccent)"/>
+    <rect x="52" y="100" width="40" height="7" rx="3.5" fill="var(--onAccent)" opacity="0.8"/>
+    <text x="72" y="142" font-size="12" text-anchor="middle" font-family="monospace" fill="var(--muted)">you</text>
+    <rect x="202" y="52" width="92" height="76" rx="16" fill="var(--soft)" stroke="var(--hair)" stroke-width="2"/>
+    <circle cx="248" cy="80" r="13" fill="var(--dim)" opacity="0.55"/>
+    <rect x="228" y="100" width="40" height="7" rx="3.5" fill="var(--dim)" opacity="0.4"/>
+    <text x="248" y="142" font-size="12" text-anchor="middle" font-family="monospace" fill="var(--muted)">your friend</text>
+    <path d="M124 74h64" fill="none" stroke="var(--ink)" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M182 68l8 6-8 6" fill="none" stroke="var(--ink)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="156" y="62" font-size="11" text-anchor="middle" font-family="monospace" fill="var(--muted)">your link</text>
+    <path d="M188 104h-64" fill="none" stroke="var(--up)" stroke-width="3" stroke-linecap="round"/>
+    <path d="M130 98l-8 6 8 6" fill="none" stroke="var(--up)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="156" y="124" font-size="12" font-weight="700" text-anchor="middle" font-family="monospace" fill="var(--up)">20% of fees</text>`, '16 40 292 116'),
+
+  // Words in, rules out, tested on real bars.
+  own: () => {
+    const c = candles(BARS.slice(6, 40), 10, 118, 300, 56, { faded: true });
+    return frame(180, `
+      <rect x="20" y="20" width="280" height="40" rx="10" fill="var(--soft)"/>
+      <rect x="34" y="34" width="160" height="6" rx="3" fill="var(--dim)" opacity="0.5"/>
+      <rect x="34" y="46" width="98" height="6" rx="3" fill="var(--dim)" opacity="0.3"/>
+      <rect x="202" y="32" width="2.5" height="18" fill="var(--accent)"/>
+      <path d="M160 64v10" stroke="var(--dim)" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="4 4"/>
+      ${[0, 1, 2].map((i) => `<rect x="${24 + i * 94}" y="80" width="82" height="26" rx="8" fill="var(--accent)" opacity="${0.92 - i * 0.24}"/>
+        <rect x="${38 + i * 94}" y="90" width="${48 - i * 8}" height="6" rx="3" fill="var(--onAccent)" opacity="0.85"/>`).join('')}
+      ${c.svg}`);
+  },
+};
+
+// A worked example, not a test: the chart names the moment it is talking
+// about and the moment it is not, so the reader learns by looking.
+const shownChart = (name) => {
+  const d = BARS, c = candles(d, 10, 22, 300, 150, { faded: name === 'ma' });
+  const mark = (x, y, ok, label, at = 'below') => {
+    const col = ok ? 'var(--up)' : 'var(--down)';
+    const pos = at === 'below' ? { x, y: y + 27, a: 'middle' }
+      : at === 'above' ? { x, y: y - 19, a: 'middle' }
+      : at === 'left' ? { x: x - 16, y: y + 4, a: 'end' }
+      : { x: x + 16, y: y + 4, a: 'start' };
+    return `
+    <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="11" fill="${ok ? 'var(--up)' : 'var(--paper)'}" stroke="${ok ? 'var(--up)' : 'var(--down)'}" stroke-width="2.5"/>
+    ${ok ? `<path d="M${(x - 4.5).toFixed(1)} ${y.toFixed(1)}l3.5 3.5 6.5-7" fill="none" stroke="var(--onUp)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>`
+         : `<path d="M${(x - 4).toFixed(1)} ${(y - 4).toFixed(1)}l8 8M${(x + 4).toFixed(1)} ${(y - 4).toFixed(1)}l-8 8" stroke="var(--down)" stroke-width="2.6" stroke-linecap="round"/>`}
+    <text x="${pos.x.toFixed(1)}" y="${pos.y.toFixed(1)}" font-size="10" text-anchor="${pos.a}" font-family="monospace" fill="${col}">${label}</text>`;
+  };
+
+  if (name === 'ma') {
+    const f = sma(d, 5), sl = sma(d, 13);
+    const line = (v, col, w) => `<polyline points="${v.map((x, i) => `${c.x(i).toFixed(1)},${c.Y(x).toFixed(1)}`).join(' ')}" fill="none" stroke="${col}" stroke-width="${w}" stroke-linejoin="round"/>`;
+    const cross = []; for (let i = 15; i < d.length - 1; i++) if ((f[i] - sl[i]) * (f[i - 1] - sl[i - 1]) < 0) cross.push(i);
+    const real = cross[cross.length - 1];
+    let near = 16, best = Infinity;
+    for (let i = 15; i < d.length - 2; i++) {
+      if (Math.abs(i - real) < 12) continue;
+      if (cross.some((k) => Math.abs(k - i) < 3)) continue;
+      const gap = Math.abs(f[i] - sl[i]);
+      if (gap < best) { best = gap; near = i; }
+    }
+    return frame(200, `${grid(10, 22, 300, 150)}${c.svg}${line(sl, 'var(--dim)', 2.5)}${line(f, 'var(--accent)', 3.2)}
+      ${mark(c.x(real), c.Y(sl[real]), true, 'a real cross', real > d.length * 0.6 ? 'left' : 'right')}
+      ${mark(c.x(near), c.Y(sl[near]), false, 'lines just close', near > d.length * 0.5 ? 'above' : 'below')}`);
+  }
+  // direction: a level the price keeps turning on
+  const lo = Math.min(...d.map((x) => x.l)), hi = Math.max(...d.map((x) => x.h));
+  const level = lo + (hi - lo) * 0.3, ly = c.Y(level);
+  const touches = []; d.forEach((b, i) => { if (Math.abs(b.l - level) < (hi - lo) * 0.05) touches.push(i); });
+  const bounce = touches.length ? touches[touches.length - 1] : 12;
+  // the counter-example has to be far enough away to read as a separate point
+  let mid = Math.min(d.length - 4, bounce + 16);
+  if (mid - bounce < 10) mid = Math.max(4, bounce - 16);
+  return frame(200, `${grid(10, 22, 300, 150)}${c.svg}
+    <line x1="10" y1="${ly.toFixed(1)}" x2="310" y2="${ly.toFixed(1)}" stroke="var(--accent)" stroke-width="2" stroke-dasharray="6 6"/>
+    <text x="306" y="${(ly + 16).toFixed(1)}" font-size="10" text-anchor="end" font-family="monospace" fill="var(--accent)">the line it keeps turning on</text>
+    ${mark(c.x(bounce), ly, true, 'the turn', 'below')}
+    ${mark(c.x(mid), c.Y(d[mid].h) - 20, false, 'mid-move', 'above')}`);
+};
+
+const strategyCard = (key, sub, line, lead) => `<div data-a="strategy" data-v="${key}" style="display:flex;flex-direction:column;gap:var(--s2);padding:var(--s3) var(--s4);border-radius:var(--r-lg);border:${lead ? '2px solid var(--accent)' : '1px solid var(--hair)'};background:var(--raised)">
+  <div style="display:flex;align-items:center;gap:var(--s3)">${tile(key, 56)}<div style="display:flex;flex-direction:column;gap:2px"><div style="font-size:var(--t-lg);font-weight:700">${NAMES[key]}</div><div class="small">${sub}</div></div>${lead ? `<div class="badge dark" style="margin-left:auto">START HERE</div>` : openPos(key) ? `<div class="badge" style="margin-left:auto">OPEN · ${fmt(pnlOf(openPos(key)))}</div>` : ''}</div>
+  <div style="font-size:var(--t-sm);line-height:1.4;color:var(--body)">${line}</div></div>`;
+V.lobby = () => { const week = st.trades.filter((t) => t.closed > Date.now() - 7 * 86400e3); const wp = week.reduce((a, t) => a + t.pnl, 0); return `<div class="page" style="justify-content:flex-start;padding:52px var(--s5) var(--s6);gap:var(--s4)">
+  <div class="head" style="position:relative">${LOGO(28)}<div class="badge ${testnet() ? '' : 'dark'}" data-a="netmenu" style="display:flex;align-items:center;gap:var(--s2)">${testnet() ? 'TESTNET' : 'MAINNET'} <span style="font-size:var(--t-2xs)">▼</span></div><div class="right"><div class="num small">${money(balance())} AUSD</div>${riskDial(26)}</div>${st.netMenu ? `<div class="menu"><div data-a="switch" data-v="testnet" style="background:${testnet() ? 'var(--soft)' : 'var(--paper)'}"><div style="display:flex;align-items:baseline;gap:var(--s2)"><div style="font-size:var(--t-lg);font-weight:700;letter-spacing:var(--track)">TESTNET</div>${testnet() ? '<div style="color:var(--accent);font-weight:700">✓</div>' : ''}</div><div class="small" style="font-size:var(--t-xs)">Practice money · nothing to lose</div></div><div data-a="switch" data-v="mainnet" style="background:${testnet() ? 'var(--paper)' : 'var(--soft)'}"><div style="display:flex;align-items:baseline;gap:var(--s2)"><div style="font-size:var(--t-lg);font-weight:700;letter-spacing:var(--track)">MAINNET</div>${testnet() ? '' : '<div style="color:var(--accent);font-weight:700">✓</div>'}</div><div class="small" style="font-size:var(--t-xs)">Your own money · every win and loss is real</div></div></div>` : ''}</div>
+  ${st.prize > 0 && !st.firstVisit ? `<div data-a="go" data-v="leaderboard" style="display:flex;align-items:center;justify-content:space-between;padding:var(--s3) var(--s4);border-radius:var(--r-lg);background:var(--accent);color:var(--onAccent);font-size:var(--t-sm);font-weight:600"><div>Prize of the week: ${st.prize.toFixed(2)} AUSD</div><div>Claim</div></div>` : ''}
+  <div><div style="font-size:var(--t-xl);font-weight:700">Choose a strategy</div><div class="small">Direction leads this week with +12.3 · MA Cross +2.1 · RSI −0.4</div></div>
   ${strategyCard('direction', 'Pool 3.1 AUSD · 12 players · you #7', 'You call up or down. We close it in 15 minutes.', st.firstVisit)}
   ${strategyCard('ma', 'Pool 0.3 AUSD · 4 players', 'Lights up when the trend turns. One tap.', false)}
   ${strategyCard('rsi', 'No pool yet · 2 players', 'Waits for the crowd to overdo it. One tap.', false)}
-  <div class="row" data-a="go" data-v="own" style="padding:12px 14px;border-radius:12px;border:1px dashed var(--line)"><div>Build your own strategy</div><div class="small">coming soon →</div></div>
-  <div class="footer-links" style="margin-top:auto"><div style="display:flex;gap:14px"><div data-a="go" data-v="leaderboard">Leaderboard</div><div data-a="go" data-v="referral">Invite</div></div><div style="display:flex;gap:14px"><div data-a="go" data-v="history">History</div><div data-a="go" data-v="risk">Risk</div><div data-a="go" data-v="account">Account</div></div></div></div>`; };
+  <div class="row" data-a="go" data-v="own" style="padding:var(--s3) var(--s4);border-radius:var(--r-lg);border:var(--bw) solid var(--line);background:var(--card-bg)"><div style="display:flex;align-items:center;gap:var(--s3)"><div style="width:28px;height:28px;border-radius:var(--r-sm);border:var(--bw) dashed var(--line);color:var(--muted);display:flex;align-items:center;justify-content:center;font-size:var(--t-lg);line-height:1">+</div><div>Build your own strategy</div></div><div class="small">coming soon</div></div>
+  <div class="footer-links" style="margin-top:auto"><div style="display:flex;gap:var(--s4)"><div data-a="go" data-v="leaderboard">Leaderboard</div><div data-a="go" data-v="referral">Invite</div></div><div style="display:flex;gap:var(--s4)"><div data-a="go" data-v="history">History</div><div data-a="go" data-v="risk">Risk</div><div data-a="go" data-v="account">Account</div></div></div></div>`; };
 
 // the chart: a live line, MA lines for MA Cross, the RSI band for RSI
 function chartHtml(height = 360, strategy = st.strategy, flex = false) {
   const s = strategy, sig = st.signals[s] || {}, lit = sig.phase === 'lit';
   const chg = (st.price / st.prices[0] - 1) * 100;
-  const rsi = s === 'rsi' ? `<div style="position:absolute;left:14px;top:62px;bottom:calc(27% + 14px);width:40px;display:flex;flex-direction:column;align-items:center;gap:4px"><div class="small" style="font-size:10px">70</div><div style="flex:1;width:14px;border-radius:7px;background:rgba(255,255,255,0.85);border:1px solid var(--line);position:relative;overflow:hidden"><div style="position:absolute;top:0;left:0;right:0;height:30%;background:#D4D4D8"></div><div style="position:absolute;bottom:0;left:0;right:0;height:30%;background:#D4D4D8"></div><div style="position:absolute;left:0;right:0;bottom:${sig.value.toFixed(0)}%;height:4px;background:var(--ink)"></div></div><div class="small" style="font-size:10px">30</div><div class="num" style="font-size:13px;font-weight:700">${Math.round(sig.value)}</div></div><div class="small" style="position:absolute;left:12px;top:calc(73% + 6px);font-size:11px;font-weight:600;letter-spacing:.04em">RSI 14 · 1m</div><div class="small" style="position:absolute;right:10px;top:calc(73% + 8px);font-size:10px">70</div><div class="small" style="position:absolute;right:10px;bottom:8px;font-size:10px">30</div><div class="num" style="position:absolute;right:8px;top:calc(73% + ${(27 * (1 - sig.value / 100)).toFixed(1)}%);transform:translateY(-50%);font-size:12px;font-weight:700;padding:2px 6px;border-radius:6px;background:var(--ink);color:#fff">${Math.round(sig.value)}</div>` : '';
-  const legend = s === 'ma' ? `<div class="small" style="position:absolute;bottom:10px;left:14px;font-size:11px">MA 9 · MA 21 · ${lit ? 'cross just now' : 'trend ' + sig.side}</div>${lit ? `<div style="position:absolute;left:68%;top:${sig.side === 'up' ? '58%' : '34%'};width:22px;height:22px;border-radius:11px;background:var(--ink);border:4px solid #fff;box-shadow:0 0 0 2px var(--ink)"></div><div style="position:absolute;left:68%;top:${sig.side === 'up' ? '30%' : '62%'};transform:translateX(-40%);font-size:11px;font-weight:700;padding:3px 7px;border-radius:6px;background:var(--ink);color:#fff">CROSS</div>` : ''}` : '';
-  return `<div id="chartbox" style="${flex ? 'flex:1;min-height:260px' : `height:${height}px`};border-radius:16px;position:relative;background:var(--soft);overflow:hidden;${lit ? 'box-shadow:inset 0 0 0 3px var(--ink)' : ''}"><canvas id="chart" width="700" height="${height * 2}" style="position:absolute;inset:0;width:100%;height:100%"></canvas>
-    <div style="position:absolute;top:12px;left:14px"><div class="num" style="font-size:26px;font-weight:700;letter-spacing:-0.01em;line-height:1">${money(st.price)}</div><div class="small" style="font-size:12px">BTC · ${fmt(chg, 1)}% today</div></div>
-    <div style="position:absolute;top:10px;right:10px;display:flex;align-items:center;gap:6px"><div style="display:flex;gap:2px;padding:3px;border-radius:8px;background:rgba(255,255,255,0.85);border:1px solid var(--line)">${['1m', '5m', '15m', '30m', '1h'].map((tf) => `<div data-a="tf" data-v="${tf}" style="padding:3px 5px;border-radius:5px;font-size:10px;font-weight:600;${st.tf === tf ? 'background:var(--ink);color:#fff' : 'color:var(--body)'}">${tf}</div>`).join('')}</div><div data-a="chartmode" style="width:30px;height:30px;border-radius:8px;background:rgba(255,255,255,0.85);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--body)">${st.chart === 'candles' ? '▮' : '∿'}</div></div>${legend}${rsi}</div>`;
+  const rsi = s === 'rsi' ? `<div style="position:absolute;left:14px;top:62px;bottom:calc(27% + 14px);width:40px;display:flex;flex-direction:column;align-items:center;gap:var(--s1)"><div class="small" style="font-size:var(--t-2xs)">70</div><div style="flex:1;width:14px;border-radius:var(--r-sm);background:var(--glass);border:1px solid var(--line);position:relative;overflow:hidden"><div style="position:absolute;top:0;left:0;right:0;height:30%;background:var(--line)"></div><div style="position:absolute;bottom:0;left:0;right:0;height:30%;background:var(--line)"></div><div style="position:absolute;left:0;right:0;bottom:${sig.value.toFixed(0)}%;height:4px;background:var(--accent)"></div></div><div class="small" style="font-size:var(--t-2xs)">30</div><div class="num" style="font-size:var(--t-sm);font-weight:700">${Math.round(sig.value)}</div></div><div class="small" style="position:absolute;left:12px;top:calc(73% + 6px);font-size:var(--t-xs);font-weight:600;letter-spacing:.04em">RSI 14 · 1m</div><div class="small" style="position:absolute;right:10px;top:calc(73% + 8px);font-size:var(--t-2xs)">70</div><div class="small" style="position:absolute;right:10px;bottom:8px;font-size:var(--t-2xs)">30</div><div class="num" style="position:absolute;right:8px;top:calc(73% + ${(27 * (1 - sig.value / 100)).toFixed(1)}%);transform:translateY(-50%);font-size:var(--t-xs);font-weight:700;padding:2px var(--s2);border-radius:var(--r-sm);background:var(--fill);color:var(--onFill)">${Math.round(sig.value)}</div>` : '';
+  const legend = s === 'ma' ? `<div class="small" style="position:absolute;bottom:10px;left:14px;font-size:var(--t-xs)">MA 9 · MA 21 · ${lit ? 'cross just now' : 'trend ' + sig.side}</div>${lit ? `<div style="position:absolute;left:68%;top:${sig.side === 'up' ? '58%' : '34%'};width:22px;height:22px;border-radius:50%;background:var(--fill);border:4px solid var(--paper);box-shadow:0 0 0 2px var(--ink)"></div><div style="position:absolute;left:68%;top:${sig.side === 'up' ? '30%' : '62%'};transform:translateX(-40%);font-size:var(--t-xs);font-weight:700;padding:3px 7px;border-radius:var(--r-sm);background:var(--fill);color:var(--onFill)">CROSS</div>` : ''}` : '';
+  return `<div id="chartbox" style="${flex ? 'flex:1;min-height:260px' : `height:${height}px`};border-radius:var(--r-xl);position:relative;background:var(--soft);overflow:hidden;${lit ? 'box-shadow:inset 0 0 0 3px var(--accent)' : ''}"><canvas id="chart" width="700" height="${height * 2}" style="position:absolute;inset:0;width:100%;height:100%"></canvas>
+    <div style="position:absolute;top:12px;left:14px"><div class="num" style="font-size:var(--t-2xl);font-weight:700;letter-spacing:-0.01em;line-height:1">${money(st.price)}</div><div class="small" style="font-size:var(--t-xs)">BTC · ${fmt(chg, 1)}% today</div></div>
+    <div style="position:absolute;top:10px;right:10px;display:flex;align-items:center;gap:var(--s2)"><div style="display:flex;gap:2px;padding:3px;border-radius:var(--r-md);background:var(--glass);border:1px solid var(--line)">${['1m', '5m', '15m', '30m', '1h'].map((tf) => `<div data-a="tf" data-v="${tf}" style="padding:3px 5px;border-radius:var(--r-sm);font-size:var(--t-2xs);font-weight:600;${st.tf === tf ? 'background:var(--accent);color:var(--onAccent)' : 'color:var(--body)'}">${tf}</div>`).join('')}</div><div data-a="chartmode" style="width:30px;height:30px;border-radius:var(--r-md);background:var(--glass);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:var(--t-xs);font-weight:700;color:var(--body)">${st.chart === 'candles' ? '▮' : '∿'}</div></div>${legend}${rsi}</div>`;
 }
 function drawChart() {
   const c = el('chart'); if (!c) return; const box = el('chartbox'); if (box && box.clientHeight && c.height !== box.clientHeight * 2) { c.height = box.clientHeight * 2; } const g = c.getContext('2d'); const W = c.width, H = c.height; g.clearRect(0, 0, W, H);
   const isRsi = st.strategy === 'rsi'; const PH_ = isRsi ? H * 0.73 : H;
   const ps = st.prices, min = Math.min(...ps) - 30, max = Math.max(...ps) + 30, x = (i) => (i / (ps.length - 1)) * W, y = (v) => PH_ - ((v - min) / (max - min)) * (PH_ * 0.62) - PH_ * 0.18;
-  if (isRsi) { const top = PH_, h = H - PH_, sr = st.signals.rsi.series; g.fillStyle = '#E4E4E7'; g.fillRect(0, top, W, h); g.fillStyle = 'rgba(24,24,27,0.06)'; g.fillRect(0, top, W, h * 0.3); g.fillRect(0, top + h * 0.7, W, h * 0.3); g.strokeStyle = '#D4D4D8'; g.lineWidth = 2; g.beginPath(); g.moveTo(0, top); g.lineTo(W, top); g.stroke(); g.strokeStyle = '#18181B'; g.lineWidth = 3; g.beginPath(); sr.forEach((v, i) => { const yy = top + h * (1 - v / 100); i ? g.lineTo(x(i), yy) : g.moveTo(x(i), yy); }); g.stroke(); }
-  g.strokeStyle = '#E4E4E7'; g.lineWidth = 2; for (let k = 1; k < 5; k++) { g.beginPath(); g.moveTo(0, (PH_ / 5) * k); g.lineTo(W, (PH_ / 5) * k); g.stroke(); }
-  if (st.chart === 'candles') { const step = W / ps.length; for (let i = 1; i < ps.length; i++) { const o = ps[i - 1], cl = ps[i]; g.fillStyle = cl >= o ? '#3F3F46' : '#A1A1AA'; const top = y(Math.max(o, cl)), h = Math.max(2, Math.abs(y(o) - y(cl))); g.fillRect(x(i) - step * 0.3, top, step * 0.6, h); g.fillRect(x(i) - 1, top - 10, 2, h + 20); } }
-  else { g.strokeStyle = '#18181B'; g.lineWidth = 4; g.beginPath(); ps.forEach((v, i) => (i ? g.lineTo(x(i), y(v)) : g.moveTo(x(i), y(v)))); g.stroke(); }
-  if (st.strategy === 'ma') { const ma = (n) => ps.map((_, i) => { const a = ps.slice(Math.max(0, i - n + 1), i + 1); return a.reduce((p, q) => p + q, 0) / a.length; }); [[ma(9), '#18181B'], [ma(21), '#A1A1AA']].forEach(([m, col]) => { g.strokeStyle = col; g.lineWidth = 3; g.beginPath(); m.forEach((v, i) => (i ? g.lineTo(x(i), y(v)) : g.moveTo(x(i), y(v)))); g.stroke(); }); }
-  const p = openPos(); if (p) { g.setLineDash([8, 8]); g.strokeStyle = '#18181B'; g.lineWidth = 2; g.beginPath(); g.moveTo(0, y(p.entry)); g.lineTo(W, y(p.entry)); g.stroke(); g.setLineDash([]); }
+  if (isRsi) { const top = PH_, h = H - PH_, sr = st.signals.rsi.series; g.fillStyle = C('--chart-band'); g.fillRect(0, top, W, h); g.fillStyle = C('--chart-zone'); g.fillRect(0, top, W, h * 0.3); g.fillRect(0, top + h * 0.7, W, h * 0.3); g.strokeStyle = C('--chart-axis'); g.lineWidth = 2; g.beginPath(); g.moveTo(0, top); g.lineTo(W, top); g.stroke(); g.strokeStyle = C('--chart-line'); g.lineWidth = 3; g.beginPath(); sr.forEach((v, i) => { const yy = top + h * (1 - v / 100); i ? g.lineTo(x(i), yy) : g.moveTo(x(i), yy); }); g.stroke(); }
+  g.strokeStyle = C('--chart-grid'); g.lineWidth = 2; for (let k = 1; k < 5; k++) { g.beginPath(); g.moveTo(0, (PH_ / 5) * k); g.lineTo(W, (PH_ / 5) * k); g.stroke(); }
+  if (st.chart === 'candles') { const step = W / ps.length; for (let i = 1; i < ps.length; i++) { const o = ps[i - 1], cl = ps[i]; g.fillStyle = cl >= o ? C('--chart-up') : C('--chart-down'); const top = y(Math.max(o, cl)), h = Math.max(2, Math.abs(y(o) - y(cl))); g.fillRect(x(i) - step * 0.3, top, step * 0.6, h); g.fillRect(x(i) - 1, top - 10, 2, h + 20); } }
+  else { g.strokeStyle = C('--chart-line'); g.lineWidth = 4; g.beginPath(); ps.forEach((v, i) => (i ? g.lineTo(x(i), y(v)) : g.moveTo(x(i), y(v)))); g.stroke(); }
+  if (st.strategy === 'ma') { const ma = (n) => ps.map((_, i) => { const a = ps.slice(Math.max(0, i - n + 1), i + 1); return a.reduce((p, q) => p + q, 0) / a.length; }); [[ma(9), C('--chart-line')], [ma(21), C('--chart-line2')]].forEach(([m, col]) => { g.strokeStyle = col; g.lineWidth = 3; g.beginPath(); m.forEach((v, i) => (i ? g.lineTo(x(i), y(v)) : g.moveTo(x(i), y(v)))); g.stroke(); }); }
+  const p = openPos(); if (p) { g.setLineDash([8, 8]); g.strokeStyle = C('--chart-line'); g.lineWidth = 2; g.beginPath(); g.moveTo(0, y(p.entry)); g.lineTo(W, y(p.entry)); g.stroke(); g.setLineDash([]); }
 }
-const settingsChip = () => { const s = st.settings; return `<div style="display:flex;flex-direction:column;gap:6px"><div data-a="go" data-v="settings" style="display:flex;align-items:center;gap:6px;padding:12px 14px;border-radius:12px;background:var(--soft);font-size:14px;color:var(--body)"><div class="num">${s.size} AUSD</div><div style="color:#A1A1AA">·</div><div class="num">${s.lev}x</div><div style="color:#A1A1AA">·</div><div>${s.stopOn ? 'stop −' + s.stop + '%' : 'stop off'}</div><div style="color:#A1A1AA">·</div><div>${s.tpOn ? 'TP +' + s.tp + '%' : 'TP off'}</div><div style="margin-left:auto;color:var(--muted)">›</div></div><div class="small">${s.stopOn ? `This tap risks at most ${risk().toFixed(2)} AUSD of the ${put().toFixed(0)} you put in.` : `This tap risks at most ${put().toFixed(0)} AUSD, all you put in.`}</div></div>`; };
+const settingsChip = () => { const s = st.settings;
+  return `<div data-a="go" data-v="settings" style="display:flex;align-items:center;gap:var(--s3);padding:var(--s3) var(--s4);border-radius:var(--r-lg);background:var(--card-bg);border:var(--bw) solid var(--line)">
+    <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+      <div style="display:flex;align-items:baseline;gap:var(--s2)">
+        <div class="num" style="font-size:var(--t-xl);font-weight:700;letter-spacing:-0.01em">${s.size}</div>
+        <div class="small" style="font-size:var(--t-xs)">AUSD</div>
+        <div class="num" style="font-size:var(--t-md);font-weight:700;color:var(--accent)">${s.lev}x</div>
+      </div>
+      <div class="small" style="font-size:var(--t-xs)">${s.stopOn ? 'stop −' + s.stop + '%' : 'no stop'} · ${s.tpOn ? 'TP +' + s.tp + '%' : 'no TP'}</div>
+    </div>
+    <div style="margin-left:auto;text-align:right;display:flex;flex-direction:column;gap:2px">
+      <div class="small" style="font-size:var(--t-2xs);letter-spacing:var(--track);text-transform:uppercase">At risk</div>
+      <div class="num" style="font-size:var(--t-lg);font-weight:700;color:var(--down)">−${(s.stopOn ? risk() : put()).toFixed(0)}</div>
+    </div>
+    <div style="color:var(--muted)">›</div>
+  </div>`; };
+
 V.strategy = () => { const s = st.strategy, sig = st.signals[s], pos = openPos(); if (pos) return V.position();
   const cd = st.cooldown[s] || 0, limit = st.budgetSpent >= 25, blocked = cd > 0 || limit;
   const rec = s !== 'direction' && sig.phase === 'lit' ? sig.side : null;
-  const says = s === 'direction' ? `<div style="font-size:16px;font-weight:700;text-align:center">Where does Bitcoin go in the next ${st.settings.horizon} minutes?</div>`
-    : sig.phase === 'lit' ? `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;background:var(--ink);color:#fff"><div style="width:10px;height:10px;border-radius:5px;background:#fff;box-shadow:0 0 0 4px rgba(255,255,255,0.25);flex-shrink:0"></div><div style="flex:1;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap"><div style="font-size:17px;font-weight:700;letter-spacing:.02em">SIGNAL · ${sig.side.toUpperCase()}</div><div style="font-size:12px;color:#D4D4D8">${s === 'ma' ? (sig.side === 'up' ? 'cross up' : 'cross down') : `RSI ${Math.round(sig.value)} · ${sig.side === 'up' ? 'oversold' : 'overbought'}`}</div></div><div style="text-align:right"><div class="num" style="font-size:18px;font-weight:700;line-height:1">${clock(sig.left)}</div><div style="font-size:10px;color:#A1A1AA">window</div></div></div>`
-    : `<div class="row" style="font-size:14px;padding:12px 14px;border-radius:12px;border:1px dashed var(--line)"><div><b>No signal now</b> · ${s === 'ma' ? 'waiting for the next cross' : 'waiting for a zone'}</div><div class="small">last ${sig.last}</div></div>`;
+  const says = s === 'direction' ? `<div style="font-size:var(--t-md);font-weight:700;text-align:center">Where does Bitcoin go in the next ${st.settings.horizon} minutes?</div>`
+    : sig.phase === 'lit' ? `<div class="signal" style="display:flex;align-items:center;gap:var(--s3);padding:var(--s3) var(--s4);border-radius:var(--r-lg);background:var(--accent);color:var(--onAccent)"><div class="live" style="width:10px;height:10px;border-radius:50%;background:var(--onAccent);box-shadow:0 0 0 4px var(--glow);flex-shrink:0"></div><div style="flex:1;display:flex;align-items:baseline;gap:var(--s2);flex-wrap:wrap"><div style="font-size:var(--t-lg);font-weight:700;letter-spacing:.02em">SIGNAL · ${sig.side.toUpperCase()}</div><div style="font-size:var(--t-xs);color:var(--onAccentDim)">${s === 'ma' ? (sig.side === 'up' ? 'cross up' : 'cross down') : `RSI ${Math.round(sig.value)} · ${sig.side === 'up' ? 'oversold' : 'overbought'}`}</div></div><div style="text-align:right"><div class="num" style="font-size:var(--t-lg);font-weight:700;line-height:1">${clock(sig.left)}</div><div style="font-size:var(--t-2xs);color:var(--onAccentDim)">window</div></div></div>`
+    : `<div class="row" style="font-size:var(--t-sm);padding:var(--s3) var(--s4);border-radius:var(--r-lg);border:1px dashed var(--line)"><div><b>No signal now</b> · ${s === 'ma' ? 'waiting for the next cross' : 'waiting for a zone'}</div><div class="small">last ${sig.last}</div></div>`;
   const state = cd > 0 ? `<div class="toast">Wait ${Math.ceil(cd)} s before the next tap. A pause between trades is part of the plan.</div>` : limit ? `<div class="toast">Today's loss budget is used up. The next tap opens tomorrow at 00:00.</div>` : st.notice ? `<div class="toast ${st.notice.kind}">${st.notice.text}</div>` : '';
-  const ud = (side, sub, h) => `<div class="ud ${rec === side ? 'fill' : ''}" data-a="tap" data-v="${side}" style="${h ? `height:${h}px` : ''}"><div class="l" style="${h && h < 70 ? 'font-size:18px' : ''}">${side === 'up' ? 'Up' : 'Down'}</div><div class="s">${rec === side ? 'take the signal' : rec ? 'against the signal' : sub}</div></div>`;
-  const pair = rec ? `<div style="display:flex;flex-direction:column;gap:8px">${ud(rec, '', 76)}${ud(rec === 'up' ? 'down' : 'up', '', 46)}</div>` : `<div class="updown">${ud('up', 'it rises')}${ud('down', 'it falls')}</div>`;
+  const ud = (side, sub) => {
+    const filled = s === 'direction' || rec === side;
+    return `<div class="ud ${filled ? '' : 'ghost'}" data-side="${side}" data-a="tap" data-v="${side}"><div class="l">${side === 'up' ? 'Up' : 'Down'}</div><div class="s">${rec === side ? 'take the signal' : rec ? 'against the signal' : sub}</div></div>`;
+  };
+  const pair = `<div class="updown">${ud('up', 'it rises')}${ud('down', 'it falls')}</div>`;
   const fold = el('screen').clientHeight - 44; // one screen minus the peek of what is below
-  return `<div class="page" style="justify-content:flex-start;padding:52px 20px 20px;gap:14px">
-  <div style="min-height:${fold}px;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;margin-top:-52px;padding-top:52px">
-  <div class="head"><div class="back" data-a="go" data-v="lobby">‹ Lobby</div><div class="title">${NAMES[s]}</div>${badge()}<div class="right"><div class="small num">${money(balance())} AUSD</div><div class="qmark" data-a="lesson" data-v="${s}">?</div></div></div>
+  return `<div class="page" style="justify-content:flex-start;padding:52px var(--s5) var(--s5);gap:var(--s4)">
+  <div style="min-height:${fold}px;box-sizing:border-box;display:flex;flex-direction:column;gap:var(--s4);margin-top:-52px;padding-top:52px">
+  <div class="head"><div class="back" data-a="go" data-v="lobby">‹ Lobby</div><div class="title">${NAMES[s]}</div>${badge()}<div class="right">${riskDial(26)}<div class="qmark" data-a="lesson" data-v="${s}">?</div></div></div>
   ${chartHtml(360, s, true)}${says}${state}
   <div class="pinned" style="position:static;margin-top:0;padding-bottom:12px;border-bottom:1px solid var(--hair)"><div class="${blocked ? 'dim' : ''}">${pair}</div>${settingsChip()}</div>
   </div>
-  ${st.contextOpen ? `<div class="card" data-a="context"><div class="row"><div class="small" style="font-weight:600;letter-spacing:.04em;font-size:12px">ANALYSIS · NANSEN</div><div class="small">as of ${hm(Date.now())}</div></div><div style="font-size:15px;line-height:1.4;font-weight:600">${ANALYSIS.headline}</div><div class="row"><div class="small">${ANALYSIS.flows}</div><b>${ANALYSIS.lean}</b></div><div class="small">${ANALYSIS.who}</div><div style="padding-top:8px;border-top:1px solid var(--hair);font-size:14px;line-height:1.4;color:var(--body)"><b>Strategies today.</b> ${ANALYSIS.strategies}</div><div class="small">Tap to fold</div></div>`
-    : `<div data-a="context" style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:#FAFAFA"><div style="flex:1;display:flex;flex-direction:column;gap:3px"><div class="small" style="font-size:11px;font-weight:600;letter-spacing:.04em">ANALYSIS · NANSEN · ${hm(Date.now())}</div><div style="font-size:14px;line-height:1.35"><b>${ANALYSIS.lean}</b> · whales bought the dip · a trend day, crosses are paying</div></div><div class="small">›</div></div>`}
+  ${st.contextOpen ? `<div class="card" data-a="context" style="gap:var(--s3)">
+    <div class="row"><div class="small" style="font-weight:600;letter-spacing:var(--track);text-transform:uppercase;font-size:var(--t-2xs)">Analysis · Nansen</div><div class="small">as of ${hm(Date.now())} · tap to fold</div></div>
+    <div style="font-size:var(--t-md);line-height:1.35;font-weight:600">${ANALYSIS.headline}</div>
+    <div style="display:flex;flex-direction:column;gap:var(--s1)">
+      <div class="row small"><div>Buys ${ANALYSIS.buy}</div><div>Sells ${ANALYSIS.sell}</div></div>
+      <div style="display:flex;height:8px;border-radius:999px;overflow:hidden;background:var(--hair)">
+        <div style="width:${ANALYSIS.share}%;background:var(--up)"></div><div style="flex:1;background:var(--down)"></div>
+      </div>
+      <div class="small" style="font-size:var(--t-2xs)">${ANALYSIS.share}% of today's flow is buying · <b style="color:var(--ink)">${ANALYSIS.lean}</b></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:var(--s2);padding-top:var(--s2);border-top:var(--bw) solid var(--hair)">
+      ${ANALYSIS.wallets.map((w) => `<div class="row" style="font-size:var(--t-xs)"><div style="display:flex;align-items:center;gap:var(--s2);min-width:0"><div style="width:6px;height:6px;border-radius:50%;background:${w.side === 'buy' ? 'var(--up)' : 'var(--down)'};flex-shrink:0"></div><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${w.name}</div></div><div class="num" style="color:${w.side === 'buy' ? 'var(--up)' : 'var(--down)'};font-weight:600">${w.side === 'buy' ? '+' : '−'}$${w.size}</div></div>`).join('')}
+    </div>
+    <div style="padding-top:var(--s2);border-top:var(--bw) solid var(--hair);font-size:var(--t-sm);line-height:1.4;color:var(--body)"><b>Strategies today.</b> ${ANALYSIS.strategies}</div>
+  </div>`
+    : `<div data-a="context" style="display:flex;align-items:center;gap:var(--s3);padding:var(--s3) var(--s4);border-radius:var(--r-lg);border:var(--bw) solid var(--line);background:var(--card-bg)">
+        <div style="flex:1;display:flex;flex-direction:column;gap:var(--s1);min-width:0">
+          <div class="small" style="font-size:var(--t-2xs);font-weight:600;letter-spacing:var(--track);text-transform:uppercase">Analysis · Nansen · ${hm(Date.now())}</div>
+          <div style="font-size:var(--t-sm);line-height:1.35"><b>${ANALYSIS.lean}</b> · whales bought the dip</div>
+          <div style="display:flex;height:4px;border-radius:999px;overflow:hidden;background:var(--hair);margin-top:2px"><div style="width:${ANALYSIS.share}%;background:var(--up)"></div><div style="flex:1;background:var(--down)"></div></div>
+        </div>
+        <div class="small">›</div>
+      </div>`}
   ${historyCard(s)}
 </div>`; };
-function historyCard(s) { const rows = st.trades.filter((t) => t.strategy === s).slice(0, 3); return `<div class="card" style="gap:6px"><div class="row"><div class="chips"><div class="chip ${st.historyTab === 'positions' ? 'on' : ''}" data-a="htab" data-v="positions">Positions</div><div class="chip ${st.historyTab === 'orders' ? 'on' : ''}" data-a="htab" data-v="orders">Orders</div></div><div class="small" data-a="go" data-v="history">All history ›</div></div>
-  ${rows.length === 0 ? `<div class="small" style="padding:8px 0">No trades yet in ${NAMES[s]}.</div>` : st.historyTab === 'positions' ? rows.map((t) => `<div class="row" data-a="trade" data-v="${t.id}" style="padding:8px 0;border-top:1px solid var(--hair)"><div><div style="font-size:14px">${t.side === 'up' ? 'Up' : 'Down'} · ${money(t.entry)} → ${money(t.exit)}</div><div class="small">${hm(t.opened)} – ${hm(t.closed)} · ${t.reason === 'timer' ? 'by timer' : t.reason === 'stop' ? 'stop' : t.reason === 'tp' ? 'take profit' : 'closed'}</div></div><b class="num">${fmt(t.pnl)}</b></div>`).join('')
-  : rows.flatMap((t) => [[t.id, `Close ${t.side === 'up' ? 'Up' : 'Down'}${t.reason === 'timer' ? ' · timer' : ''} · @ ${money(t.exit)}`, `${hm(t.closed)} · fee ${(t.fees / 2).toFixed(2)}`], [t.id, `Open ${t.side === 'up' ? 'Up' : 'Down'} · @ ${money(t.entry)}`, `${hm(t.opened)} · fee ${(t.fees / 2).toFixed(2)}`]]).map(([id, a, b]) => `<div class="row" data-a="order" data-v="${id}" style="padding:8px 0;border-top:1px solid var(--hair)"><div><div style="font-size:14px">${a}</div><div class="small">${b}</div></div><div class="small">filled ›</div></div>`).join('')}</div>`; }
+function historyCard(s) { const rows = st.trades.filter((t) => t.strategy === s).slice(0, 3); return `<div class="card" style="gap:var(--s2)"><div class="row"><div class="chips"><div class="chip ${st.historyTab === 'positions' ? 'on' : ''}" data-a="htab" data-v="positions">Positions</div><div class="chip ${st.historyTab === 'orders' ? 'on' : ''}" data-a="htab" data-v="orders">Orders</div></div><div class="small" data-a="go" data-v="history">All history ›</div></div>
+  ${rows.length === 0 ? `<div class="small" style="padding:8px 0">No trades yet in ${NAMES[s]}.</div>` : st.historyTab === 'positions' ? rows.map((t) => `<div class="row" data-a="trade" data-v="${t.id}" style="padding:8px 0;border-top:1px solid var(--hair)"><div><div style="font-size:var(--t-sm)">${t.side === 'up' ? 'Up' : 'Down'} · ${money(t.entry)} → ${money(t.exit)}</div><div class="small">${hm(t.opened)} – ${hm(t.closed)} · ${t.reason === 'timer' ? 'by timer' : t.reason === 'stop' ? 'stop' : t.reason === 'tp' ? 'take profit' : 'closed'}</div></div><b class="num">${fmt(t.pnl)}</b></div>`).join('')
+  : rows.flatMap((t) => [[t.id, `Close ${t.side === 'up' ? 'Up' : 'Down'}${t.reason === 'timer' ? ' · timer' : ''} · @ ${money(t.exit)}`, `${hm(t.closed)} · fee ${(t.fees / 2).toFixed(2)}`], [t.id, `Open ${t.side === 'up' ? 'Up' : 'Down'} · @ ${money(t.entry)}`, `${hm(t.opened)} · fee ${(t.fees / 2).toFixed(2)}`]]).map(([id, a, b]) => `<div class="row" data-a="order" data-v="${id}" style="padding:8px 0;border-top:1px solid var(--hair)"><div><div style="font-size:var(--t-sm)">${a}</div><div class="small">${b}</div></div><div class="small">filled ›</div></div>`).join('')}</div>`; }
 
 function positionForm() { const s = st.settings, max = Math.max(5, Math.floor(balance() * s.lev));
-  const pct = (title, key, on, presets, sign, val, inKey, note) => `<div class="card" style="gap:8px;padding:10px 14px"><div class="row"><div style="display:flex;align-items:baseline;gap:8px"><div style="font-size:15px;font-weight:600">${title}</div><div class="small" id="${key}Note">${on ? note : 'off'}</div></div><div class="toggle ${on ? 'on' : ''}" data-a="toggle" data-v="${key}"></div></div>${on ? `<div class="chips" style="align-items:center">${presets.map((v) => `<div class="chip ${val === v ? 'on' : ''}" data-a="set" data-v="${inKey}:${v}">${sign}${v}%</div>`).join('')}<div style="display:flex;align-items:center;gap:4px;padding:6px 10px;border-radius:10px;border:1px dashed var(--line);font-size:13px;color:var(--muted)">any <input class="num" type="number" inputmode="numeric" min="1" max="${inKey === 'tp' ? 1000 : 100}" value="${val}" data-in="${inKey}Pct" style="width:${inKey === 'tp' ? 52 : 44}px;font-size:14px;font-weight:700">%</div></div>` : ''}</div>`;
-  return `<div style="display:flex;flex-direction:column;gap:12px">
-  <div style="display:flex;flex-direction:column;gap:6px"><div class="row small"><div>Position size</div><div id="maxNote">max ${money(max)}</div></div><div style="display:flex;align-items:baseline;gap:8px;padding:10px 14px;border-radius:12px;border:1px solid var(--line)"><input id="size" class="focus num" type="number" inputmode="numeric" min="5" max="${max}" value="${s.size}" data-in="size" style="font-size:30px"><div class="small" id="putNote">AUSD · ${put().toFixed(0)} of yours at ${s.lev}x</div></div><input type="range" min="5" max="${max}" step="5" value="${Math.min(s.size, max)}" data-in="sizeRange"></div>
-  <div><div class="row"><div class="small">Leverage · up to ${MARKET.maxLev}x</div><b class="num" id="levLabel">${s.lev}x</b></div><input type="range" min="1" max="${MARKET.maxLev}" step="1" value="${s.lev}" data-in="lev" style="margin-top:6px"></div>
+  // A switched-off rule should not occupy the screen: off collapses to a quiet
+  // line, on opens into a card with the number it costs you.
+  const pct = (title, key, on, presets, sign, val, inKey, note) => `<div style="border-radius:var(--r-lg);padding:var(--s3) var(--s4);background:${on ? 'var(--card-bg)' : 'transparent'};border:var(--bw) solid ${on ? 'var(--card-line)' : 'transparent'};display:flex;flex-direction:column;gap:var(--s2);transition:background .18s">
+    <div class="row" data-a="toggle" data-v="${key}" style="cursor:pointer">
+      <div style="display:flex;align-items:baseline;gap:var(--s2);${on ? '' : 'opacity:.55'}">
+        <div style="font-size:var(--t-md);font-weight:${on ? 700 : 500};color:${on ? 'var(--ink)' : 'var(--muted)'}">${title}</div>
+        <div class="small" id="${key}Note">${on ? note : 'off'}</div>
+      </div>
+      <div class="toggle ${on ? 'on' : ''}"></div>
+    </div>
+    ${on ? `<div class="chips" style="align-items:center">${presets.map((v) => `<div class="chip ${val === v ? 'on' : ''}" data-a="set" data-v="${inKey}:${v}">${sign}${v}%</div>`).join('')}<div style="display:flex;align-items:center;gap:var(--s1);padding:var(--s2) var(--s3);border-radius:var(--r-md);border:var(--bw) dashed var(--line);font-size:var(--t-sm);color:var(--muted)">any <input class="num" type="number" inputmode="numeric" min="1" max="${inKey === 'tp' ? 1000 : 100}" value="${val}" data-in="${inKey}Pct" style="width:${inKey === 'tp' ? 52 : 44}px;font-size:var(--t-sm);font-weight:700">%</div></div>` : ''}
+  </div>`;
+
+  const quick = [25, 50, 75, 100].map((q) => {
+    const v = Math.max(5, Math.round(max * q / 100 / 5) * 5);
+    return `<div class="chip ${s.size === v ? 'on' : ''}" data-a="setsize" data-v="${v}">${q === 100 ? 'Max' : q + '%'}</div>`;
+  }).join('');
+
+  const ticks = [1, 5, 10, MARKET.maxLev].map((v) =>
+    `<div data-a="set" data-v="lev:${v}" class="num" style="font-size:var(--t-2xs);color:${s.lev === v ? 'var(--accent)' : 'var(--dim)'};font-weight:${s.lev === v ? 700 : 400}">${v}x</div>`).join('');
+
+  return `<div style="display:flex;flex-direction:column;gap:var(--s4)">
+
+  <div style="display:flex;flex-direction:column;gap:var(--s2)">
+    <div class="row small"><div style="${'letter-spacing:var(--track);text-transform:uppercase;font-size:var(--t-2xs);font-weight:600'}">Position size</div><div id="maxNote" class="num">max ${money(max)}</div></div>
+    <div style="display:flex;align-items:center;gap:var(--s3);padding:var(--s3) var(--s4);border-radius:var(--r-lg);background:var(--card-bg);border:var(--bw) solid var(--line)">
+      <input id="size" class="focus num" type="number" inputmode="numeric" min="5" max="${max}" value="${s.size}" data-in="size" style="flex:1;min-width:0;font-size:var(--t-3xl)">
+      <div class="num" style="font-size:var(--t-md);font-weight:600;color:var(--muted)">AUSD</div>
+    </div>
+    <input type="range" min="5" max="${max}" step="5" value="${Math.min(s.size, max)}" data-in="sizeRange" style="${fillOf(Math.min(s.size, max), 5, max)}">
+    <div style="display:flex;gap:var(--s2)">${quick}</div>
+    <div class="small" id="putNote">${put().toFixed(0)} AUSD of yours at ${s.lev}x</div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:var(--s2)">
+    <div class="row"><div class="small" style="letter-spacing:var(--track);text-transform:uppercase;font-size:var(--t-2xs);font-weight:600">Leverage</div><b class="num" id="levLabel" style="font-size:var(--t-lg)">${s.lev}x</b></div>
+    <input type="range" min="1" max="${MARKET.maxLev}" step="1" value="${s.lev}" data-in="lev" style="${fillOf(s.lev, 1, MARKET.maxLev)}">
+    <div style="display:flex;justify-content:space-between">${ticks}</div>
+  </div>
+
   ${pct('Stop', 'stopOn', s.stopOn, [10, 25, 50, 75], '−', s.stop, 'stop', `−${s.stop}% · ${risk().toFixed(2)} AUSD`)}
   ${pct('Take profit', 'tpOn', s.tpOn, [25, 50, 100, 200], '+', s.tp, 'tp', `+${s.tp}% · ${(put() * s.tp / 100).toFixed(2)} AUSD`)}
 </div>`; }
-V.settings = () => { const s = st.settings; return `<div class="page" style="justify-content:flex-start;padding:52px 20px 24px;gap:16px">
+V.settings = () => { const s = st.settings; return `<div class="page" style="justify-content:flex-start;padding:52px var(--s5) var(--s6);gap:var(--s4)">
   <div class="head"><div class="back" data-a="back">‹ Back</div><div class="title">Position settings</div><div class="right small">applies to every tap</div></div>
   ${positionForm()}
-  <div style="margin-top:auto;position:sticky;bottom:0;background:#fff;padding:10px 0 4px;border-top:1px solid var(--hair);display:flex;flex-direction:column;gap:10px">${possible()}<div class="btn primary" data-a="back">Done</div></div></div>`; };
+  <div style="margin-top:auto;position:sticky;bottom:0;background:var(--paper);padding:10px 0 4px;border-top:1px solid var(--hair);display:flex;flex-direction:column;gap:var(--s3)">${possible()}<div class="btn primary" data-a="back">Done</div></div></div>`; };
 
 V.position = () => { const p = openPos(); if (!p) return V.strategy(); const pnl = pnlOf(p), move = (st.price / p.entry - 1) * 100, stopAt = p.stopOn ? -p.amount * p.stop / 100 : null, tpAt = p.tpOn ? p.amount * p.tp / 100 : null;
   const near = stopAt !== null && pnl < stopAt * 0.6;
-  return `<div class="page" style="justify-content:flex-start;padding:52px 20px 24px;gap:14px">
+  return `<div class="page" style="justify-content:flex-start;padding:52px var(--s5) var(--s6);gap:var(--s4)">
   <div class="head"><div class="back" data-a="go" data-v="lobby">‹ Lobby</div><div class="title">${NAMES[p.strategy]} · BTC</div>${badge()}<div class="right">${share()}</div></div>
   ${near ? `<div class="toast" style="font-weight:600">Stop is ${(pnl - stopAt).toFixed(2)} AUSD away</div>` : ''}
   ${chartHtml(400, p.strategy, true)}
-  <div data-a="sheet" data-v="posdetail" style="display:flex;align-items:flex-end;justify-content:space-between;padding:16px;border-radius:16px;background:var(--soft)"><div style="display:flex;flex-direction:column;gap:4px"><div class="small">${p.side === 'up' ? 'Up' : 'Down'} · ${p.amount} AUSD × ${p.lev}x · in at ${money(p.entry)} · details ›</div><div style="font-size:15px;color:var(--body)">${pnl > 0.005 ? 'You are up' : pnl < -0.005 ? 'You are down' : 'Flat so far'}</div><div class="num" style="font-size:44px;font-weight:700;letter-spacing:-0.02em;line-height:1">${fmt(pnl)}</div><div class="small">AUSD · BTC ${move >= 0 ? 'up' : 'down'} ${Math.abs(move).toFixed(2)}% · fees ${(notionalOf(p) * FEE_BPS / 10000).toFixed(2)}</div></div><div style="text-align:right;display:flex;flex-direction:column;gap:4px"><div class="small">Closes in</div><div class="num" style="font-size:28px;font-weight:700;line-height:1">${clock(p.left)}</div><div style="width:90px;height:6px;border-radius:3px;background:var(--hair);overflow:hidden;margin-left:auto"><div style="height:6px;width:${Math.round((1 - p.left / p.total) * 100)}%;background:var(--ink)"></div></div></div></div>
+  <div data-a="sheet" data-v="posdetail" style="display:flex;align-items:flex-end;justify-content:space-between;padding:var(--s4);border-radius:var(--r-xl);background:var(--soft)"><div style="display:flex;flex-direction:column;gap:var(--s1)"><div style="display:flex;align-items:baseline;gap:var(--s2);flex-wrap:wrap"><div style="font-size:var(--t-md);font-weight:700;color:${p.side === 'up' ? 'var(--up)' : 'var(--down)'}">${p.side === 'up' ? 'Up' : 'Down'}</div><div class="num" style="font-size:var(--t-md);font-weight:700">${p.amount} AUSD</div><div class="num" style="font-size:var(--t-md);font-weight:700;color:var(--accent)">${p.lev}x</div><div class="small" style="font-size:var(--t-xs)">in at ${money(p.entry)} · details ›</div></div><div style="font-size:var(--t-md);color:var(--body)">${pnl > 0.005 ? 'You are up' : pnl < -0.005 ? 'You are down' : 'Flat so far'}</div><div class="num" style="font-size:var(--t-hero);font-weight:700;letter-spacing:-0.02em;line-height:1;color:${pnlCol(pnl)}">${fmt(pnl)}</div><div class="small">AUSD · BTC ${move >= 0 ? 'up' : 'down'} ${Math.abs(move).toFixed(2)}% · fees ${(notionalOf(p) * FEE_BPS / 10000).toFixed(2)}</div></div><div style="text-align:right;display:flex;flex-direction:column;gap:var(--s1)"><div class="small">Closes in</div><div class="num" style="font-size:var(--t-2xl);font-weight:700;line-height:1">${clock(p.left)}</div><div style="width:90px;height:6px;border-radius:999px;background:var(--hair);overflow:hidden;margin-left:auto"><div style="height:6px;width:${Math.round((1 - p.left / p.total) * 100)}%;background:var(--accent)"></div></div></div></div>
   <div class="small">${stopAt !== null ? `Stops by itself at ${fmt(stopAt)} AUSD (${(p.stop / p.lev).toFixed(1)}% against you).` : 'No stop: the time limit is the exit.'}${tpAt !== null ? ` Take profit at ${fmt(tpAt)}.` : ''} Liquidation is ${(100 / p.lev).toFixed(1)}% away.</div>
   <div style="margin-top:auto"><div class="btn outline" data-a="close">Close now</div></div></div>`; };
 
@@ -297,117 +836,184 @@ V.result = () => { const r = st.result; if (!r) return V.lobby(); const kick = {
   const week = st.trades.filter((t) => t.closed > Date.now() - 7 * 86400e3), wp = week.reduce((a, t) => a + t.pnl, 0);
   return `<div class="page"><div class="top">
   <div class="small" style="font-weight:600;letter-spacing:.04em">${kick}</div>
-  <div><div class="h1" style="font-size:32px">${r.pnl > 0.005 ? 'You made' : r.pnl < -0.005 ? 'You lost' : 'Break even'}</div><div class="num" style="font-size:56px;font-weight:700;letter-spacing:-0.02em;line-height:1">${fmt(r.pnl)}</div><div class="small" style="font-size:15px;margin-top:6px">AUSD · Bitcoin ${r.move >= 0 ? 'up' : 'down'} ${Math.abs(r.move).toFixed(2)}% in ${r.dur} · fees ${r.fees.toFixed(2)}</div></div>
+  <div><div class="h1" style="font-size:var(--t-3xl)">${r.pnl > 0.005 ? 'You made' : r.pnl < -0.005 ? 'You lost' : 'Break even'}</div><div class="num" style="font-size:var(--t-mega);font-weight:700;letter-spacing:-0.02em;line-height:1;color:${pnlCol(r.pnl)}">${fmt(r.pnl)}</div><div class="small" style="font-size:var(--t-md);margin-top:var(--s2)">AUSD · Bitcoin ${r.move >= 0 ? 'up' : 'down'} ${Math.abs(r.move).toFixed(2)}% in ${r.dur} · fees ${r.fees.toFixed(2)}</div></div>
   <div class="card"><div class="row"><div>Your week</div><b class="num">${week.length} trades · ${fmt(wp)} AUSD</b></div><div class="row"><div>Leaderboard</div><b>#7 of 12</b></div><div class="row"><div>Pool closes</div><b>Sunday</b></div></div>
   <div class="p" style="color:var(--body)">${r.reason === 'stop' ? 'The stop did its job: that was the most this tap could lose.' : r.reason === 'tp' ? 'Locked the win before the time ran out.' : 'One tap a day is the game. Come back tomorrow for the next one.'}</div>
-</div><div class="bottom"><div class="btn primary" data-a="go" data-v="lobby">Back to lobby</div><div style="display:flex;justify-content:center;gap:24px"><div class="link" data-a="sheet" data-v="share">Share</div><div class="link" data-a="strategy" data-v="${r.strategy}">Tap again</div></div></div></div>`; };
+</div><div class="bottom"><div class="btn primary" data-a="go" data-v="lobby">Back to lobby</div><div style="display:flex;justify-content:center;gap:var(--s6)"><div class="link" data-a="sheet" data-v="share">Share</div><div class="link" data-a="strategy" data-v="${r.strategy}">Tap again</div></div></div></div>`; };
 
 const LESSONS = {
-  direction: [['idea', 'Fifteen minutes. One call.', 'Bitcoin is at 61 250. In fifteen minutes it will be higher or lower. You say which. That is the whole game.'], ['quiz', 'Spot it', 'The price just bounced off a line it bounced off twice today. Where would you tap?'], ['run', 'We take it from here', 'You tap. Within a second the trade is open at the exchange with your money. The system watches it every second while you do anything else.'], ['setup', 'Your standard position', 'Every tap opens this position. Set it once, change it any time.'], ['ready', 'Ready', 'You know when to tap, what happens, and what it can cost.']],
-  ma: [['idea', 'Two lines. One moment.', 'A fast line follows the price closely, a slow line lags. When the fast one crosses above the slow one, the trend has just turned up.'], ['quiz', 'Spot the cross', 'Three moments on the chart. Only one is a real cross. Tap it.'], ['run', 'The signal names a side', 'For a few minutes after a cross the screen shows the signal: Up or Down. Both buttons stay yours; the next cross comes in a few hours.'], ['setup', 'Your standard position', 'Same position for every strategy. Set it once, change it any time.'], ['ready', 'Ready', 'You can read a cross and you know a window lasts minutes.']],
-  rsi: [['idea', 'The crowd overdoes it', 'A thermometer from 0 to 100 shows how hard everyone has been buying or selling. Under 30, sellers overdid it and the price tends to bounce up.'], ['quiz', 'Cold or hot?', 'The band reads 27. Which side does the signal name?'], ['run', 'Rare and sharp', 'Zones come once or twice a day. The screen shows the signal for a few minutes; both buttons stay yours.'], ['setup', 'Your standard position', 'Same position for every strategy. Set it once, change it any time.'], ['ready', 'Ready', 'You can read the band and you know to wait.']],
+  direction: [['idea', 'Fifteen minutes. One call.', 'Bitcoin is at 61 250. In fifteen minutes it will be higher or lower. You say which. That is the whole game.'], ['show', 'Where you tap', 'The price keeps turning on the same line. The turn is the tap; the middle of a move is not.'], ['run', 'We take it from here', 'You tap. Within a second the trade is open at the exchange with your money. The system watches it every second while you do anything else.'], ['setup', 'Your standard position', 'Every tap opens this position. Set it once, change it any time.'], ['ready', 'Ready', 'You know when to tap, what happens, and what it can cost.']],
+  ma: [['idea', 'Two lines. One moment.', 'A fast line follows the price closely, a slow line lags. When the fast one crosses above the slow one, the trend has just turned up.'], ['show', 'What a cross looks like', 'The fast line has to actually cross the slow one. Lines running close together only look busy.'], ['run', 'The signal names a side', 'For a few minutes after a cross the screen shows the signal: Up or Down. Both buttons stay yours; the next cross comes in a few hours.'], ['setup', 'Your standard position', 'Same position for every strategy. Set it once, change it any time.'], ['ready', 'Ready', 'You can read a cross and you know a window lasts minutes.']],
+  rsi: [['idea', 'The crowd overdoes it', 'A thermometer from 0 to 100 shows how hard everyone has been buying or selling. Under 30, sellers overdid it and the price tends to bounce up.'], ['show', 'Cold means up', 'Under 30 the sellers overdid it, so the signal names Up. Over 70 it is the other way round.'], ['run', 'Rare and sharp', 'Zones come once or twice a day. The screen shows the signal for a few minutes; both buttons stay yours.'], ['setup', 'Your standard position', 'Same position for every strategy. Set it once, change it any time.'], ['ready', 'Ready', 'You can read the band and you know to wait.']],
 };
 V.lesson = () => { const L = st.lesson, steps = LESSONS[L.name], [kind, title, body] = steps[L.step], right = L.name === 'rsi' ? 'up' : 2;
-  const art = kind === 'quiz' ? (L.name === 'rsi' ? `<div class="updown"><div class="ud ${L.answer === 'up' ? 'fill' : ''}" data-a="answer" data-v="up"><div class="l">Up</div></div><div class="ud ${L.answer === 'down' ? 'fill' : ''}" data-a="answer" data-v="down"><div class="l">Down</div></div></div>` : `<div class="ph" style="height:200px;border-radius:16px;position:relative">${[28, 55, 80].map((x, k) => `<div data-a="answer" data-v="${k + 1}" style="position:absolute;left:${x}%;top:${[58, 30, 64][k]}%;width:40px;height:40px;border-radius:20px;border:2px solid var(--ink);background:${L.answer == k + 1 ? 'var(--ink)' : '#fff'};color:${L.answer == k + 1 ? '#fff' : 'var(--ink)'};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700">${k + 1}</div>`).join('')}</div>`)
-    : kind === 'setup' ? `<div class="card" style="background:#FAFAFA;border:1px solid var(--hair)">${positionForm()}</div>`
-    : kind === 'ready' ? `<div style="height:200px;border-radius:16px;display:flex;align-items:center;justify-content:center;background:var(--soft)"><div style="width:96px;height:96px;border-radius:48px;background:var(--ink);display:flex;align-items:center;justify-content:center"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"></path></svg></div></div>`
-    : `<div class="ph" style="height:200px;border-radius:16px"></div>`;
-  const verdict = kind === 'quiz' && L.answer !== null ? (L.answer == right ? `<div class="toast">Right. ${L.name === 'rsi' ? 'Under 30 the signal names Up: sellers overdid it.' : 'That is the moment: the line held twice, the bounce is the tap.'}</div>` : `<div class="toast error">Not that one. ${L.name === 'rsi' ? 'Cold means oversold: the bounce goes up.' : 'Look for where the price touches the line and turns.'}</div>`) : '';
-  const bottom = kind === 'quiz' ? `<div class="btn ${L.answer == right ? 'primary' : 'disabled'}" data-a="${L.answer == right ? 'lessonNext' : 'none'}">${L.answer == right ? 'Next' : 'Tap the chart'}</div>` : kind === 'setup' ? `<div style="position:sticky;bottom:0;background:#fff;padding:10px 0 4px;border-top:1px solid var(--hair);display:flex;flex-direction:column;gap:10px;margin:0 -24px;padding-left:24px;padding-right:24px">${possible()}<div class="btn primary" data-a="lessonNext">Save and continue</div></div>` : kind === 'ready' ? `<div class="btn primary" data-a="lessonDone">${st.firstVisit ? 'Make your first tap' : 'Back to ' + NAMES[L.name]}</div><div class="link" data-a="lessonRestart">Read it again</div>` : `<div class="btn primary" data-a="lessonNext">Next</div>`;
-  return `<div class="page" style="${kind === 'setup' ? 'padding-bottom:0' : ''}"><div class="top" style="gap:14px"><div class="row"><div class="small" style="font-weight:600;letter-spacing:.04em">${NAMES[L.name].toUpperCase()} · ${L.step + 1} OF 5</div><div class="small" data-a="lessonDone">Skip</div></div>${kind === 'setup' ? '' : art}<div class="dots">${steps.map((_, i) => `<div class="dot ${i <= L.step ? 'on' : ''}"></div>`).join('')}</div><div class="h1" style="font-size:${kind === 'setup' ? 22 : 26}px">${title}</div><div class="p" style="font-size:${kind === 'setup' ? 14 : 17}px;color:var(--body)">${body}</div>${kind === 'setup' ? art : ''}${verdict}</div><div class="bottom">${bottom}</div></div>`; };
+  const art = kind === 'show'
+    ? (L.name === 'rsi' ? ART.rsi() : shownChart(L.name))
+    : kind === 'setup' ? `<div class="card" style="background:var(--raised);border:1px solid var(--hair)">${positionForm()}</div>`
+    : kind === 'ready' ? `<div style="height:200px;border-radius:var(--r-xl);display:flex;align-items:center;justify-content:center;background:var(--soft)"><div style="width:96px;height:96px;border-radius:50%;background:var(--fill);display:flex;align-items:center;justify-content:center"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="${C('--onInk')}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"></path></svg></div></div>`
+    : kind === 'run' ? ART.run()
+    : ART[L.name]();
+  const bottom = kind === 'setup'
+    ? `<div style="position:sticky;bottom:0;background:var(--paper);padding:var(--s3) 0 var(--s1);border-top:var(--bw) solid var(--hair);display:flex;flex-direction:column;gap:var(--s3);margin:0 calc(-1 * var(--s6));padding-left:var(--s6);padding-right:var(--s6)">${possible()}<div class="btn primary" data-a="lessonNext">Save and continue</div></div>`
+    : kind === 'ready' ? `<div class="btn primary" data-a="lessonDone">${st.firstVisit ? 'Make your first tap' : 'Back to ' + NAMES[L.name]}</div><div class="link" data-a="lessonRestart">Read it again</div>`
+    : `<div class="btn primary" data-a="lessonNext">Next</div>`;
+  return `<div class="page" style="${kind === 'setup' ? 'padding-bottom:0' : ''}"><div class="top" style="gap:var(--s4)"><div class="row"><div class="small" style="font-weight:600;letter-spacing:.04em">${NAMES[L.name].toUpperCase()} · ${L.step + 1} OF 5</div><div class="small" data-a="lessonDone">Skip</div></div>${kind === 'setup' ? '' : art}<div class="dots">${steps.map((_, i) => `<div class="dot ${i <= L.step ? 'on' : ''}"></div>`).join('')}</div><div class="h1" style="font-size:${kind === 'setup' ? 22 : 26}px">${title}</div><div class="p" style="font-size:${kind === 'setup' ? 14 : 17}px;color:var(--body)">${body}</div>${kind === 'setup' ? art : ''}</div><div class="bottom">${bottom}</div></div>`; };
 
 V.leaderboard = () => { const weekOnly = st.boardPeriod === 'week'; const mine = st.trades.filter((t) => (!weekOnly || t.closed > Date.now() - 7 * 86400e3) && (st.board === 'all' || t.strategy === st.board)); const you = mine.reduce((a, t) => a + t.amount * t.lev, 0) + (weekOnly ? 0 : 8250);
   const base = { direction: [['0x7c…19e2', 4200, 1.55], ['0x3f…a1c4', 2950, 0.93], ['0xb2…77d0', 1800, 0.62], ['0x11…c0aa', 1500, 0]], ma: [['0x9a…44f2', 2100, 0.18], ['0x3f…a1c4', 900, 0.09], ['0xe1…0b77', 400, 0.03]], rsi: [['0x50…aa10', 800, 0], ['0xc4…9e21', 300, 0]] };
   const rows = st.board === 'all' ? Object.values(base).flat().reduce((acc, [w, v]) => { const r = acc.find((x) => x[0] === w); if (r) r[1] += v; else acc.push([w, v, 0]); return acc; }, []) : base[st.board];
   const all = [...rows.map(([w, v, p]) => ({ w, v: weekOnly ? v : v * 14, p: weekOnly ? p : 0 })), { w: 'you', v: you, p: 0 }].sort((a, b) => b.v - a.v);
   const pool = weekOnly ? { direction: 'Pool <b>3.1 AUSD</b> · 12 players · ends Sunday', ma: 'Pool <b>0.3 AUSD</b> · 4 players · ends Sunday', rsi: '<b>No pool yet</b> · 2 players', all: 'Pools <b>3.4 AUSD</b> · 14 players · end Sunday' }[st.board] : '<b>Since launch</b> · volume traded';
-  return `<div class="page" style="justify-content:flex-start;padding:52px 20px 24px;gap:14px">
+  return `<div class="page" style="justify-content:flex-start;padding:52px var(--s5) var(--s6);gap:var(--s4)">
   <div class="head"><div class="back" data-a="go" data-v="lobby">‹ Lobby</div><div class="title">Leaderboard</div><div class="right"><div class="chips"><div class="chip ${weekOnly ? 'on' : ''}" data-a="period" data-v="week">This week</div><div class="chip ${weekOnly ? '' : 'on'}" data-a="period" data-v="all">All time</div></div></div></div>
-  ${st.prize > 0 ? `<div style="display:flex;align-items:center;justify-content:space-between;padding:14px;border-radius:12px;background:var(--ink);color:#fff;font-size:15px;font-weight:600"><div>Your prize · ${st.prize.toFixed(2)} AUSD</div><div data-a="sheet" data-v="claim" style="padding:8px 14px;border-radius:8px;background:#fff;color:var(--ink);font-size:14px">Claim</div></div>` : ''}
-  <div class="chips">${['direction', 'ma', 'rsi', 'all'].map((k) => `<div class="chip ${st.board === k ? 'on' : ''}" data-a="board" data-v="${k}">${k === 'all' ? 'All' : NAMES[k]}</div>`).join('')}</div>
+  ${st.prize > 0 ? `<div style="display:flex;align-items:center;justify-content:space-between;padding:var(--s4);border-radius:var(--r-lg);background:var(--fill);color:var(--onFill);font-size:var(--t-md);font-weight:600"><div>Your prize · ${st.prize.toFixed(2)} AUSD</div><div data-a="sheet" data-v="claim" style="padding:var(--s2) var(--s4);border-radius:var(--r-md);background:var(--onFill);color:var(--fill);font-size:var(--t-sm)">Claim</div></div>` : ''}
+  <div class="chips">${['direction', 'ma', 'rsi', 'all'].map((k) => `<div class="chip ${st.board === k ? 'on' : ''}" data-a="board" data-v="${k}">${k === 'all' ? 'All' : NAMES[k].replace(' Bounce', '')}</div>`).join('')}</div>
   <div class="row"><div>${pool}</div><div class="small">by volume</div></div>
-  <div class="list">${all.map((r, i) => `<div class="row num" style="${r.w === 'you' ? 'font-weight:700' : ''}"><div style="display:flex;gap:12px"><div class="small" style="width:20px">${i + 1}</div><div>${r.w}</div></div><div style="display:flex;gap:16px"><div>${money(r.v)} AUSD</div><div style="width:56px;text-align:right;color:${i < 3 && r.p ? 'var(--ink)' : 'var(--muted)'}">${i < 3 && r.p ? '+' + r.p.toFixed(2) : ''}</div></div></div>`).join('')}</div>
+  <div class="list">${all.map((r, i) => `<div class="row num" style="${r.w === 'you' ? 'font-weight:700' : ''}"><div style="display:flex;gap:var(--s3)"><div class="small" style="width:20px">${i + 1}</div><div>${r.w}</div></div><div style="display:flex;gap:var(--s4)"><div>${money(r.v)} AUSD</div><div style="width:56px;text-align:right;color:${i < 3 && r.p ? 'var(--ink)' : 'var(--muted)'}">${i < 3 && r.p ? '+' + r.p.toFixed(2) : ''}</div></div></div>`).join('')}</div>
   <div class="small">${weekOnly ? 'Top 3 by volume in each strategy share its pool · paid on-chain Sunday · claim here' : 'Volume traded since launch. Prizes are weekly: switch to This week.'}</div></div>`; };
 
-V.claimed = () => `<div class="page"><div class="top"><div class="small" style="font-weight:600;letter-spacing:.04em">CLAIMED</div><div><div class="h1" style="font-size:32px">+1.20 AUSD</div><div class="small" style="font-size:15px;margin-top:6px">In your wallet. Week 36 · Direction · #2 of 12.</div></div><div class="card"><div class="row"><div>This week so far</div><b>#7 · 750 AUSD traded</b></div><div class="row"><div>Pool</div><b>3.1 AUSD</b></div><div class="row"><div>Ends</div><b>Sunday 00:00</b></div></div><div class="p" style="color:var(--body)">Two more taps this week and the top three is within reach.</div></div><div class="bottom"><div class="btn primary" data-a="go" data-v="leaderboard">Back to the board</div><div class="link" data-a="sheet" data-v="share">Share it</div></div></div>`;
+V.claimed = () => `<div class="page"><div class="top"><div class="small" style="font-weight:600;letter-spacing:.04em">CLAIMED</div><div><div class="h1" style="font-size:var(--t-3xl)">+1.20 AUSD</div><div class="small" style="font-size:var(--t-md);margin-top:var(--s2)">In your wallet. Week 36 · Direction · #2 of 12.</div></div><div class="card"><div class="row"><div>This week so far</div><b>#7 · 750 AUSD traded</b></div><div class="row"><div>Pool</div><b>3.1 AUSD</b></div><div class="row"><div>Ends</div><b>Sunday 00:00</b></div></div><div class="p" style="color:var(--body)">Two more taps this week and the top three is within reach.</div></div><div class="bottom"><div class="btn primary" data-a="go" data-v="leaderboard">Back to the board</div><div class="link" data-a="sheet" data-v="share">Share it</div></div></div>`;
 
 V.history = () => { const f = st.historyFilter, rows = st.trades.filter((t) => f === 'all' || t.strategy === f), week = st.trades.filter((t) => t.closed > Date.now() - 7 * 86400e3);
   const day = (t) => new Date(t).toDateString() === new Date().toDateString() ? 'Today' : new Date(t).toDateString() === new Date(Date.now() - 86400e3).toDateString() ? 'Yesterday' : new Date(t).toLocaleDateString();
   const groups = []; rows.forEach((t) => { const d = day(t.closed); const g = groups.find((x) => x.d === d) || (groups.push({ d, rows: [] }), groups[groups.length - 1]); g.rows.push(t); });
-  return `<div class="page" style="justify-content:flex-start;padding:52px 20px 24px;gap:14px">
+  return `<div class="page" style="justify-content:flex-start;padding:52px var(--s5) var(--s6);gap:var(--s4)">
   <div class="head"><div class="back" data-a="go" data-v="lobby">‹ Lobby</div><div class="title">History</div><div class="right"><div class="chips"><div class="chip ${st.historyTab === 'positions' ? 'on' : ''}" data-a="htab" data-v="positions">Positions</div><div class="chip ${st.historyTab === 'orders' ? 'on' : ''}" data-a="htab" data-v="orders">Orders</div></div></div></div>
   <div class="chips">${[['all', 'All'], ['direction', 'Direction'], ['ma', 'MA Cross'], ['rsi', 'RSI']].map(([k, l]) => `<div class="chip ${f === k ? 'on' : ''}" data-a="hfilter" data-v="${k}">${l}</div>`).join('')}</div>
   <div class="card"><div class="row"><div>This week</div><b class="num">${week.length} trades · ${fmt(week.reduce((a, t) => a + t.pnl, 0))} AUSD · ${week.filter((t) => t.pnl > 0).length} won</b></div><div class="row"><div>All time</div><b class="num">${st.trades.length} trades · ${fmt(st.trades.reduce((a, t) => a + t.pnl, 0))} AUSD · fees ${st.trades.reduce((a, t) => a + t.fees, 0).toFixed(2)}</b></div></div>
-  ${rows.length === 0 ? `<div class="card"><div style="font-size:16px;font-weight:700">No trades yet</div><div class="small">Your first tap lands here: the price you got, what it cost, what it made, and a card to share.</div></div>` : groups.map((g) => `<div><div class="small">${g.d}</div><div class="list">${g.rows.map((t) => st.historyTab === 'positions' ? `<div class="row" data-a="trade" data-v="${t.id}"><div><div style="font-size:14px">${NAMES[t.strategy]} · ${t.side === 'up' ? 'Up' : 'Down'} @ ${money(t.entry)} → ${money(t.exit)}</div><div class="small">${hm(t.opened)} – ${hm(t.closed)} · ${t.reason === 'timer' ? 'by timer' : t.reason === 'stop' ? 'stop' : t.reason === 'tp' ? 'take profit' : 'closed'}</div></div><div style="display:flex;align-items:center;gap:8px"><b class="num">${fmt(t.pnl)}</b><div class="small">›</div></div></div>` : `<div class="row" data-a="order" data-v="${t.id}"><div><div style="font-size:14px">Close ${t.side === 'up' ? 'Up' : 'Down'} · @ ${money(t.exit)}</div><div class="small">${hm(t.closed)} · fee ${(t.fees / 2).toFixed(2)}</div></div><div class="small">filled ›</div></div><div class="row" data-a="order" data-v="${t.id}"><div><div style="font-size:14px">Open ${t.side === 'up' ? 'Up' : 'Down'} · @ ${money(t.entry)}</div><div class="small">${hm(t.opened)} · fee ${(t.fees / 2).toFixed(2)}</div></div><div class="small">filled ›</div></div>`).join('')}</div></div>`).join('')}</div>`; };
+  ${rows.length === 0 ? `<div class="card"><div style="font-size:var(--t-md);font-weight:700">No trades yet</div><div class="small">Your first tap lands here: the price you got, what it cost, what it made, and a card to share.</div></div>` : groups.map((g) => `<div><div class="small">${g.d}</div><div class="list">${g.rows.map((t) => st.historyTab === 'positions' ? `<div class="row" data-a="trade" data-v="${t.id}"><div><div style="font-size:var(--t-sm)">${NAMES[t.strategy]} · ${t.side === 'up' ? 'Up' : 'Down'} @ ${money(t.entry)} → ${money(t.exit)}</div><div class="small">${hm(t.opened)} – ${hm(t.closed)} · ${t.reason === 'timer' ? 'by timer' : t.reason === 'stop' ? 'stop' : t.reason === 'tp' ? 'take profit' : 'closed'}</div></div><div style="display:flex;align-items:center;gap:var(--s2)"><b class="num">${fmt(t.pnl)}</b><div class="small">›</div></div></div>` : `<div class="row" data-a="order" data-v="${t.id}"><div><div style="font-size:var(--t-sm)">Close ${t.side === 'up' ? 'Up' : 'Down'} · @ ${money(t.exit)}</div><div class="small">${hm(t.closed)} · fee ${(t.fees / 2).toFixed(2)}</div></div><div class="small">filled ›</div></div><div class="row" data-a="order" data-v="${t.id}"><div><div style="font-size:var(--t-sm)">Open ${t.side === 'up' ? 'Up' : 'Down'} · @ ${money(t.entry)}</div><div class="small">${hm(t.opened)} · fee ${(t.fees / 2).toFixed(2)}</div></div><div class="small">filled ›</div></div>`).join('')}</div></div>`).join('')}</div>`; };
 
 function tradeChart(t) { const lo = Math.min(t.entry, t.exit) * 0.996, hi = Math.max(t.entry, t.exit) * 1.004, y = (v) => (100 - (v - lo) / (hi - lo) * 100).toFixed(1); const stop = t.stopOn === false ? null : t.entry * (1 + (t.side === 'up' ? -1 : 1) * ((t.stop ?? 50) / 100) / t.lev), tp = t.tpOn ? t.entry * (1 + (t.side === 'up' ? 1 : -1) * (t.tp / 100) / t.lev) : null;
-  const line = (v, label, strong, left) => v === null ? '' : `<div style="position:absolute;left:0;right:0;top:${Math.max(4, Math.min(96, Number(y(v))))}%;border-top:${strong ? '2px dashed var(--ink)' : '1px dashed #A1A1AA'}"></div><div class="num" style="position:absolute;${left ? 'left:10px' : 'right:10px'};top:${Math.max(4, Math.min(96, Number(y(v))))}%;transform:translateY(-50%);font-size:11px;font-weight:600;padding:2px 6px;border-radius:6px;${strong ? 'background:var(--ink);color:#fff' : 'background:#fff;border:1px solid var(--line);color:var(--body)'}">${label}</div>`;
-  return `<div style="height:220px;border-radius:14px;position:relative;background:var(--soft);overflow:hidden"><svg width="100%" height="100%" viewBox="0 0 360 220" preserveAspectRatio="none" style="position:absolute;inset:0"><polyline fill="none" stroke="#A1A1AA" stroke-width="2" points="${Array.from({ length: 24 }, (_, i) => `${i * 15.6},${110 - Math.sin(i / 3) * 40 + (i % 5) * 6 - (t.exit > t.entry ? i * 2.5 : -i * 2.5)}`).join(' ')}"></polyline></svg>${line(t.entry, `${st.orderView ? 'FILL' : 'IN'} ${money(t.entry)}`, true, false)}${line(t.exit, `EXIT ${money(t.exit)} · ${hm(t.closed)}`, true, true)}${line(stop, `STOP ${money(stop ?? 0)}`, false, false)}${line(tp, `TP ${money(tp ?? 0)}`, false, false)}</div>`; }
-V.trade = () => { const t = st.trades.find((x) => x.id === st.tradeId); if (!t) return V.history(); return `<div class="page" style="justify-content:flex-start;padding:52px 20px 24px;gap:16px">
+  const line = (v, label, strong, left) => v === null ? '' : `<div style="position:absolute;left:0;right:0;top:${Math.max(4, Math.min(96, Number(y(v))))}%;border-top:${strong ? '2px dashed var(--ink)' : '1px dashed var(--dim)'}"></div><div class="num" style="position:absolute;${left ? 'left:10px' : 'right:10px'};top:${Math.max(4, Math.min(96, Number(y(v))))}%;transform:translateY(-50%);font-size:var(--t-xs);font-weight:600;padding:2px var(--s2);border-radius:var(--r-sm);${strong ? 'background:var(--fill);color:var(--onFill)' : 'background:var(--paper);border:1px solid var(--line);color:var(--body)'}">${label}</div>`;
+  return `<div style="height:220px;border-radius:var(--r-lg);position:relative;background:var(--soft);overflow:hidden"><svg width="100%" height="100%" viewBox="0 0 360 220" preserveAspectRatio="none" style="position:absolute;inset:0"><polyline fill="none" stroke="${C('--dim')}" stroke-width="2" points="${Array.from({ length: 24 }, (_, i) => `${i * 15.6},${110 - Math.sin(i / 3) * 40 + (i % 5) * 6 - (t.exit > t.entry ? i * 2.5 : -i * 2.5)}`).join(' ')}"></polyline></svg>${line(t.entry, `${st.orderView ? 'FILL' : 'IN'} ${money(t.entry)}`, true, false)}${line(t.exit, `EXIT ${money(t.exit)} · ${hm(t.closed)}`, true, true)}${line(stop, `STOP ${money(stop ?? 0)}`, false, false)}${line(tp, `TP ${money(tp ?? 0)}`, false, false)}</div>`; }
+V.trade = () => { const t = st.trades.find((x) => x.id === st.tradeId); if (!t) return V.history(); return `<div class="page" style="justify-content:flex-start;padding:52px var(--s5) var(--s6);gap:var(--s4)">
   <div class="head"><div class="back" data-a="back">‹ History</div><div class="title">${st.orderView ? 'Order' : 'Trade'}</div><div class="right">${st.orderView ? `<div class="small">${t.id}-1 · filled</div>` : share()}</div></div>
-  <div style="display:flex;align-items:flex-end;justify-content:space-between"><div><div class="small" style="font-weight:600;letter-spacing:.04em">${NAMES[t.strategy].toUpperCase()} · ${t.side.toUpperCase()} · ${t.reason === 'timer' ? 'BY TIMER' : t.reason === 'tp' ? 'TAKE PROFIT' : t.reason.toUpperCase()}</div><div class="num" style="font-size:44px;font-weight:700;letter-spacing:-0.02em;line-height:1;margin-top:6px">${fmt(t.pnl)}</div><div class="small">AUSD · ${hm(t.opened)} – ${hm(t.closed)} · ${Math.max(1, Math.round((t.closed - t.opened) / 60e3))} min</div></div><div style="text-align:right"><div class="num" style="font-size:22px;font-weight:700">${fmt(t.pnl / t.amount * 100, 1)}%</div><div class="small">of the ${t.amount} you put in</div></div></div>
-  ${tradeChart(t)}
+  <div style="display:flex;align-items:flex-end;justify-content:space-between"><div><div class="small" style="font-weight:600;letter-spacing:.04em">${NAMES[t.strategy].toUpperCase()} · ${t.side.toUpperCase()} · ${t.reason === 'timer' ? 'BY TIMER' : t.reason === 'tp' ? 'TAKE PROFIT' : t.reason.toUpperCase()}</div><div class="num" style="font-size:var(--t-hero);font-weight:700;letter-spacing:-0.02em;line-height:1;margin-top:var(--s2);color:${pnlCol(t.pnl)}">${fmt(t.pnl)}</div><div class="small">AUSD · ${hm(t.opened)} – ${hm(t.closed)} · ${Math.max(1, Math.round((t.closed - t.opened) / 60e3))} min</div></div><div style="text-align:right"><div class="num" style="font-size:var(--t-xl);font-weight:700">${fmt(t.pnl / t.amount * 100, 1)}%</div><div class="small">of the ${t.amount} you put in</div></div></div>
   ${st.orderView ? `<div class="card"><div class="row"><div>Side · size</div><b class="num">${t.side === 'up' ? 'Up' : 'Down'} · ${(t.amount * t.lev / t.entry).toFixed(4)} BTC · ${t.amount * t.lev} AUSD at ${t.lev}x</b></div><div class="row"><div>Price</div><b class="num">${money(t.entry)} · market</b></div><div class="row"><div>Fee</div><b class="num">${(t.fees / 2).toFixed(2)} AUSD</b></div><div class="row"><div>Filled</div><b class="num">${hm(t.opened)} · order ${t.id}-1</b></div><div class="row" data-a="trade" data-v="${t.id}"><div>Trade</div><b class="num">closed ${hm(t.closed)} · ${fmt(t.pnl)} ›</b></div></div>` : ''}
   <div class="card"><div class="row"><div>Bitcoin moved</div><b class="num">${fmt((t.exit / t.entry - 1) * 100)}% · ${money(t.entry)} → ${money(t.exit)}</b></div><div class="row"><div>Size</div><b class="num">${t.amount} AUSD × ${t.lev}x = ${t.amount * t.lev} · ${(t.amount * t.lev / t.entry).toFixed(4)} BTC</b></div><div class="row"><div>Stop · take profit</div><b class="num">${t.stopOn === false ? 'off' : '−' + (t.amount * (t.stop ?? 50) / 100).toFixed(0)} · ${t.tpOn ? '+' + (t.amount * t.tp / 100).toFixed(0) : 'off'}</b></div><div class="row"><div>Worst moment</div><b class="num">${fmt(t.worst ?? Math.min(0, t.pnl))}</b></div><div class="row"><div>Best moment</div><b class="num">${fmt(t.best ?? Math.max(0, t.pnl))}</b></div><div class="row"><div>Fees</div><b class="num">${(t.fees / 2).toFixed(2)} + ${(t.fees / 2).toFixed(2)}</b></div></div>
   <div class="small">Order ids ${t.id}-1, ${t.id}-2 · filled at the exchange</div></div>`; };
 
-V.risk = () => { const open = st.positions, atStake = open.reduce((a, p) => a + (p.stopOn ? p.amount * p.stop / 100 : p.amount), 0), pct = Math.min(100, Math.round((atStake + st.budgetSpent) / 50 * 100));
+V.risk = () => { const open = st.positions;
+  const atStake = open.reduce((a, p) => a + (p.stopOn ? p.amount * p.stop / 100 : p.amount), 0);
+  const BUDGET = 25, spent = st.budgetSpent, left = Math.max(0, BUDGET - spent);
+  const pct = Math.min(100, Math.round((atStake + spent) / 50 * 100));
   const level = pct === 0 ? 'Calm' : pct < 60 ? 'Warm' : 'Hot', angle = -80 + pct * 1.6;
-  const sub = pct === 0 ? 'Nothing open. Full budget for the day.' : `${open.length} ${open.length === 1 ? 'trade' : 'trades'} open, ${atStake.toFixed(0)} AUSD at stake. ${(25 - st.budgetSpent).toFixed(0)} of today's 25 still in play.`;
-  const dial = (k) => { const p = openPos(k), d = p ? Math.min(100, Math.round((p.stopOn ? p.amount * p.stop / 100 : p.amount) / 25 * 100)) : 0; return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 8px;border-radius:14px;background:var(--soft)"><svg width="64" height="64" viewBox="0 0 64 64"><circle cx="32" cy="32" r="26" fill="none" stroke="#E4E4E7" stroke-width="8"></circle><circle cx="32" cy="32" r="26" fill="none" stroke="#18181B" stroke-width="8" stroke-linecap="round" stroke-dasharray="163" stroke-dashoffset="${Math.round(163 - 163 * d / 100)}" transform="rotate(-90 32 32)"></circle><text x="32" y="37" text-anchor="middle" font-size="14" font-weight="700" fill="#18181B" font-family="system-ui">${d}%</text></svg><div style="font-size:13px;font-weight:600">${NAMES[k].replace(' Bounce', '')}</div><div class="small" style="font-size:11px;text-align:center">${p ? '1 open' : 'quiet'}</div></div>`; };
-  const hours = [0, 0, 0, 0, 0, 0, 0, 0, 10, 30, 30, 0, 45, 45, 45, 20, 0, 0, 0, 0, 0, 0, 0, 0]; const h = new Date().getHours(); hours[h] = Math.max(hours[h], pct);
-  return `<div class="page" style="justify-content:flex-start;padding:52px 20px 24px;gap:16px">
+  const sub = pct === 0
+    ? 'Nothing open. The whole day\'s budget is still yours.'
+    : `${open.length} ${open.length === 1 ? 'trade' : 'trades'} open · ${atStake.toFixed(0)} AUSD can still be lost right now.`;
+
+  const dial = (k) => { const p = openPos(k);
+    const d = p ? Math.min(100, Math.round((p.stopOn ? p.amount * p.stop / 100 : p.amount) / BUDGET * 100)) : 0;
+    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:var(--s2);padding:var(--s3) var(--s2);border-radius:var(--r-lg);background:var(--card-bg);border:var(--bw) solid var(--card-line)">
+      <svg width="58" height="58" viewBox="0 0 64 64"><circle cx="32" cy="32" r="26" fill="none" stroke="${C('--hair')}" stroke-width="8"></circle><circle cx="32" cy="32" r="26" fill="none" stroke="${C('--accent')}" stroke-width="8" stroke-linecap="round" stroke-dasharray="163" stroke-dashoffset="${Math.round(163 - 163 * d / 100)}" transform="rotate(-90 32 32)"></circle><text x="32" y="37" text-anchor="middle" font-size="15" font-weight="700" fill="${C('--ink')}" font-family="system-ui">${d}%</text></svg>
+      <div style="font-size:var(--t-xs);font-weight:600">${NAMES[k].replace(' Bounce', '')}</div>
+      <div class="small" style="font-size:var(--t-2xs);text-align:center">${p ? `${p.amount} × ${p.lev}x` : 'quiet'}</div>
+    </div>`; };
+
+  const row = (label, value, tone) => `<div class="row" style="font-size:var(--t-sm)"><div>${label}</div><b class="num" style="${tone ? `color:${tone}` : ''}">${value}</b></div>`;
+
+  const openRows = open.length === 0
+    ? `<div class="small" style="padding:var(--s2) 0">Nothing open. Every tap you make shows up here while it runs.</div>`
+    : open.map((p) => { const pnl = pnlOf(p); return `<div class="row" data-a="strategy" data-v="${p.strategy}" style="padding:var(--s2) 0;border-top:var(--bw) solid var(--hair)">
+        <div style="display:flex;flex-direction:column;gap:2px"><div style="font-size:var(--t-sm);font-weight:600">${NAMES[p.strategy]} · ${p.side === 'up' ? 'Up' : 'Down'}</div>
+        <div class="small" style="font-size:var(--t-2xs)">${p.amount} × ${p.lev}x · ${p.stopOn ? `stop −${(p.amount * p.stop / 100).toFixed(0)}` : 'no stop'} · closes in ${clock(p.left)}</div></div>
+        <b class="num" style="color:${pnlCol(pnl)}">${fmt(pnl)}</b></div>`; }).join('');
+
+  const hours = [0, 0, 0, 0, 0, 0, 0, 0, 10, 30, 30, 0, 45, 45, 45, 20, 0, 0, 0, 0, 0, 0, 0, 0];
+  const h = new Date().getHours(); hours[h] = Math.max(hours[h], pct);
+  const week = st.trades.filter((t) => t.closed > Date.now() - 7 * 86400e3);
+  const worst = week.length ? Math.min(...week.map((t) => t.pnl)) : 0;
+
+  return `<div class="page" style="justify-content:flex-start;padding:52px var(--s5) var(--s6);gap:var(--s4)">
   <div class="head"><div class="back" data-a="go" data-v="lobby">‹ Lobby</div><div class="title">Risk</div>${badge()}</div>
-  <div style="position:relative;height:150px;display:flex;align-items:flex-end;justify-content:center"><svg width="260" height="140" viewBox="0 0 260 140"><path d="M20 130 A110 110 0 0 1 240 130" fill="none" stroke="#E4E4E7" stroke-width="18" stroke-linecap="round"></path><path d="M20 130 A110 110 0 0 1 240 130" fill="none" stroke="#18181B" stroke-width="18" stroke-linecap="round" stroke-dasharray="345" stroke-dashoffset="${Math.round(345 - 345 * pct / 100)}"></path><g transform="rotate(${angle} 130 130)"><path d="M130 130 L130 40" stroke="#18181B" stroke-width="4" stroke-linecap="round"></path></g><circle cx="130" cy="130" r="9" fill="#18181B"></circle></svg><div class="small" style="position:absolute;bottom:0;left:0;font-size:11px">calm</div><div class="small" style="position:absolute;bottom:0;right:0;font-size:11px">hot</div></div>
-  <div style="text-align:center"><div style="font-size:28px;font-weight:700">${level}</div><div style="font-size:14px;color:var(--body)">${sub}</div></div>
-  <div style="display:flex;gap:8px">${dial('direction')}${dial('ma')}${dial('rsi')}</div>
-  <div><div class="row small"><div>Today, hour by hour</div><div>how much was in play</div></div><div style="display:flex;align-items:flex-end;gap:3px;height:44px;margin-top:6px">${hours.map((v, i) => `<div style="flex:1;height:${Math.max(3, v)}%;border-radius:2px;background:${i === h ? '#18181B' : v ? '#A1A1AA' : '#E4E4E7'}"></div>`).join('')}</div><div class="row small" style="font-size:11px"><div>00</div><div>06</div><div>12</div><div>18</div><div>24</div></div></div>
-  <div style="margin-top:auto;display:flex;flex-direction:column;gap:10px">${open.length === 0 ? `<div class="btn disabled">Nothing to close</div>` : st.risk.confirm > 0 ? `<div class="btn danger" data-a="closeAll">Tap again to close everything · ${Math.ceil(st.risk.confirm)}</div>` : `<div class="btn outline" data-a="closeAll">Close everything</div>`}<div class="small" style="text-align:center" data-a="note" data-v="Numbers: budgets, exposure, stats per strategy. Not in the prototype.">Numbers ›</div></div></div>`; };
 
-V.allclosed = () => { const r = st.result; return `<div class="page"><div class="top"><div class="small" style="font-weight:600;letter-spacing:.04em">EVERYTHING CLOSED</div><div><div class="h1" style="font-size:32px">${r.pnl >= 0 ? 'You made' : 'You lost'}</div><div class="num" style="font-size:56px;font-weight:700;letter-spacing:-0.02em;line-height:1">${fmt(r.pnl)}</div><div class="small" style="font-size:15px;margin-top:6px">AUSD · ${r.count} ${r.count === 1 ? 'position' : 'positions'} closed at market · fees ${r.fees.toFixed(2)}</div></div><div class="card">${r.rows.map(([n, v]) => `<div class="row"><div>${n}</div><b class="num">${fmt(v)}</b></div>`).join('')}<div class="row"><div>Nothing open now</div><b>0 AUSD at risk</b></div></div><div class="p" style="color:var(--body)">The kill switch does not judge. Nothing is open, the daily budget is intact for tomorrow.</div></div><div class="bottom"><div class="btn primary" data-a="go" data-v="lobby">Back to lobby</div></div></div>`; };
+  <div style="position:relative;height:138px;display:flex;align-items:flex-end;justify-content:center"><svg width="250" height="132" viewBox="0 0 260 140"><path d="M20 130 A110 110 0 0 1 240 130" fill="none" stroke="${C('--hair')}" stroke-width="18" stroke-linecap="round"></path><path d="M20 130 A110 110 0 0 1 240 130" fill="none" stroke="${C('--accent')}" stroke-width="18" stroke-linecap="round" stroke-dasharray="345" stroke-dashoffset="${Math.round(345 - 345 * pct / 100)}"></path><g transform="rotate(${angle} 130 130)"><path d="M130 130 L130 44" stroke="${C('--ink')}" stroke-width="4" stroke-linecap="round"></path></g><circle cx="130" cy="130" r="9" fill="${C('--ink')}"></circle></svg><div class="small" style="position:absolute;bottom:0;left:0;font-size:var(--t-2xs)">calm</div><div class="small" style="position:absolute;bottom:0;right:0;font-size:var(--t-2xs)">hot</div></div>
 
-V.account = () => `<div class="page" style="justify-content:flex-start;padding:52px 20px 24px;gap:14px">
+  <div style="text-align:center"><div style="font-size:var(--t-2xl);font-weight:var(--h1-weight);letter-spacing:var(--h1-track)">${level}</div><div style="font-size:var(--t-sm);color:var(--body);margin-top:2px">${sub}</div></div>
+
+  <div style="display:flex;flex-direction:column;gap:var(--s2)">
+    <div class="row small"><div style="font-size:var(--t-2xs);font-weight:600;letter-spacing:var(--track);text-transform:uppercase">Today's loss budget</div><div class="num">${spent.toFixed(2)} of ${BUDGET}</div></div>
+    <div style="height:10px;border-radius:999px;background:var(--hair);overflow:hidden;display:flex"><div style="width:${Math.round(spent / BUDGET * 100)}%;background:var(--down)"></div><div style="width:${Math.round(Math.min(atStake, left) / BUDGET * 100)}%;background:var(--accent);opacity:.45"></div></div>
+    <div class="small" style="font-size:var(--t-2xs)">${spent.toFixed(2)} lost · ${Math.min(atStake, left).toFixed(2)} at stake now · ${left.toFixed(2)} left. At ${BUDGET} the day closes itself.</div>
+  </div>
+
+  <div style="display:flex;gap:var(--s2)">${dial('direction')}${dial('ma')}${dial('rsi')}</div>
+
+  <div class="card" style="gap:var(--s2)">
+    <div class="row small"><div style="font-size:var(--t-2xs);font-weight:600;letter-spacing:var(--track);text-transform:uppercase">Open now</div><div class="num">${atStake.toFixed(2)} AUSD at stake</div></div>
+    ${openRows}
+  </div>
+
+  <div class="card" style="gap:var(--s1)">
+    <div class="row small" style="margin-bottom:var(--s1)"><div style="font-size:var(--t-2xs);font-weight:600;letter-spacing:var(--track);text-transform:uppercase">Limits</div><div class="small">set by the platform</div></div>
+    ${row('Per position', `${MARKET.maxLev}x · 50 AUSD of your own`)}
+    ${row('Daily loss', `${BUDGET} AUSD`)}
+    ${row('Cooldown between taps', '6 s')}
+    ${row('Liquidation', `${(100 / st.settings.lev).toFixed(1)}% against you`)}
+  </div>
+
+  <div class="card" style="gap:var(--s1)">
+    <div class="row small" style="margin-bottom:var(--s1)"><div style="font-size:var(--t-2xs);font-weight:600;letter-spacing:var(--track);text-transform:uppercase">This week</div><div class="small">${week.length} trades</div></div>
+    ${row('Result', fmt(week.reduce((a, t) => a + t.pnl, 0)) + ' AUSD', pnlCol(week.reduce((a, t) => a + t.pnl, 0)))}
+    ${row('Won', `${week.filter((t) => t.pnl > 0).length} of ${week.length}`)}
+    ${row('Worst single tap', fmt(worst), pnlCol(worst))}
+    ${row('Stops that fired', `${week.filter((t) => t.reason === 'stop').length}`)}
+    ${row('Fees paid', week.reduce((a, t) => a + t.fees, 0).toFixed(2))}
+  </div>
+
+  <div>
+    <div class="row small"><div>Today, hour by hour</div><div>how much was in play</div></div>
+    <div style="display:flex;align-items:flex-end;gap:3px;height:40px;margin-top:var(--s2)">${hours.map((v, i) => `<div style="flex:1;height:${Math.max(3, v)}%;border-radius:2px;background:${i === h ? C('--accent') : v ? C('--dim') : C('--hair')}"></div>`).join('')}</div>
+    <div class="row small" style="font-size:var(--t-2xs)"><div>00</div><div>06</div><div>12</div><div>18</div><div>24</div></div>
+  </div>
+
+  <div style="margin-top:var(--s3);display:flex;flex-direction:column;gap:var(--s3)">${open.length === 0 ? `<div class="btn disabled">Nothing to close</div>` : st.risk.confirm > 0 ? `<div class="btn danger" data-a="closeAll">Tap again to close everything · ${Math.ceil(st.risk.confirm)}</div>` : `<div class="btn outline" data-a="closeAll">Close everything</div>`}<div class="small" style="text-align:center">One tap closes every open trade at market.</div></div>
+</div>`; };
+
+V.allclosed = () => { const r = st.result; return `<div class="page"><div class="top"><div class="small" style="font-weight:600;letter-spacing:.04em">EVERYTHING CLOSED</div><div><div class="h1" style="font-size:var(--t-3xl)">${r.pnl >= 0 ? 'You made' : 'You lost'}</div><div class="num" style="font-size:var(--t-mega);font-weight:700;letter-spacing:-0.02em;line-height:1;color:${pnlCol(r.pnl)}">${fmt(r.pnl)}</div><div class="small" style="font-size:var(--t-md);margin-top:var(--s2)">AUSD · ${r.count} ${r.count === 1 ? 'position' : 'positions'} closed at market · fees ${r.fees.toFixed(2)}</div></div><div class="card">${r.rows.map(([n, v]) => `<div class="row"><div>${n}</div><b class="num">${fmt(v)}</b></div>`).join('')}<div class="row"><div>Nothing open now</div><b>0 AUSD at risk</b></div></div><div class="p" style="color:var(--body)">The kill switch does not judge. Nothing is open, the daily budget is intact for tomorrow.</div></div><div class="bottom"><div class="btn primary" data-a="go" data-v="lobby">Back to lobby</div></div></div>`; };
+
+V.account = () => `<div class="page" style="justify-content:flex-start;padding:52px var(--s5) var(--s6);gap:var(--s4)">
   <div class="head"><div class="back" data-a="go" data-v="lobby">‹ Lobby</div><div class="title">Account</div>${badge()}</div>
-  <div class="card"><div class="small">Your wallet · passkey on this phone</div><div style="font-size:14px;font-weight:600">0x3f9a…e6b2 <span class="small" data-a="note" data-v="Copied">copy</span></div><div class="row"><div>Balance</div><b class="num">${money(balance())} AUSD</b></div><div class="row"><div>In open trades</div><b class="num">${st.positions.reduce((a, p) => a + p.amount, 0)} AUSD</b></div><div style="display:flex;gap:8px"><div class="btn primary" style="flex:1;height:44px;font-size:15px" data-a="addfunds">${testnet() ? 'Add funds · demo' : 'Add funds'}</div><div class="btn outline" style="flex:1;height:44px;font-size:15px" data-a="withdraw" data-v="pick">Withdraw</div></div></div>
-  <div class="card"><div class="small">Network</div><div style="display:flex;gap:8px"><div class="chip ${testnet() ? 'on' : ''}" style="flex:1;text-align:center;padding:11px" data-a="switch" data-v="testnet">Practice</div><div class="chip ${!testnet() ? 'on' : ''}" style="flex:1;text-align:center;padding:11px" data-a="switch" data-v="mainnet">Real money</div></div><div class="small">${testnet() ? 'Practice money, Monad testnet. Switching to real money asks for confirmation.' : 'Your own money, Monad mainnet. Each network has its own account and balance.'}</div></div>
-  <div class="row" data-a="go" data-v="referral" style="padding:12px 14px;border-radius:12px;border:1px solid var(--line)"><div style="display:flex;flex-direction:column;gap:2px"><div style="font-weight:600;color:var(--ink)">Invite friends</div><div class="small">20% of their fees to you · 3 invited · 0.84 AUSD earned</div></div><div class="small">›</div></div>
+  <div class="card"><div class="small">Your wallet · passkey on this phone</div><div style="font-size:var(--t-sm);font-weight:600">0x3f9a…e6b2 <span class="small" data-a="note" data-v="Copied">copy</span></div><div class="row"><div>Balance</div><b class="num">${money(balance())} AUSD</b></div><div class="row"><div>In open trades</div><b class="num">${st.positions.reduce((a, p) => a + p.amount, 0)} AUSD</b></div><div style="display:flex;gap:var(--s2)"><div class="btn primary" style="flex:1;height:44px;font-size:var(--t-md)" data-a="addfunds">${testnet() ? 'Add funds · demo' : 'Add funds'}</div><div class="btn outline" style="flex:1;height:44px;font-size:var(--t-md)" data-a="withdraw" data-v="pick">Withdraw</div></div></div>
+  <div class="card"><div class="small">Network</div><div style="display:flex;gap:var(--s2)"><div class="chip ${testnet() ? 'on' : ''}" style="flex:1;text-align:center;padding:11px" data-a="switch" data-v="testnet">Practice</div><div class="chip ${!testnet() ? 'on' : ''}" style="flex:1;text-align:center;padding:11px" data-a="switch" data-v="mainnet">Real money</div></div><div class="small">${testnet() ? 'Practice money, Monad testnet. Switching to real money asks for confirmation.' : 'Your own money, Monad mainnet. Each network has its own account and balance.'}</div></div>
+  <div class="row" data-a="go" data-v="referral" style="padding:var(--s3) var(--s4);border-radius:var(--r-lg);border:1px solid var(--line)"><div style="display:flex;flex-direction:column;gap:2px"><div style="font-weight:600;color:var(--ink)">Invite friends</div><div class="small">20% of their fees to you · 3 invited · 0.84 AUSD earned</div></div><div class="small">›</div></div>
   <div class="small">Exchange account #48211 · open</div>
-  <div style="margin-top:auto;display:flex;flex-direction:column;gap:6px;align-items:center"><div class="link" data-a="signout">Sign out</div><div class="small" style="font-size:12px">Passkey stays on this device. Sign in again with Face ID.</div></div></div>`;
+  <div style="margin-top:auto;display:flex;flex-direction:column;gap:var(--s2);align-items:center"><div class="link" data-a="signout">Sign out</div><div class="small" style="font-size:var(--t-xs)">Passkey stays on this device. Sign in again with Face ID.</div></div></div>`;
 
-V.referral = () => `<div class="page" style="justify-content:flex-start;padding:52px 20px 24px;gap:14px">
+V.referral = () => `<div class="page" style="justify-content:flex-start;padding:52px var(--s5) var(--s6);gap:var(--s4)">
   <div class="head"><div class="back" data-a="go" data-v="account">‹ Account</div><div class="title">Invite friends</div></div>
-  <div class="ph" style="height:150px;border-radius:16px"></div>
-  <div class="h1" style="font-size:26px">Trade together, earn together</div>
-  <div style="font-size:15px;line-height:1.45;color:var(--body)">You get <b>20% of the fees</b> we earn on every trade your friends make, for a year. They get <b>their first week of fees back</b>. Paid to your wallet every Sunday, with the prizes.</div>
+  ${ART.referral()}
+  <div class="h1" style="font-size:var(--t-2xl)">Trade together, earn together</div>
+  <div style="font-size:var(--t-md);line-height:1.45;color:var(--body)">You get <b>20% of the fees</b> we earn on every trade your friends make, for a year. They get <b>their first week of fees back</b>. Paid to your wallet every Sunday, with the prizes.</div>
   <div class="card"><div class="small">Your link</div><div class="row"><b>tradeagent.app/i/roman7</b><div class="chip" data-a="note" data-v="Link copied">Copy</div></div></div>
   <div class="btn primary" data-a="sheet" data-v="invite">Share the link</div>
-  <div style="display:flex;gap:8px">${[['3', 'invited'], ['21 000', 'AUSD traded'], ['0.84', 'AUSD earned']].map(([v, l]) => `<div style="flex:1;padding:10px 12px;border-radius:12px;border:1px solid var(--hair);display:flex;flex-direction:column;gap:2px"><div class="num" style="font-size:18px;font-weight:700">${v}</div><div class="small" style="font-size:11px">${l}</div></div>`).join('')}</div>
-  <div class="row small" style="font-size:11px;font-weight:600;letter-spacing:.04em"><div>FRIEND</div><div style="display:flex;gap:16px"><div style="width:84px;text-align:right">VOLUME</div><div style="width:56px;text-align:right">EARNED</div></div></div>
-  <div class="list">${[['0x9a…f2c1', 'trading · 14 trades', '15 500', '+0.62'], ['0x41…08de', 'trading · 5 trades', '5 500', '+0.22'], ['0xc7…3b90', 'joined, no trade yet', '0', '']].map(([w, st_, vol, v]) => `<div class="row"><div style="display:flex;flex-direction:column;gap:2px"><div>${w}</div><div class="small">${st_}</div></div><div style="display:flex;gap:16px"><div class="num" style="width:84px;text-align:right">${vol} AUSD</div><b class="num" style="width:56px;text-align:right">${v}</b></div></div>`).join('')}</div></div>`;
+  <div style="display:flex;gap:var(--s2)">${[['3', 'invited'], ['21 000', 'AUSD traded'], ['0.84', 'AUSD earned']].map(([v, l]) => `<div style="flex:1;padding:var(--s3) var(--s3);border-radius:var(--r-lg);border:1px solid var(--hair);display:flex;flex-direction:column;gap:2px"><div class="num" style="font-size:var(--t-lg);font-weight:700">${v}</div><div class="small" style="font-size:var(--t-xs)">${l}</div></div>`).join('')}</div>
+  <div class="row small" style="font-size:var(--t-xs);font-weight:600;letter-spacing:.04em"><div>FRIEND</div><div style="display:flex;gap:var(--s4)"><div style="width:84px;text-align:right">VOLUME</div><div style="width:56px;text-align:right">EARNED</div></div></div>
+  <div class="list">${[['0x9a…f2c1', 'trading · 14 trades', '15 500', '+0.62'], ['0x41…08de', 'trading · 5 trades', '5 500', '+0.22'], ['0xc7…3b90', 'joined, no trade yet', '0', '']].map(([w, st_, vol, v]) => `<div class="row"><div style="display:flex;flex-direction:column;gap:2px"><div>${w}</div><div class="small">${st_}</div></div><div style="display:flex;gap:var(--s4)"><div class="num" style="width:84px;text-align:right">${vol} AUSD</div><b class="num" style="width:56px;text-align:right">${v}</b></div></div>`).join('')}</div></div>`;
 
 V.withdraw = () => { const w = st.withdraw, chain = w.dest === 'chain'; return `<div class="page"><div class="top">
   <div class="head"><div class="back" data-a="go" data-v="account">‹ Account</div></div>
   <div class="h1">Withdraw</div><div class="p">To your own wallet on Monad, or to another chain over the same bridge the deposit used.</div>
-  ${w.stage === 'pick' ? `<div><div class="small">Amount</div><div style="display:flex;align-items:center;gap:8px;margin-top:6px"><div class="num" style="flex:1;padding:12px 14px;border-radius:10px;border:1px solid var(--line);font-size:20px;font-weight:600">${w.amount}</div><div class="small">of ${money(balance())} AUSD · <b style="color:var(--ink)" data-a="wamount" data-v="all">All</b></div></div><div class="small" style="margin-top:6px">Minimum 10 AUSD. Open trades stay open.</div></div>
-    <div><div class="small">To</div><div class="chips" style="margin-top:6px"><div class="chip ${!chain ? 'on' : ''}" data-a="wdest" data-v="monad">Monad wallet</div><div class="chip ${chain ? 'on' : ''}" data-a="wdest" data-v="chain">Another chain</div></div>${chain ? `<div class="chips" style="margin-top:6px"><div class="chip on">Base</div><div class="chip">Arbitrum</div><div class="chip">Ethereum</div></div><div class="chips" style="margin-top:6px"><div class="chip on">USDC</div><div class="chip">USDT</div><div class="chip">AUSD</div></div>` : ''}<div class="small" style="padding:12px 14px;border-radius:10px;border:1px solid var(--line);margin-top:6px;font-size:14px">${chain ? 'Your address on Base' : 'Address on Monad'}</div></div>
+  ${w.stage === 'pick' ? `<div><div class="small">Amount</div><div style="display:flex;align-items:center;gap:var(--s2);margin-top:var(--s2)"><div class="num" style="flex:1;padding:var(--s3) var(--s4);border-radius:var(--r-md);border:1px solid var(--line);font-size:var(--t-xl);font-weight:600">${w.amount}</div><div class="small">of ${money(balance())} AUSD · <b style="color:var(--ink)" data-a="wamount" data-v="all">All</b></div></div><div class="small" style="margin-top:var(--s2)">Minimum 10 AUSD. Open trades stay open.</div></div>
+    <div><div class="small">To</div><div class="chips" style="margin-top:var(--s2)"><div class="chip ${!chain ? 'on' : ''}" data-a="wdest" data-v="monad">Monad wallet</div><div class="chip ${chain ? 'on' : ''}" data-a="wdest" data-v="chain">Another chain</div></div>${chain ? `<div class="chips" style="margin-top:var(--s2)"><div class="chip on">Base</div><div class="chip">Arbitrum</div><div class="chip">Ethereum</div></div><div class="chips" style="margin-top:var(--s2)"><div class="chip on">USDC</div><div class="chip">USDT</div><div class="chip">AUSD</div></div>` : ''}<div class="small" style="padding:var(--s3) var(--s4);border-radius:var(--r-md);border:1px solid var(--line);margin-top:var(--s2);font-size:var(--t-sm)">${chain ? 'Your address on Base' : 'Address on Monad'}</div></div>
     <div class="card"><div class="row"><div>You send</div><b class="num">${w.amount} AUSD</b></div><div class="row"><div>Fee</div><b>${chain ? '1 AUSD + bridge 0.20' : '1 AUSD'}</b></div><div class="row"><div>You get</div><b class="num">${chain ? `≈ ${(w.amount - 1.2).toFixed(2)} USDC on Base` : `${(w.amount - 1).toFixed(0)} AUSD`}</b></div></div>`
   : w.stage === 'wait' ? `<div class="card"><div class="small">Sending ${w.amount} AUSD → ${(w.amount - 1.2).toFixed(2)} USDC on Base</div><div class="small">Leaving the exchange, then the bridge. Usually under five minutes.</div></div>`
-  : `<div class="card"><div class="small">Sent</div><div class="num" style="font-size:28px;font-weight:700">${(w.amount - 1.2).toFixed(2)} USDC</div><div class="small">On Base, in your address.</div></div>`}
+  : `<div class="card"><div class="small">Sent</div><div class="num" style="font-size:var(--t-2xl);font-weight:700">${(w.amount - 1.2).toFixed(2)} USDC</div><div class="small">On Base, in your address.</div></div>`}
 </div><div class="bottom">${w.stage === 'pick' ? `<div class="btn primary" data-a="withdraw" data-v="wait">Withdraw ${w.amount} AUSD</div>` : w.stage === 'wait' ? `<div class="btn outline" data-a="withdraw" data-v="done">Prototype: it arrives</div>` : `<div class="btn primary" data-a="go" data-v="account">Done</div>`}</div></div>`; };
 
-V.signedout = () => `<div class="page"><div class="top"><div class="head"><div class="mark"></div><div class="title">TradeAgent</div>${badge()}</div><div class="h1">Signed out</div><div class="p">Your passkey stays on this device. Face ID brings everything back.</div></div><div class="bottom"><div class="btn primary" data-a="dialog">Sign in with passkey</div></div></div>`;
+V.signedout = () => `<div class="page"><div class="top"><div class="head">${LOGO(28)}<div class="title">TradeAgent</div>${badge()}</div><div class="h1">Signed out</div><div class="p">Your passkey stays on this device. Face ID brings everything back.</div></div><div class="bottom"><div class="btn primary" data-a="dialog">Sign in with passkey</div></div></div>`;
 
-V.own = () => `<div class="page"><div class="top"><div class="head"><div class="back" data-a="go" data-v="lobby">‹ Lobby</div><div class="title">Your strategy</div><div class="right"><div class="badge">COMING SOON</div></div></div><div class="ph" style="height:180px;border-radius:16px"></div><div class="h1">Build your own strategy</div><div class="p">Describe it in words. The system turns it into rules, tests it on real prices, and runs it inside your limits. Others can follow it; you climb their boards.</div>${st.ownListed ? `<div class="card"><div style="font-size:16px;font-weight:700">You are on the list</div><div class="small">We ping you when it opens. Your draft is saved.</div></div>` : `<div style="padding:14px;border-radius:12px;border:1px solid var(--line);font-size:15px;color:var(--muted);min-height:80px">Buy Bitcoin when it drops 2% in an hour, sell after 30 minutes or at −1%…</div>`}</div><div class="bottom">${st.ownListed ? `<div class="btn primary" data-a="go" data-v="lobby">Back to lobby</div>` : `<div class="btn primary" data-a="ownList">Notify me when it opens</div>`}</div></div>`;
+V.own = () => `<div class="page"><div class="top"><div class="head"><div class="back" data-a="go" data-v="lobby">‹ Lobby</div><div class="title">Your strategy</div><div class="right"><div class="badge">COMING SOON</div></div></div>${ART.own()}<div class="h1">Build your own strategy</div><div class="p">Describe it in words. The system turns it into rules, tests it on real prices, and runs it inside your limits. Others can follow it; you climb their boards.</div>${st.ownListed ? `<div class="card"><div style="font-size:var(--t-md);font-weight:700">You are on the list</div><div class="small">We ping you when it opens. Your draft is saved.</div></div>` : `<div style="padding:var(--s4);border-radius:var(--r-lg);border:1px solid var(--line);font-size:var(--t-md);color:var(--muted);min-height:80px">Buy Bitcoin when it drops 2% in an hour, sell after 30 minutes or at −1%…</div>`}</div><div class="bottom">${st.ownListed ? `<div class="btn primary" data-a="go" data-v="lobby">Back to lobby</div>` : `<div class="btn primary" data-a="ownList">Notify me when it opens</div>`}</div></div>`;
 
 // ---------------------------------------------------------------- overlays
 function overlayHtml() {
-  if (st.dialog) return `<div class="sheetbg" style="align-items:flex-end;padding:16px;box-sizing:border-box"><div class="sheet" style="border-radius:20px;align-items:center;gap:14px"><div style="width:48px;height:48px;border-radius:12px;border:1px solid var(--line)"></div><div style="font-size:17px;font-weight:600;text-align:center">${st.screen === 'signedout' ? 'Sign in to TradeAgent?' : 'Create a passkey for TradeAgent?'}</div><div class="small" style="text-align:center">System dialog. Face ID or your phone's unlock.</div><div class="btn primary" style="width:100%;height:48px" data-a="dialogOk">Continue</div><div class="link" data-a="dialogCancel">Cancel</div></div></div>`;
-  if (st.sheet === 'term') { const [t, b] = TERMS()[st.termKey]; return `<div class="sheetbg" data-a="sheet" data-v=""><div class="sheet"><div class="grab"></div><div style="font-size:20px;font-weight:700">${t}</div><div class="p" style="color:var(--body)">${b}</div><div class="small">Tap anywhere to close</div></div></div>`; }
-  if (st.sheet === 'share') { const p = openPos(), r = st.result; const live = Boolean(p) && st.screen !== 'result'; const val = live ? fmt(pnlOf(p)) : r ? fmt(r.pnl) : '+1.04'; return `<div class="sheetbg" data-a="sheet" data-v=""><div class="sheet" data-a="none"><div class="grab"></div><div style="font-size:18px;font-weight:700">${live ? 'Share this trade' : 'Share the result'}</div><div style="border-radius:16px;background:var(--ink);color:#fff;padding:18px;display:flex;flex-direction:column;gap:6px"><div class="row" style="font-size:12px;color:#A1A1AA"><div>TRADEAGENT · ${NAMES[(p || r || { strategy: 'direction' }).strategy].toUpperCase()}</div><div>${live ? 'LIVE' : 'CLOSED'}</div></div><div style="font-size:14px">${((p || r || {}).side || 'up') === 'up' ? 'Up' : 'Down'} on Bitcoin · ${st.settings.size} AUSD at ${st.settings.lev}x</div><div class="num" style="font-size:40px;font-weight:700;letter-spacing:-0.02em">${val}</div><div style="font-size:12px;color:#A1A1AA">${live ? `closes in ${clock(p.left)} · follow live` : '#7 this week'}</div><div style="font-size:12px;color:#A1A1AA">tradeagent.app/t/8f2k</div></div><div class="small">${live ? 'The link shows the trade live until it closes, then the result.' : 'The link opens the result and your place on the board.'}</div><div style="display:flex;gap:8px">${['X', 'Telegram', 'Copy link', 'Save image'].map((l) => `<div class="chip" style="flex:1;text-align:center;padding:12px 0" data-a="note" data-v="${l === 'Copy link' ? 'Link copied' : l === 'Save image' ? 'Saved to photos' : 'Opens ' + l}">${l}</div>`).join('')}</div></div></div>`; }
-  if (st.sheet === 'analysis') return `<div class="sheetbg" data-a="sheet" data-v=""><div class="sheet" data-a="none"><div class="grab"></div><div class="small" style="font-size:12px;font-weight:600;letter-spacing:.04em">TODAY ON BITCOIN · NANSEN · ${hm(Date.now())}</div><div style="font-size:20px;font-weight:700;line-height:1.2">${ANALYSIS.headline}</div><div class="row"><div class="small">${ANALYSIS.flows}</div><b>${ANALYSIS.lean}</b></div><div style="font-size:14px;line-height:1.4;color:var(--body)"><b>Strategies today.</b> ${ANALYSIS.strategies}</div><div class="small">Shown once a day when you open a strategy. It informs the tap; it never makes it.</div><div class="btn primary" data-a="sheet" data-v="">Got it</div></div></div>`;
-  if (st.sheet === 'posdetail') { const p = openPos(); if (!p) return ''; const pnl = pnlOf(p), stopAt = p.stopOn ? -p.amount * p.stop / 100 : null, stopPx = stopAt !== null ? p.entry * (1 + (p.side === 'up' ? -1 : 1) * (p.stop / 100) / p.lev) : null, liqPx = p.entry * (1 + (p.side === 'up' ? -1 : 1) / p.lev); return `<div class="sheetbg" data-a="sheet" data-v=""><div class="sheet" data-a="none"><div class="grab"></div><div style="display:flex;align-items:flex-end;justify-content:space-between"><div><div class="small" style="font-size:12px;font-weight:600;letter-spacing:.04em">OPEN · ${NAMES[p.strategy].toUpperCase()} · ${p.side.toUpperCase()}</div><div class="num" style="font-size:36px;font-weight:700;letter-spacing:-0.02em;line-height:1;margin-top:4px">${fmt(pnl)}</div></div><div style="text-align:right"><div class="num" style="font-size:20px;font-weight:700">${fmt(pnl / p.amount * 100, 1)}%</div><div class="small">of the ${p.amount}</div></div></div><div class="card"><div class="row"><div>Bitcoin</div><b class="num">${money(p.entry)} → ${money(st.price)} · ${fmt((st.price / p.entry - 1) * 100)}%</b></div><div class="row"><div>Size</div><b class="num">${p.amount} AUSD × ${p.lev}x = ${p.amount * p.lev} · ${(p.amount * p.lev / p.entry).toFixed(4)} BTC</b></div><div class="row"><div>Stop</div><b class="num">${stopAt !== null ? `${fmt(stopAt)} at ${money(stopPx)} · ${(p.stop / p.lev).toFixed(1)}% away` : 'off'}</b></div><div class="row"><div>Take profit</div><b class="num">${p.tpOn ? '+' + (p.amount * p.tp / 100).toFixed(2) : 'off'}</b></div><div class="row"><div>Liquidation</div><b class="num">${money(liqPx)} · ${(100 / p.lev).toFixed(1)}% away</b></div><div class="row"><div>Worst so far</div><b class="num">${fmt(p.worst)}</b></div><div class="row"><div>Fees so far</div><b class="num">${(notionalOf(p) * FEE_BPS / 10000).toFixed(2)}</b></div><div class="row"><div>Closes</div><b class="num">in ${clock(p.left)}</b></div></div><div class="btn outline" data-a="close">Close now</div></div></div>`; }
-  if (st.sheet === 'invite') return `<div class="sheetbg" data-a="sheet" data-v=""><div class="sheet" data-a="none"><div class="grab"></div><div style="font-size:18px;font-weight:700">Share your link</div><div style="border-radius:16px;background:var(--ink);color:#fff;padding:18px;display:flex;flex-direction:column;gap:6px"><div style="font-size:12px;color:#A1A1AA">TRADEAGENT · INVITE</div><div style="font-size:20px;font-weight:700;line-height:1.2">Trade Bitcoin in 15-minute rounds. Practice money first, real money when you want.</div><div style="font-size:12px;color:#A1A1AA">Your first week of fees is on me · tradeagent.app/i/roman7</div></div><div style="display:flex;gap:8px">${['X', 'Telegram', 'WhatsApp', 'Copy link'].map((l) => `<div class="chip" style="flex:1;text-align:center;padding:12px 0" data-a="note" data-v="${l === 'Copy link' ? 'Link copied' : 'Opens ' + l}">${l}</div>`).join('')}</div></div></div>`;
-  if (st.sheet === 'claim') return `<div class="sheetbg" data-a="sheet" data-v=""><div class="sheet" data-a="none"><div class="grab"></div><div style="font-size:20px;font-weight:700">Your prize for week 36</div><div class="row"><div>Direction · #2 of 12</div><b class="num">1.20 AUSD</b></div><div class="small">Paid by the prize contract on Monad. One tap, lands in your wallet.</div>${st.claiming ? `<div class="btn disabled">Claiming…</div>` : `<div class="btn primary" data-a="claim">Claim 1.20 AUSD</div>`}</div></div>`;
+  if (st.dialog) return `<div class="sheetbg" style="align-items:flex-end;padding:var(--s4);box-sizing:border-box"><div class="sheet" style="border-radius:var(--r-xl);align-items:center;gap:var(--s4)"><div style="width:48px;height:48px;border-radius:var(--r-lg);border:1px solid var(--line)"></div><div style="font-size:var(--t-lg);font-weight:600;text-align:center">${st.screen === 'signedout' ? 'Sign in to TradeAgent?' : 'Create a passkey for TradeAgent?'}</div><div class="small" style="text-align:center">System dialog. Face ID or your phone's unlock.</div><div class="btn primary" style="width:100%;height:48px" data-a="dialogOk">Continue</div><div class="link" data-a="dialogCancel">Cancel</div></div></div>`;
+  if (st.sheet === 'term') { const [t, b] = TERMS()[st.termKey]; return `<div class="sheetbg" data-a="sheet" data-v=""><div class="sheet"><div class="grab"></div><div style="font-size:var(--t-xl);font-weight:700">${t}</div><div class="p" style="color:var(--body)">${b}</div><div class="small">Tap anywhere to close</div></div></div>`; }
+  if (st.sheet === 'share') { const p = openPos(), r = st.result; const live = Boolean(p) && st.screen !== 'result'; const val = live ? fmt(pnlOf(p)) : r ? fmt(r.pnl) : '+1.04'; return `<div class="sheetbg" data-a="sheet" data-v=""><div class="sheet" data-a="none"><div class="grab"></div><div style="font-size:var(--t-lg);font-weight:700">${live ? 'Share this trade' : 'Share the result'}</div><div style="border-radius:var(--r-xl);background:var(--fill);color:var(--onFill);padding:var(--s5);display:flex;flex-direction:column;gap:var(--s2)"><div class="row" style="font-size:var(--t-xs);color:var(--dim)"><div>TRADEAGENT · ${NAMES[(p || r || { strategy: 'direction' }).strategy].toUpperCase()}</div><div>${live ? 'LIVE' : 'CLOSED'}</div></div><div style="font-size:var(--t-sm)">${((p || r || {}).side || 'up') === 'up' ? 'Up' : 'Down'} on Bitcoin · ${st.settings.size} AUSD at ${st.settings.lev}x</div><div class="num" style="font-size:var(--t-hero);font-weight:700;letter-spacing:-0.02em">${val}</div><div style="font-size:var(--t-xs);color:var(--dim)">${live ? `closes in ${clock(p.left)} · follow live` : '#7 this week'}</div><div style="font-size:var(--t-xs);color:var(--dim)">tradeagent.app/t/8f2k</div></div><div class="small">${live ? 'The link shows the trade live until it closes, then the result.' : 'The link opens the result and your place on the board.'}</div><div style="display:flex;gap:var(--s2)">${['X', 'Telegram', 'Copy link', 'Save image'].map((l) => `<div class="chip" style="flex:1;text-align:center;padding:12px 0" data-a="note" data-v="${l === 'Copy link' ? 'Link copied' : l === 'Save image' ? 'Saved to photos' : 'Opens ' + l}">${l}</div>`).join('')}</div></div></div>`; }
+  if (st.sheet === 'analysis') return `<div class="sheetbg" data-a="sheet" data-v=""><div class="sheet" data-a="none"><div class="grab"></div><div class="small" style="font-size:var(--t-xs);font-weight:600;letter-spacing:.04em">TODAY ON BITCOIN · NANSEN · ${hm(Date.now())}</div><div style="font-size:var(--t-xl);font-weight:700;line-height:1.2">${ANALYSIS.headline}</div><div class="row"><div class="small">${ANALYSIS.flows}</div><b>${ANALYSIS.lean}</b></div><div style="font-size:var(--t-sm);line-height:1.4;color:var(--body)"><b>Strategies today.</b> ${ANALYSIS.strategies}</div><div class="small">Shown once a day when you open a strategy. It informs the tap; it never makes it.</div><div class="btn primary" data-a="sheet" data-v="">Got it</div></div></div>`;
+  if (st.sheet === 'posdetail') { const p = openPos(); if (!p) return ''; const pnl = pnlOf(p), stopAt = p.stopOn ? -p.amount * p.stop / 100 : null, stopPx = stopAt !== null ? p.entry * (1 + (p.side === 'up' ? -1 : 1) * (p.stop / 100) / p.lev) : null, liqPx = p.entry * (1 + (p.side === 'up' ? -1 : 1) / p.lev); return `<div class="sheetbg" data-a="sheet" data-v=""><div class="sheet" data-a="none"><div class="grab"></div><div style="display:flex;align-items:flex-end;justify-content:space-between"><div><div class="small" style="font-size:var(--t-xs);font-weight:600;letter-spacing:.04em">OPEN · ${NAMES[p.strategy].toUpperCase()} · ${p.side.toUpperCase()}</div><div class="num" style="font-size:var(--t-3xl);font-weight:700;letter-spacing:-0.02em;line-height:1;margin-top:var(--s1)">${fmt(pnl)}</div></div><div style="text-align:right"><div class="num" style="font-size:var(--t-xl);font-weight:700">${fmt(pnl / p.amount * 100, 1)}%</div><div class="small">of the ${p.amount}</div></div></div><div class="card"><div class="row"><div>Bitcoin</div><b class="num">${money(p.entry)} → ${money(st.price)} · ${fmt((st.price / p.entry - 1) * 100)}%</b></div><div class="row"><div>Size</div><b class="num">${p.amount} AUSD × ${p.lev}x = ${p.amount * p.lev} · ${(p.amount * p.lev / p.entry).toFixed(4)} BTC</b></div><div class="row"><div>Stop</div><b class="num">${stopAt !== null ? `${fmt(stopAt)} at ${money(stopPx)} · ${(p.stop / p.lev).toFixed(1)}% away` : 'off'}</b></div><div class="row"><div>Take profit</div><b class="num">${p.tpOn ? '+' + (p.amount * p.tp / 100).toFixed(2) : 'off'}</b></div><div class="row"><div>Liquidation</div><b class="num">${money(liqPx)} · ${(100 / p.lev).toFixed(1)}% away</b></div><div class="row"><div>Worst so far</div><b class="num">${fmt(p.worst)}</b></div><div class="row"><div>Fees so far</div><b class="num">${(notionalOf(p) * FEE_BPS / 10000).toFixed(2)}</b></div><div class="row"><div>Closes</div><b class="num">in ${clock(p.left)}</b></div></div><div class="btn outline" data-a="close">Close now</div></div></div>`; }
+  if (st.sheet === 'invite') return `<div class="sheetbg" data-a="sheet" data-v=""><div class="sheet" data-a="none"><div class="grab"></div><div style="font-size:var(--t-lg);font-weight:700">Share your link</div><div style="border-radius:var(--r-xl);background:var(--fill);color:var(--onFill);padding:var(--s5);display:flex;flex-direction:column;gap:var(--s2)"><div style="font-size:var(--t-xs);color:var(--dim)">TRADEAGENT · INVITE</div><div style="font-size:var(--t-xl);font-weight:700;line-height:1.2">Trade Bitcoin in 15-minute rounds. Practice money first, real money when you want.</div><div style="font-size:var(--t-xs);color:var(--dim)">Your first week of fees is on me · tradeagent.app/i/roman7</div></div><div style="display:flex;gap:var(--s2)">${['X', 'Telegram', 'WhatsApp', 'Copy link'].map((l) => `<div class="chip" style="flex:1;text-align:center;padding:12px 0" data-a="note" data-v="${l === 'Copy link' ? 'Link copied' : 'Opens ' + l}">${l}</div>`).join('')}</div></div></div>`;
+  if (st.sheet === 'claim') return `<div class="sheetbg" data-a="sheet" data-v=""><div class="sheet" data-a="none"><div class="grab"></div><div style="font-size:var(--t-xl);font-weight:700">Your prize for week 36</div><div class="row"><div>Direction · #2 of 12</div><b class="num">1.20 AUSD</b></div><div class="small">Paid by the prize contract on Monad. One tap, lands in your wallet.</div>${st.claiming ? `<div class="btn disabled">Claiming…</div>` : `<div class="btn primary" data-a="claim">Claim 1.20 AUSD</div>`}</div></div>`;
   return '';
 }
 
@@ -437,6 +1043,10 @@ function closeTrade(p, reason) {
 }
 const A = {
   reset: () => { st = fresh(); render(); },
+  theme: (v) => { // the gray set is the control: it is the absence of a theme
+    document.documentElement.dataset.theme = v === 'gray' ? '' : v;
+    document.querySelectorAll('#tools .th').forEach((n) => n.classList.toggle('on', n.dataset.v === v));
+    render(); },
   mode: (m) => { st.mode = m; if (m === 'onboarding') { st.firstVisit = true; st.splash = 0; go('splash', false); } else { st.firstVisit = false; go('lobby', false); } },
   net: (n) => { st.network = n; st.intro = 0; go('intro'); },
   introNext: () => { if (st.intro < 2) { st.intro++; render(); } else go('passkey'); },
@@ -490,7 +1100,8 @@ document.addEventListener('input', (e) => { const k = e.target.dataset.in; if (!
   if (k === 'lev') { s.lev = Number(e.target.value); const l = el('levLabel'); if (l) l.textContent = s.lev + 'x'; s.size = Math.min(s.size, Math.floor(balance() * s.lev)); }
   if (k === 'stopPct') s.stop = Math.max(1, Math.min(100, Number(e.target.value) || 1));
   if (k === 'tpPct') s.tp = Math.max(1, Math.min(1000, Number(e.target.value) || 1));
-  const pn = el('putNote'); if (pn) pn.textContent = `AUSD · ${put().toFixed(0)} of yours at ${s.lev}x`;
+  if (e.target.type === 'range') e.target.style.setProperty('--p', Math.round((e.target.value - e.target.min) / (e.target.max - e.target.min) * 100) + '%');
+  const pn = el('putNote'); if (pn) pn.textContent = `${put().toFixed(0)} AUSD of yours at ${s.lev}x`;
   const mx = el('maxNote'); if (mx) mx.textContent = `max ${money(Math.floor(balance() * s.lev))}`;
   const sn = el('stopOnNote'); if (sn && s.stopOn) sn.textContent = `−${s.stop}% · ${risk().toFixed(2)} AUSD`;
   const tn = el('tpOnNote'); if (tn && s.tpOn) tn.textContent = `+${s.tp}% · ${(put() * s.tp / 100).toFixed(2)} AUSD`;

@@ -26,3 +26,10 @@ coverage.out
 # Templates are committed; real values never are
 !*.env.example
 !.env.example
+
+# Design canvases are build output: each bundles an editor runtime around the
+# sources next to it and weighs ~3 MB. The sources are what is kept.
+design/path/first-visit.html
+design/style/two-skins.html
+design/style/app-style-directions.html
+design/brand/tradeagent-marks.html

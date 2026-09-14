@@ -2,6 +2,11 @@
 // the same for testnet and mainnet. Every function the app has today is on
 // these screens; nothing is cut. Run: node features.mjs
 import { writeFileSync, unlinkSync, existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// Write beside this file, not into whatever directory node was started from.
+const OUT = dirname(fileURLToPath(import.meta.url));
 import { INK, MUTED, BODY, LINE, SOFT, HAIR, PH, btn, badge, h1, p, small, card, row, term, page, header, MONAD, S, strip, branchStrip, doc } from './screens.mjs';
 
 const NET = 'mainnet'; // no badge: these screens are identical on both networks
@@ -463,6 +468,6 @@ const rows = {
       { title: 'On the list', via: 'Notify me', inner: F.ownStub('done'), note: 'Draft saved on the platform.' },
     ])),
 };
-for (const [name, html] of Object.entries(rows)) writeFileSync(`${name}.dc.html`, html);
+for (const [name, html] of Object.entries(rows)) writeFileSync(join(OUT, `${name}.dc.html`), html);
 if (existsSync('FlowPrizes.dc.html')) unlinkSync('FlowPrizes.dc.html');
 console.log('wrote', Object.keys(rows).join(', '));

@@ -1,0 +1,72 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 660,
+      "h": 700,
+      "title": "Three marks"
+    },
+    {
+      "file": "ChargingTerminal.dc.html",
+      "x": 0,
+      "y": 820,
+      "w": 520,
+      "h": 700,
+      "title": "Charging · Terminal"
+    },
+    {
+      "file": "ChargingPaper.dc.html",
+      "x": 0,
+      "y": 1650,
+      "w": 520,
+      "h": 700,
+      "title": "Charging · Paper"
+    },
+    {
+      "file": "ShadesTerminal.dc.html",
+      "x": 600,
+      "y": 820,
+      "w": 520,
+      "h": 700,
+      "title": "Shades · Terminal"
+    },
+    {
+      "file": "ShadesPaper.dc.html",
+      "x": 600,
+      "y": 1650,
+      "w": 520,
+      "h": 700,
+      "title": "Shades · Paper"
+    },
+    {
+      "file": "InBarrelTerminal.dc.html",
+      "x": 1200,
+      "y": 820,
+      "w": 520,
+      "h": 700,
+      "title": "InBarrel · Terminal"
+    },
+    {
+      "file": "InBarrelPaper.dc.html",
+      "x": 1200,
+      "y": 1650,
+      "w": 520,
+      "h": 700,
+      "title": "InBarrel · Paper"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "how-to-judge",
+      "x": 740,
+      "y": 60,
+      "w": 320,
+      "text": "Judge at 16px first, not at 190px. A mark that only works large is a picture, not a logo.\n\nThen cover the accent colour with a thumb: if the mark falls apart in one colour, it will fail on a sticker, a stamp and a monochrome sponsor wall."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

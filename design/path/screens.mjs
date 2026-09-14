@@ -1,6 +1,11 @@
 // The screen templates and the scheme helpers every flow page is built from.
 // A text change here lands in every scheme at once.
 
+// The official mark. Generated from design/brand/mark.mjs — do not edit the
+// paths here; change the mark and re-run that file's consumers.
+const LOGO = (size, ink, acc = ink) =>
+  `<svg viewBox="0 0 64 64" width="${size}" height="${size}" style="display:block;flex-shrink:0" aria-label="TradeAgent"><circle cx="32" cy="32" r="26.5" fill="none" stroke="${acc}" stroke-width="3"/> <path d="M32 5.5v4.4M58.5 32h-4.4M32 58.5v-4.4M5.5 32h4.4" fill="none" stroke="${acc}" stroke-width="2.1" stroke-linecap="round"/> <g transform="translate(11.5 10.5) scale(0.64)"><path d="M18.4 24.6C13 23 8 19.6 5.4 13.4c5.6 3 10.2 6 14.2 8Z" fill="${ink}"/> <path d="M45.6 24.6c5.4-1.6 10.4-5 13-11.2-5.6 3-10.2 6-14.2 8Z" fill="${ink}"/> <path d="M18 26c0-5 3.5-8 8-8.5h12c4.5.5 8 3.5 8 8.5v6c0 9-5.5 15.5-14 18-8.5-2.5-14-9-14-18Z" fill="${ink}"/> <path d="M20.5 29 43.5 27.4l.5 5.1c-4 4-8 5-10.4 2.3-1-1-2.2-1-3.2 0-2.4 2.7-6.4 1.7-10.4-2.3Z" fill="${acc}"/> <path d="M32 51.2 24.5 56v-7.4L32 51.4l7.5-2.8V56Z" fill="${acc}"/></g></svg>`;
+
 const INK = '#18181B', MUTED = '#71717A', BODY = '#3F3F46', LINE = '#D4D4D8', SOFT = '#F4F4F5', HAIR = '#E4E4E7';
 const PH = 'background: repeating-linear-gradient(135deg, #E4E4E7 0 6px, #F4F4F5 6px 12px);';
 
@@ -38,7 +43,7 @@ const strategyCard = (name, sub, line, lead) =>
   </div>`;
 
 const S = {
-  splash: () => `<div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: ${INK}; color: #FFFFFF;"><div style="width: 72px; height: 72px; border-radius: 20px; background: #FFFFFF;"></div><div style="font-size: 22px; font-weight: 700;">TradeAgent</div><div style="width: 120px; height: 3px; border-radius: 2px; background: #3F3F46; overflow: hidden;"><div style="height: 3px; width: 60%; background: #FFFFFF;"></div></div><div style="position: absolute; bottom: 40px; font-size: 12px; color: #A1A1AA;">logo animation · 1.5 s</div></div>`,
+  splash: () => `<div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: ${INK}; color: #FFFFFF;">${LOGO(76, "#FFFFFF")}<div style="font-size: 22px; font-weight: 700;">TradeAgent</div><div style="width: 120px; height: 3px; border-radius: 2px; background: #3F3F46; overflow: hidden;"><div style="height: 3px; width: 60%; background: #FFFFFF;"></div></div><div style="position: absolute; bottom: 40px; font-size: 12px; color: #A1A1AA;">logo animation · 1.5 s</div></div>`,
 
   network: () => page(
     `${h1('How do you want to start?')}
@@ -53,7 +58,7 @@ const S = {
       ['This is where you get good', 'A plan on every trade, a stop, a daily budget. A streak to protect, a board to climb. Discipline you can feel in a week.'],
     ];
     return page(
-      `<div style="display: flex; align-items: center; justify-content: space-between;"><div style="display: flex; align-items: center; gap: 8px;"><div style="width: 22px; height: 22px; border-radius: 6px; background: ${INK};"></div><div style="font-size: 14px; font-weight: 600;">TradeAgent</div>${badge(net)}</div><div style="font-size: 14px; color: ${MUTED};">Skip</div></div>
+      `<div style="display: flex; align-items: center; justify-content: space-between;"><div style="display: flex; align-items: center; gap: 8px;">${LOGO(24, INK)}<div style="font-size: 14px; font-weight: 600;">TradeAgent</div>${badge(net)}</div><div style="font-size: 14px; color: ${MUTED};">Skip</div></div>
        <div style="height: 260px; border-radius: 20px; ${PH}"></div>
        <div style="display: flex; gap: 6px;">${[0, 1, 2].map((k) => `<div style="width: 24px; height: 4px; border-radius: 2px; background: ${k <= i ? INK : HAIR};"></div>`).join('')}</div>
        <div style="font-size: 30px; line-height: 1.1; font-weight: 700; letter-spacing: -0.01em; text-wrap: pretty;">${slides[i][0]}</div>
@@ -62,7 +67,7 @@ const S = {
   },
 
   promo: (net) => page(
-    `<div style="display: flex; align-items: center; gap: 10px;"><div style="width: 28px; height: 28px; border-radius: 8px; background: ${INK};"></div><div style="font-size: 15px; font-weight: 600;">TradeAgent</div><div style="margin-left: auto;">${badge(net)}</div></div>
+    `<div style="display: flex; align-items: center; gap: 10px;">${LOGO(28, INK)}<div style="font-size: 15px; font-weight: 600;">TradeAgent</div><div style="margin-left: auto;">${badge(net)}</div></div>
      <div style="height: 220px; border-radius: 16px; ${PH}"></div>
      <div style="font-size: 32px; line-height: 1.1; font-weight: 700; letter-spacing: -0.01em; text-wrap: pretty;">Up or down? One tap, fifteen minutes.</div>
      ${p('You call where Bitcoin goes next. The platform opens the trade, watches it and closes it for you.')}
@@ -125,7 +130,7 @@ const S = {
 
   lobby: (net, returning, opts = {}) => `<div style="flex: 1; display: flex; flex-direction: column; padding: 60px 20px 24px; box-sizing: border-box; gap: 14px; overflow: hidden;">
      ${opts.banner ? `<div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-radius: 12px; border: 2px solid ${INK}; font-size: 14px; font-weight: 600;"><div>${opts.banner}</div><div>Claim</div></div>` : ''}
-     <div style="display: flex; align-items: center; gap: 10px; position: relative;"><div style="width: 28px; height: 28px; border-radius: 8px; background: #18181B;"></div><div style="display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; padding: 5px 9px; border-radius: 8px; border: 1px solid ${LINE}; color: #52525B; ${net === 'mainnet' ? `background: ${INK}; color: #FFFFFF; border-color: ${INK};` : ''}">${net === 'testnet' ? 'TESTNET' : 'MAINNET'} <span style="font-size: 9px;">▼</span></div><div style="margin-left: auto; font-size: 14px; color: #52525B;">${net === 'testnet' ? '10 000' : '100'} AUSD</div>${opts.menu ? `<div style="position: absolute; top: 36px; left: 38px; width: 250px; border-radius: 14px; background: #FFFFFF; border: 1px solid ${LINE}; box-shadow: 0 12px 30px rgba(24,24,27,0.16); padding: 6px; display: flex; flex-direction: column; gap: 2px; z-index: 2;"><div style="padding: 10px 12px; border-radius: 10px; background: ${net === 'testnet' ? SOFT : '#FFFFFF'}; display: flex; flex-direction: column; gap: 2px;"><div style="font-size: 14px; font-weight: 600;">Practice ${net === 'testnet' ? '✓' : ''}</div><div style="font-size: 12px; color: ${MUTED};">Monad testnet · practice money</div></div><div style="padding: 10px 12px; border-radius: 10px; background: ${net === 'mainnet' ? SOFT : '#FFFFFF'}; display: flex; flex-direction: column; gap: 2px;"><div style="font-size: 14px; font-weight: 600;">Real money ${net === 'mainnet' ? '✓' : ''}</div><div style="font-size: 12px; color: ${MUTED};">Monad mainnet · your own money</div></div></div>` : ''}</div>
+     <div style="display: flex; align-items: center; gap: 10px; position: relative;">${LOGO(28, "#18181B")}<div style="display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; padding: 5px 9px; border-radius: 8px; border: 1px solid ${LINE}; color: #52525B; ${net === 'mainnet' ? `background: ${INK}; color: #FFFFFF; border-color: ${INK};` : ''}">${net === 'testnet' ? 'TESTNET' : 'MAINNET'} <span style="font-size: 9px;">▼</span></div><div style="margin-left: auto; font-size: 14px; color: #52525B;">${net === 'testnet' ? '10 000' : '100'} AUSD</div>${opts.menu ? `<div style="position: absolute; top: 36px; left: 38px; width: 250px; border-radius: 14px; background: #FFFFFF; border: 1px solid ${LINE}; box-shadow: 0 12px 30px rgba(24,24,27,0.16); padding: 6px; display: flex; flex-direction: column; gap: 2px; z-index: 2;"><div style="padding: 10px 12px; border-radius: 10px; background: ${net === 'testnet' ? SOFT : '#FFFFFF'}; display: flex; flex-direction: column; gap: 2px;"><div style="font-size: 14px; font-weight: 600;">Practice ${net === 'testnet' ? '✓' : ''}</div><div style="font-size: 12px; color: ${MUTED};">Monad testnet · practice money</div></div><div style="padding: 10px 12px; border-radius: 10px; background: ${net === 'mainnet' ? SOFT : '#FFFFFF'}; display: flex; flex-direction: column; gap: 2px;"><div style="font-size: 14px; font-weight: 600;">Real money ${net === 'mainnet' ? '✓' : ''}</div><div style="font-size: 12px; color: ${MUTED};">Monad mainnet · your own money</div></div></div>` : ''}</div>
      <div style="display: flex; flex-direction: column; gap: 2px;"><div style="font-size: 22px; font-weight: 700;">Choose a strategy</div>${small('Direction leads this week with +12.3 · MA Cross +2.1 · RSI −0.4')}</div>
      ${strategyCard('Direction', 'Pool 3.1 AUSD · 12 players · you #7', 'You call up or down. We close it in 15 minutes.', !returning)}
      ${strategyCard('MA Cross', 'Pool 0.3 AUSD · 4 players', 'Lights up when the trend turns. One tap.', false)}

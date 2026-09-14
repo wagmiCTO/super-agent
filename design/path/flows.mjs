@@ -1,6 +1,11 @@
 // Builds the four onboarding schemes (new/returning × testnet/mainnet).
 // Run: node flows.mjs
 import { writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// Write beside this file, not into whatever directory node was started from.
+const OUT = dirname(fileURLToPath(import.meta.url));
 import { S, strip, branchStrip, doc } from './screens.mjs';
 
 const newUser = (net) => {
@@ -61,5 +66,5 @@ const files = {
   'NewMainnet.dc.html': doc('3 · New user · mainnet', 'Same path; «Real money» chosen at the start adds the deposit step. No separate consent screen. No testnet badge anywhere.', newUser('mainnet')),
   'ReturningMainnet.dc.html': doc('4 · Returning user · mainnet', 'Same as testnet, plus the out-of-funds branch.', returningUser('mainnet')),
 };
-for (const [name, html] of Object.entries(files)) writeFileSync(name, html);
+for (const [name, html] of Object.entries(files)) writeFileSync(join(OUT, name), html);
 console.log('wrote', Object.keys(files).join(', '));
