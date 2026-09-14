@@ -8,8 +8,21 @@
  *   on 0.0.0.0 (PLATFORM_ADDR=0.0.0.0:8080)
  *
  * Set EXPO_PUBLIC_API_URL to override; Expo inlines EXPO_PUBLIC_* at build time.
+ *
+ * A deployed web build gets no default of its own: it calls its own origin and
+ * the host rewrites `/v1/*` onward to the platform. That keeps the platform's
+ * address out of the bundle — EXPO_PUBLIC_* is inlined at build time, so
+ * baking it in means a rebuild every time the address moves — and it makes the
+ * calls same-origin, so CORS stops being something to configure.
  */
-export const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8080').replace(/\/$/, '');
+const deployedWeb =
+  typeof window !== 'undefined' &&
+  Boolean(window.location?.origin) &&
+  !/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|$)/.test(window.location.origin);
+
+export const API_URL = (
+  process.env.EXPO_PUBLIC_API_URL ?? (deployedWeb ? window.location.origin : 'http://localhost:8080')
+).replace(/\/$/, '');
 
 /**
  * Where the web build (and the chart page, public/tv.html) is served from.

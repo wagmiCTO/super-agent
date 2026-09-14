@@ -151,10 +151,11 @@ export async function request<T>(path: keyof Paths | string, init?: RequestInit,
         ...(accountAddress ? { 'X-Account-Address': accountAddress } : {}),
         ...(accountAddress && opts?.strategy ? { 'X-Strategy': opts.strategy } : {}),
         ...signed,
-        // A localtunnel in front of the platform shows browsers a reminder
-        // page unless asked not to; only relevant when testing a phone
-        // against a laptop, and only sent to that host.
-        ...(API_URL.endsWith('.loca.lt') ? { 'Bypass-Tunnel-Reminder': '1' } : {}),
+        // A localtunnel in front of the platform shows browsers a reminder page
+        // unless asked not to. Sent unconditionally: the tunnel can now sit
+        // behind the site's own origin, so the URL no longer reveals it, and an
+        // unrecognised request header costs nothing when there is no tunnel.
+        'Bypass-Tunnel-Reminder': '1',
         ...(init?.headers ?? {}),
       },
     });

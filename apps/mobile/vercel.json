@@ -38,6 +38,10 @@
   ],
   "rewrites": [
     {
+      "source": "/v1/:path*",
+      "destination": "https://tradeagent-testnet.loca.lt/v1/:path*"
+    },
+    {
       "source": "/((?!_expo|assets|\\.well-known).*)",
       "destination": "/index.html"
     }
