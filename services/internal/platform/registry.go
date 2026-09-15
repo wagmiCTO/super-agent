@@ -136,10 +136,19 @@ func PolicyAccount(k keys.Key) string {
 // catalog. A wallet-wide key trades under the platform limits as they are.
 func LimitsFor(base policy.Limits, strategyID string) policy.Limits {
 	info, ok := strategy.Lookup(strategyID)
-	if !ok || info.NotionalCap == "" {
+	if !ok {
 		return base
 	}
-	cap, err := fixed.Parse(info.NotionalCap)
+	return limitsWithCap(base, info.NotionalCap)
+}
+
+// limitsWithCap applies one catalog cap. Anything that is not a positive
+// number below the platform's own limit leaves the limits as they are.
+func limitsWithCap(base policy.Limits, notionalCap string) policy.Limits {
+	if notionalCap == "" {
+		return base
+	}
+	cap, err := fixed.Parse(notionalCap)
 	if err != nil || !cap.IsPos() || cap.Cmp(base.MaxNotional) >= 0 {
 		return base
 	}

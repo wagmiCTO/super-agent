@@ -15,6 +15,11 @@ type Info struct {
 	// NotionalCap bounds one position for this strategy, in collateral
 	// units; empty means the platform-wide limit. Each strategy trades with
 	// its own key under its own limits.
+	//
+	// The standard position is one number the user sets once and every
+	// strategy screen opens with, so a strategy that caps it lower than the
+	// platform does turns that number into a refusal on its own screen. A cap
+	// here has to be paid for by a form that knows which strategy it is for.
 	NotionalCap string
 }
 
@@ -22,8 +27,8 @@ type Info struct {
 // what orders are tagged with and what the leaderboard is keyed by.
 var Catalog = []Info{
 	{ID: "direction", Name: "Direction", Tagline: "Up or down, an amount, a horizon. The platform closes for you.", Rhythm: "minutes to hours", KeyIndex: 0},
-	{ID: "ma-cross", Name: "MA Cross", Tagline: "Trade the trend: enter when the fast average crosses the slow one.", Rhythm: "a few entries an hour", KeyIndex: 1, NotionalCap: "30"},
-	{ID: "rsi", Name: "RSI Bounce", Tagline: "Counter the trend: enter when the crowd has overdone it — below 30 up, above 70 down.", Rhythm: "long waits, sharp entries", KeyIndex: 2, NotionalCap: "30"},
+	{ID: "ma-cross", Name: "MA Cross", Tagline: "Trade the trend: enter when the fast average crosses the slow one.", Rhythm: "a few entries an hour", KeyIndex: 1},
+	{ID: "rsi", Name: "RSI Bounce", Tagline: "Counter the trend: enter when the crowd has overdone it — below 30 up, above 70 down.", Rhythm: "long waits, sharp entries", KeyIndex: 2},
 }
 
 // Lookup returns the catalog entry for id.

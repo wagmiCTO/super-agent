@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/wagmiCTO/super-agent/services/internal/fixed"
 	"github.com/wagmiCTO/super-agent/services/internal/keys"
 	"github.com/wagmiCTO/super-agent/services/internal/venue"
 )
@@ -164,8 +165,8 @@ func TestRegistryConnectionOutlivesRequest(t *testing.T) {
 }
 
 // A strategy with its own key gets its own service under "<wallet>/<strategy>"
-// with the strategy's cap; strategies without one share the wallet-wide
-// key's service under the wallet's address.
+// with its own budget; strategies without one share the wallet-wide key's
+// service under the wallet's address.
 func TestRegistryOneServicePerStrategyKey(t *testing.T) {
 	const addr = "0x00000000000000000000000000000000000000cc"
 	_, priv, _ := ed25519.GenerateKey(nil)
@@ -198,12 +199,47 @@ func TestRegistryOneServicePerStrategyKey(t *testing.T) {
 	if direction.account != addr || rsi.account != addr+"/rsi" {
 		t.Fatalf("policy accounts = %q, %q", direction.account, rsi.account)
 	}
+	// No strategy in the catalog caps a position below the platform's own
+	// limit — the standard position is one number every screen opens with —
+	// so the strategy's key trades under the platform limits, on its own
+	// budget: its exposure and its daily loss are counted apart from the
+	// wallet-wide key's.
 	wide, _ := r.policy.Limits(addr)
 	own, _ := r.policy.Limits(addr + "/rsi")
-	if own.MaxNotional.Cmp(wide.MaxNotional) >= 0 {
-		t.Fatalf("rsi cap %s is not below the platform limit %s", own.MaxNotional, wide.MaxNotional)
+	if own.MaxNotional.Cmp(wide.MaxNotional) != 0 {
+		t.Fatalf("rsi limit %s is not the platform limit %s", own.MaxNotional, wide.MaxNotional)
 	}
 	if _, err := r.Get(context.Background(), addr, "nope"); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("unknown strategy: %v", err)
+	}
+}
+
+// LimitsFor narrows the platform limits to a strategy that asks for less, and
+// leaves them alone otherwise. No strategy in the catalog asks today, but the
+// key's limits are read through this, so the narrowing has to keep working.
+func TestLimitsFor(t *testing.T) {
+	base := testLimits() // max notional 50, min 5
+	for _, tc := range []struct {
+		name    string
+		cap     string
+		wantMax int
+		wantMin int
+	}{
+		{"no cap", "", 50, 5},
+		{"below the platform limit", "30", 30, 5},
+		{"at the platform limit", "50", 50, 5},
+		{"above the platform limit", "80", 50, 5},
+		{"below the minimum drags it down", "3", 3, 3},
+		{"not a number", "many", 50, 5},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := limitsWithCap(base, tc.cap)
+			if got.MaxNotional.Cmp(fixed.FromInt(int64(tc.wantMax))) != 0 {
+				t.Errorf("max notional = %s, want %d", got.MaxNotional, tc.wantMax)
+			}
+			if got.MinNotional.Cmp(fixed.FromInt(int64(tc.wantMin))) != 0 {
+				t.Errorf("min notional = %s, want %d", got.MinNotional, tc.wantMin)
+			}
+		})
 	}
 }
