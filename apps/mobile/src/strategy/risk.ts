@@ -27,3 +27,13 @@ export function riskPercent(state: State | null): number {
   const spent = Math.abs(Number(state.risk.daily_loss)) || 0;
   return Math.min(100, Math.round(((atStake + spent) / budget) * 100));
 }
+
+/**
+ * The word the risk screen puts on the day. The cut-offs are the design's:
+ * a quiet day is calm, a day with something in play is warm, and past 60 of
+ * the budget it is hot.
+ */
+export function riskLevel(percent: number): 'Calm' | 'Warm' | 'Hot' {
+  if (percent <= 0) return 'Calm';
+  return percent < 60 ? 'Warm' : 'Hot';
+}

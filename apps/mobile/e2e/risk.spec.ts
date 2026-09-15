@@ -1,41 +1,67 @@
 import { expect, test } from '@playwright/test';
 
+import { asReturningUser } from './onboarded';
+
 /**
- * Risk, end to end on testnet: a tap with a stop says what it risks, the
- * position carries its stop, the risk screen shows it at risk with the
- * limits and the market's edge, and "close everything" flattens it.
+ * Risk, end to end on testnet: a tap opens a position, the risk screen
+ * shows it at stake in the arc, the ring and the list, the limits are the
+ * safe tier as a share of the balance, the danger zone moves them and puts
+ * them back, and "close everything" flattens the account and says what it
+ * did.
  */
-test('a stop is armed with the tap and the risk screen shows what is at risk', async ({ page }) => {
-  test.setTimeout(120_000);
-  await page.goto('/direction');
-  await expect(page.getByText('No position')).toBeVisible();
+test('the risk screen shows the day, moves the limits, and closes everything', async ({ page, context }) => {
+  await asReturningUser(page, context);
 
-  // The default stop is −50%: the tap risks half the collateral.
-  await page.getByRole('button', { name: 'Amount 10', exact: true }).click();
-  await expect(page.getByTestId('tap-risk')).toHaveText(/This tap risks up to 2\.5 \(stop at −50% of 5 collateral\)/);
-  await page.getByRole('button', { name: 'Stop Off', exact: true }).click();
-  await expect(page.getByTestId('tap-risk')).toHaveText(/risks up to 5 — the whole collateral, no stop/);
-  await page.getByRole('button', { name: 'Stop −25%', exact: true }).click();
-  await expect(page.getByTestId('tap-risk')).toHaveText(/risks up to 1\.25 \(stop at −25%/);
+  // A tap, so there is something at stake.
+  await page.getByTestId('strategy-direction').click({ force: true });
+  await page.getByTestId('key-up').last().click({ timeout: 30_000 });
+  await expect(page.getByTestId('notice').last()).toHaveText(/^Filled/, { timeout: 40_000 });
 
-  await page.getByRole('button', { name: 'Up', exact: true }).click();
-  await expect(page.getByTestId('notice')).toHaveText(/^Filled/, { timeout: 30_000 });
-  await expect(page.getByTestId('position-footer')).toHaveText(/stop at -[\d.]+ · closes in/, { timeout: 10_000 });
-
-  await page.goto('/risk');
-  await expect(page.getByTestId('risk-totals')).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId('lobby-link').last().click();
+  await page.getByTestId('risk-link').last().click({ force: true });
+  await expect(page.getByTestId('risk-level')).toHaveText(/Warm|Hot/, { timeout: 20_000 });
+  await expect(page.getByTestId('risk-sub')).toContainText(/1 trade open · [\d.]+ AUSD can still be lost right now/);
+  await expect(page.getByTestId('risk-budget')).toContainText(/of \d+/);
+  await expect(page.getByTestId('ring-direction')).toContainText(/\d+\.\d\d × \d+x/);
   const pos = page.getByTestId('risk-position').first();
-  await expect(pos).toContainText(/Direction · Up .* @ .* · 2x/);
-  await expect(pos).toContainText(/at risk [\d.]+ · stop at -[\d.]+ · closes in/);
-  await expect(page.getByTestId('risk-direction')).toContainText(/Today's loss budget/);
-  await expect(page.getByTestId('risk-market')).toContainText(/A minute moves [\d.]+ bps; a round trip costs [\d.]+ bps\. Edge [\d.]+×\./);
+  await expect(pos).toContainText(/Direction · Up/);
+  await expect(pos).toContainText(/\d+\.\d\d × \d+x · (stop −\d+|no stop) · closes in \d+:\d\d/);
 
-  // Close everything asks twice, then flattens.
+  // The safe tier, as money: 20% of the balance.
+  const limits = page.getByTestId('risk-limits');
+  await expect(limits).toContainText(/Daily loss\s*\d+ AUSD · 20% of balance/);
+  await expect(limits).toContainText(/Open at once\s*2 positions/);
+  await expect(limits).toContainText(/Cooldown between taps\s*10 s/);
+  await expect(page.getByTestId('risk-week')).toBeVisible();
+  await expect(page.getByTestId('risk-hours')).toBeVisible();
+
+  // The danger zone: the budget slider to its end is the ceiling, which
+  // takes a second tap; the platform then holds the wallet to it.
+  const zone = page.getByTestId('danger-zone');
+  await zone.scrollIntoViewIfNeeded();
+  const track = await page.getByTestId('danger-daily-slider').boundingBox();
+  if (!track) throw new Error('no slider');
+  await page.mouse.click(track.x + track.width - 2, track.y + track.height / 2);
+  await expect(page.getByTestId('danger-daily')).toHaveText('75% of balance');
+  const apply = page.getByTestId('danger-apply');
+  await apply.click();
+  await expect(apply).toHaveText(/Tap again/);
+  await apply.click();
+  await expect(page.getByTestId('danger-notice')).toHaveText(/Applied/, { timeout: 20_000 });
+  await expect(limits).toContainText(/75% of balance/, { timeout: 10_000 });
+
+  // And back to the safe tier.
+  await page.getByTestId('danger-reset').click();
+  await expect(limits).toContainText(/20% of balance/, { timeout: 20_000 });
+
+  // Close everything asks twice, then says what it did.
   const button = page.getByTestId('close-all');
+  await button.scrollIntoViewIfNeeded();
   await button.click();
-  await expect(button).toHaveText(/Tap again/);
+  await expect(button).toHaveText(/Tap again to close everything · \d/);
   await button.click();
-  await expect(page.getByTestId('notice')).toHaveText(/Closed 1 position/, { timeout: 30_000 });
-  await expect(page.getByText('Nothing open. Nothing at risk.')).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByTestId('risk-totals').getByTestId('perf-today')).toContainText(/\d+ trades? · \d+% won/);
+  await expect(page.getByTestId('closed-pnl')).toHaveText(/^[+−]?\d+\.\d\d$/, { timeout: 40_000 });
+  await expect(page.getByTestId('closed')).toContainText(/1 position closed at market/);
+  await page.getByTestId('closed-back').click();
+  await expect(page.getByText('Choose a strategy').last()).toBeVisible({ timeout: 20_000 });
 });

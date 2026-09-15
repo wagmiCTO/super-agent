@@ -32,6 +32,8 @@ export type DepositQuote = components['schemas']['DepositQuote'];
 export type DepositStatus = components['schemas']['DepositStatus'];
 export type PrizeHistory = components['schemas']['PrizeHistory'];
 export type RiskReport = components['schemas']['RiskReport'];
+export type LimitsBlock = components['schemas']['LimitsBlock'];
+export type LimitTier = components['schemas']['LimitTier'];
 
 /** Stable machine codes the server returns. Policy reasons come first. */
 export type ErrorCode =
@@ -195,6 +197,8 @@ export const api = {
     request<DepositQuote>('/v1/deposit/quote', { method: 'POST', body: JSON.stringify(body) }),
   prizeHistory: () => request<PrizeHistory>('/v1/prizes/history?limit=12'),
   risk: () => request<RiskReport>('/v1/risk'),
+  limits: () => request<LimitsBlock>('/v1/limits'),
+  setLimits: (tier: LimitTier) => request<LimitsBlock>('/v1/limits', { method: 'PUT', body: JSON.stringify(tier) }),
   closeAll: () =>
     request<{ closed: number; results: { strategy: string; symbol: string; closed: boolean; error?: string; pnl?: string }[] }>('/v1/risk/close-all', {
       method: 'POST',

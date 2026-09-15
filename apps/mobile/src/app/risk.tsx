@@ -1,289 +1,439 @@
 /**
- * Risk & performance: the wallet across every strategy in one place.
+ * Risk — the day, as the design draws it.
  *
- * What can be lost right now (open positions, their stops, their distance
- * to liquidation), how much of each limit is spent (today's loss budget,
- * exposure, cooldown), how the round trips went today, this week and ever,
- * and what the market itself costs against what it moves. One button
- * closes everything; it asks twice.
+ * One arc for how much of today's budget is spoken for, the budget itself
+ * as a bar of lost / at stake / left, a ring per strategy, what is open
+ * right now, the limits, the week, the day hour by hour, and the one red
+ * button. Everything comes from one report the platform assembles; the
+ * hour bars are built here from today's round trips.
+ *
+ * Below the limits sits the danger zone: the limits are the wallet's to
+ * raise, between the safe tier everyone starts on and the ceiling the
+ * platform holds. A choice takes a second tap, like closing everything.
  */
-import { Link } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+
+import { router, type Href } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useAccount } from '@/account/useAccount';
-import { api, ApiError, describeError, type RiskReport } from '@/api/client';
-import { AccountSection } from '@/components/account';
+import { api, ApiError, describeError, type LimitTier, type RiskReport, type Trade } from '@/api/client';
 import { trim } from '@/components/format';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { NoticeBox, ScreenHeader, styles, useCountdown } from '@/components/trading';
-import { STATE_POLL_MS, STRATEGY_NAMES } from '@/config';
-import { Spacing } from '@/constants/legacy-theme';
-import { useTheme } from '@/hooks/use-theme';
-import type { Notice } from '@/trading/useTrading';
+import { DEFAULT_SYMBOL, STATE_POLL_MS, STRATEGY_NAMES } from '@/config';
+import { RiskGauge, StrategyRing } from '@/risk/gauge';
+import { hoursInPlay } from '@/risk/hours';
+import { riskLevel } from '@/strategy/risk';
+import { usePositionSettings } from '@/trading/useSettings';
+import { Button } from '@/ui/button';
+import { useCountdown } from '@/ui/countdown';
+import { Slider } from '@/ui/slider';
+import { StubHeader } from '@/ui/stub';
+import { Card, Row, Screen } from '@/ui/surface';
+import { Text, money } from '@/ui/text';
+import { useTheme } from '@/theme';
 
-const UP = '#16a34a';
-const DOWN = '#dc2626';
+type OpenNow = RiskReport['open'][number];
 
-type Perf = NonNullable<RiskReport['totals']['today']>;
-type RiskPosition = RiskReport['open'][number];
-type RiskStrategy = RiskReport['strategies'][number];
+const ROUTES: Record<string, Href> = { direction: '/direction', 'ma-cross': '/ma-cross', rsi: '/rsi' };
+const STRATEGIES = ['direction', 'ma-cross', 'rsi'] as const;
 
-export default function RiskScreen() {
-  const account = useAccount();
-  const theme = useTheme();
+/** The report, polled; null until the first answer. */
+function useRisk() {
   const [report, setReport] = useState<RiskReport | null>(null);
-  const [locked, setLocked] = useState(false);
-  const [offline, setOffline] = useState(false);
-  const [notice, setNotice] = useState<Notice | null>(null);
-  const [confirm, setConfirm] = useState(false);
-  const [busy, setBusy] = useState(false);
-
+  const [problem, setProblem] = useState<'locked' | 'offline' | null>(null);
   const refresh = useCallback(async () => {
     try {
-      const r = await api.risk();
-      setReport(r);
-      setLocked(false);
-      setOffline(false);
+      setReport(await api.risk());
+      setProblem(null);
     } catch (e) {
-      if (e instanceof ApiError && e.code === 'network') setOffline(true);
-      if (e instanceof ApiError && (e.code === 'own_account_disabled' || e.code === 'no_key')) {
-        setLocked(true);
-        setReport(null);
-      }
+      if (e instanceof ApiError && e.code === 'network') setProblem('offline');
+      else if (e instanceof ApiError && (e.code === 'own_account_disabled' || e.code === 'no_key')) setProblem('locked');
     }
   }, []);
   useEffect(() => {
-    void refresh();
+    // Deferred rather than called in the effect body: the first read is a
+    // poll like every other, not a render-time state change.
+    const first = setTimeout(refresh, 0);
     const id = setInterval(refresh, STATE_POLL_MS);
-    return () => clearInterval(id);
-  }, [refresh, account.state.status]);
+    return () => {
+      clearTimeout(first);
+      clearInterval(id);
+    };
+  }, [refresh]);
+  return { report, problem, refresh };
+}
 
-  const closeAll = async () => {
-    if (!confirm) {
+/** Today's round trips across the strategies, for the hour bars. */
+function useTodayTrades(): Trade[] {
+  const [trades, setTrades] = useState<Trade[]>([]);
+  useEffect(() => {
+    let alive = true;
+    const read = () =>
+      Promise.all(STRATEGIES.map((s) => api.trades(DEFAULT_SYMBOL, s).catch(() => [] as Trade[]))).then((lists) => {
+        if (!alive) return;
+        const start = new Date();
+        start.setHours(0, 0, 0, 0);
+        setTrades(lists.flat().filter((t) => t.closed_at && new Date(t.closed_at) >= start));
+      });
+    void read();
+    const id = setInterval(read, 60_000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, []);
+  return trades;
+}
+
+export default function RiskScreen() {
+  const theme = useTheme();
+  const { report, problem, refresh } = useRisk();
+  const trades = useTodayTrades();
+  const { settings } = usePositionSettings();
+
+  return (
+    <Screen testID="risk">
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: 52, paddingBottom: theme.space.s6, gap: theme.space.s4 }}>
+        <StubHeader title="Risk" badge={problem === 'offline' ? 'OFFLINE' : problem === 'locked' ? 'SIGN IN' : 'TESTNET'} />
+        {report ? (
+          <Body report={report} trades={trades} leverage={settings.leverage} refresh={refresh} />
+        ) : (
+          <Text variant="small">{problem === 'locked' ? 'Sign in with your passkey and open an account to see your risk.' : problem === 'offline' ? 'Server unreachable' : 'Loading…'}</Text>
+        )}
+      </ScrollView>
+    </Screen>
+  );
+}
+
+function Body({ report, trades, leverage, refresh }: { report: RiskReport; trades: Trade[]; leverage: number; refresh: () => Promise<void> }) {
+  const theme = useTheme();
+  const budget = Number(report.limits.active?.daily_loss ?? 0);
+  const lost = Number(report.totals.daily_loss);
+  const atStake = Number(report.totals.at_risk);
+  const left = Math.max(0, budget - lost);
+  const percent = budget > 0 ? Math.min(100, Math.round(((atStake + lost) / budget) * 100)) : 0;
+  const level = riskLevel(percent);
+  const open = report.open;
+  const sub =
+    percent === 0
+      ? "Nothing open. The whole day's budget is still yours."
+      : `${open.length} ${open.length === 1 ? 'trade' : 'trades'} open · ${atStake.toFixed(2)} AUSD can still be lost right now.`;
+  const week = report.totals.week;
+  const hours = useMemo(() => hoursInPlay(trades, open, new Date()), [trades, open]);
+  const hour = new Date().getHours();
+
+  return (
+    <>
+      {/* The arc, the word, the sentence. */}
+      <View style={{ alignItems: 'center' }} testID="risk-gauge">
+        <View style={{ width: 250, alignItems: 'center' }}>
+          <RiskGauge percent={percent} />
+          <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between' }}>
+            <Text variant="small" style={{ fontSize: theme.type.t2xs }}>calm</Text>
+            <Text variant="small" style={{ fontSize: theme.type.t2xs }}>hot</Text>
+          </View>
+        </View>
+      </View>
+      <View style={{ alignItems: 'center', gap: 2 }}>
+        <Text variant="h1" testID="risk-level">{level}</Text>
+        <Text variant="body" style={{ fontSize: theme.type.tSm, color: theme.color.body, textAlign: 'center' }} testID="risk-sub">{sub}</Text>
+      </View>
+
+      {/* Today's loss budget: lost, at stake, left. */}
+      <View style={{ gap: theme.space.s2 }} testID="risk-budget">
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text variant="caps">Today&apos;s loss budget</Text>
+          <Text variant="num">{`${lost.toFixed(2)} of ${budget.toFixed(0)}`}</Text>
+        </View>
+        <View style={{ height: 10, borderRadius: 999, backgroundColor: theme.color.hair, overflow: 'hidden', flexDirection: 'row' }}>
+          <View style={{ width: `${budget > 0 ? Math.min(100, Math.round((lost / budget) * 100)) : 0}%`, backgroundColor: theme.color.down }} />
+          <View style={{ width: `${budget > 0 ? Math.min(100, Math.round((Math.min(atStake, left) / budget) * 100)) : 0}%`, backgroundColor: theme.color.accent, opacity: 0.45 }} />
+        </View>
+        <Text variant="small" style={{ fontSize: theme.type.t2xs }}>
+          {`${lost.toFixed(2)} lost · ${Math.min(atStake, left).toFixed(2)} at stake now · ${left.toFixed(2)} left. At ${budget.toFixed(0)} the day closes itself.`}
+        </Text>
+      </View>
+
+      {/* One ring per strategy. */}
+      <View style={{ flexDirection: 'row', gap: theme.space.s2 }}>
+        {report.strategies.map((s) => {
+          const stake = s.open.reduce((sum, p) => sum + Number(p.at_risk), 0);
+          const first = s.open[0];
+          return (
+            <View
+              key={s.id}
+              testID={`ring-${s.id}`}
+              style={{
+                flex: 1,
+                alignItems: 'center',
+                gap: theme.space.s2,
+                paddingVertical: theme.space.s3,
+                paddingHorizontal: theme.space.s2,
+                borderRadius: theme.radius.rLg,
+                backgroundColor: theme.color.cardBg,
+                borderWidth: theme.color.cardLine === 'transparent' ? 0 : theme.size.bw,
+                borderColor: theme.color.cardLine,
+              }}
+            >
+              <StrategyRing percent={budget > 0 ? Math.min(100, Math.round((stake / budget) * 100)) : 0} />
+              <Text variant="bodyStrong" style={{ fontSize: theme.type.tXs }}>{s.name.replace(' Bounce', '')}</Text>
+              <Text variant="small" style={{ fontSize: theme.type.t2xs, textAlign: 'center' }}>
+                {first ? `${Number(first.collateral).toFixed(2)} × ${trim(first.leverage)}x` : 'quiet'}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+
+      {/* Open now. */}
+      <Card style={{ gap: theme.space.s2 }} testID="risk-open">
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text variant="caps">Open now</Text>
+          <Text variant="num">{`${atStake.toFixed(2)} AUSD at stake`}</Text>
+        </View>
+        {open.length === 0 ? (
+          <Text variant="small" style={{ paddingVertical: theme.space.s2 }}>Nothing open. Every tap you make shows up here while it runs.</Text>
+        ) : (
+          open.map((p) => <OpenRow key={`${p.strategy}-${p.id}`} p={p} />)
+        )}
+      </Card>
+
+      {/* Limits. */}
+      <Card style={{ gap: theme.space.s1 }} testID="risk-limits">
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.space.s1 }}>
+          <Text variant="caps">Limits</Text>
+          <Text variant="small">yours to change below</Text>
+        </View>
+        <Row label="Per position" value={`up to ${trim(report.limits.active?.max_leverage ?? '1')}x · your whole balance`} />
+        <Row label="Daily loss" value={`${budget.toFixed(0)} AUSD · ${report.limits.chosen.daily_loss_pct}% of balance`} />
+        <Row label="Open at once" value={`${report.limits.chosen.max_open_positions} ${report.limits.chosen.max_open_positions === 1 ? 'position' : 'positions'}`} />
+        <Row label="Cooldown between taps" value={`${report.limits.chosen.cooldown_seconds} s`} />
+        <Row label="Liquidation" value={`${(100 / Math.max(1, leverage)).toFixed(1)}% against you`} />
+      </Card>
+
+      <DangerZone limits={report.limits} refresh={refresh} />
+
+      {/* This week. */}
+      {week ? (
+        <Card style={{ gap: theme.space.s1 }} testID="risk-week">
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.space.s1 }}>
+            <Text variant="caps">This week</Text>
+            <Text variant="small">{`${week.trades} ${week.trades === 1 ? 'trade' : 'trades'}`}</Text>
+          </View>
+          <Row label="Result" value={`${money(Number(week.pnl))} AUSD`} tone={Number(week.pnl)} />
+          <Row label="Won" value={`${week.wins} of ${week.trades}`} />
+          <Row label="Worst single tap" value={money(Number(week.worst))} tone={Number(week.worst)} />
+          <Row label="Stops that fired" value={String(week.by_reason.stop ?? 0)} />
+          <Row label="Fees paid" value={Number(week.fees).toFixed(2)} />
+        </Card>
+      ) : null}
+
+      {/* Today, hour by hour. */}
+      <View testID="risk-hours">
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <Text variant="small">Today, hour by hour</Text>
+          <Text variant="small">notional in play</Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: 40, marginTop: theme.space.s2 }}>
+          {hours.map((v, i) => (
+            <View
+              key={i}
+              style={{
+                flex: 1,
+                height: `${Math.max(3, v)}%`,
+                borderRadius: 2,
+                backgroundColor: i === hour ? theme.color.accent : v ? theme.color.dim : theme.color.hair,
+              }}
+            />
+          ))}
+        </View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          {['00', '06', '12', '18', '24'].map((h) => (
+            <Text key={h} variant="small" style={{ fontSize: theme.type.t2xs }}>{h}</Text>
+          ))}
+        </View>
+      </View>
+
+      <CloseEverything open={open.length} />
+    </>
+  );
+}
+
+/** One open position: the strategy and side, what it is, what it is at. */
+function OpenRow({ p }: { p: OpenNow }) {
+  const theme = useTheme();
+  const closesIn = useCountdown(p.closes_at ?? null);
+  const pnl = Number(p.unrealized_pnl);
+  const stop = p.stop_pnl !== undefined ? `stop ${money(Number(p.stop_pnl), 0)}` : 'no stop';
+  return (
+    <Pressable
+      testID="risk-position"
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${STRATEGY_NAMES[p.strategy] ?? p.strategy}`}
+      onPress={() => router.push(ROUTES[p.strategy] ?? '/')}
+      style={({ pressed }) => ({
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: theme.space.s2,
+        borderTopWidth: theme.size.bw,
+        borderTopColor: theme.color.hair,
+        opacity: pressed ? 0.7 : 1,
+      })}
+    >
+      <View style={{ gap: 2, flexShrink: 1 }}>
+        <Text variant="bodyStrong" style={{ fontSize: theme.type.tSm }}>{`${STRATEGY_NAMES[p.strategy] ?? p.strategy} · ${p.side === 'long' ? 'Up' : 'Down'}`}</Text>
+        <Text variant="small" style={{ fontSize: theme.type.t2xs }}>
+          {`${Number(p.collateral).toFixed(2)} × ${trim(p.leverage)}x · ${stop}${closesIn ? ` · closes in ${closesIn}` : ''}`}
+        </Text>
+      </View>
+      <Text variant="num" signOf={pnl} style={{ fontSize: theme.type.tMd }}>{money(pnl)}</Text>
+    </Pressable>
+  );
+}
+
+/**
+ * The danger zone: the three numbers the wallet may move, each between the
+ * safe tier and the ceiling. Anything past the safe tier is drawn in the
+ * colour of a loss. A change takes a second tap, and the platform answers
+ * with what it now holds the wallet to.
+ */
+function DangerZone({ limits, refresh }: { limits: RiskReport['limits']; refresh: () => Promise<void> }) {
+  const theme = useTheme();
+  const { chosen, safe, ceiling } = limits;
+  // What the sliders show: the platform's answer until the user moves one,
+  // then the draft, until it is applied or the sliders go back to it.
+  const [draft, setDraft] = useState<LimitTier | null>(null);
+  const tier = draft ?? chosen;
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const dirty = tier.daily_loss_pct !== chosen.daily_loss_pct || tier.max_open_positions !== chosen.max_open_positions || tier.cooldown_seconds !== chosen.cooldown_seconds;
+  const danger = (t: LimitTier) => t.daily_loss_pct > safe.daily_loss_pct || t.max_open_positions > safe.max_open_positions || t.cooldown_seconds < safe.cooldown_seconds;
+
+  const set = (patch: Partial<LimitTier>) => {
+    setConfirm(false);
+    setDraft({ ...tier, ...patch });
+  };
+
+  const apply = async (next: LimitTier) => {
+    if (!confirm && danger(next)) {
       setConfirm(true);
-      setTimeout(() => setConfirm(false), 5000);
+      setTimeout(() => setConfirm(false), 4000);
       return;
     }
     setConfirm(false);
     setBusy(true);
     setNotice(null);
     try {
-      const res = await api.closeAll();
-      const failed = res.results.filter((r) => !r.closed);
-      setNotice({
-        text: failed.length ? `Closed ${res.closed}, ${failed.length} failed: ${failed.map((f) => f.error).join('; ')}` : `Closed ${res.closed} position${res.closed === 1 ? '' : 's'}`,
-        kind: failed.length ? 'error' : 'info',
-      });
+      await api.setLimits(next);
+      setDraft(null);
       await refresh();
+      setNotice(danger(next) ? 'Applied. You are past the safe tier: the stop and the budget are what is left.' : 'Applied.');
     } catch (e) {
-      setNotice({ text: describeError(e), kind: 'error' });
+      setNotice(describeError(e));
     } finally {
       setBusy(false);
     }
   };
 
-  const open = report?.open ?? [];
+  const tone = (hot: boolean) => (hot ? theme.color.down : theme.color.ink);
+
   return (
-    <ThemedView style={styles.root}>
-      <SafeAreaView style={styles.safe}>
-        <ScrollView contentContainerStyle={styles.content}>
-          <ScreenHeader title="RISK & PERFORMANCE" state={null} offline={offline} locked={locked} />
-          <AccountSection account={account} state={null} onChange={refresh} />
+    <Card style={{ gap: theme.space.s3, borderWidth: theme.size.bw, borderColor: danger(tier) ? theme.color.down : theme.color.cardLine }} testID="danger-zone">
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text variant="caps" style={{ color: theme.color.down }}>Danger zone</Text>
+        <Text variant="small">{`safe: ${safe.daily_loss_pct}% · ${safe.max_open_positions} open · ${safe.cooldown_seconds} s`}</Text>
+      </View>
 
-          {report ? (
-            <>
-              <View style={[styles.card, { backgroundColor: theme.backgroundElement, alignItems: 'stretch', gap: Spacing.one }]} testID="risk-totals">
-                <View style={styles.header}>
-                  <ThemedText type="smallBold" themeColor="textSecondary">
-                    AT RISK NOW
-                  </ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    exposure {trim(report.totals.exposure)}
-                  </ThemedText>
-                </View>
-                <ThemedText type="title" testID="risk-at-risk">
-                  {trim(report.totals.at_risk)}
-                </ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  what every open position can still lose · today&apos;s loss so far {trim(report.totals.daily_loss)}
-                </ThemedText>
-                <PerfRow label="Today" p={report.totals.today} />
-                <PerfRow label="This week" p={report.totals.week} />
-                <PerfRow label="All time" p={report.totals.all} />
-              </View>
+      <View style={{ gap: theme.space.s1 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <Text variant="small" style={{ color: theme.color.body }}>Daily loss budget</Text>
+          <Text variant="num" style={{ color: tone(tier.daily_loss_pct > safe.daily_loss_pct) }} testID="danger-daily">{`${tier.daily_loss_pct}% of balance`}</Text>
+        </View>
+        <Slider value={tier.daily_loss_pct} min={1} max={ceiling.daily_loss_pct} step={1} onChange={(v) => set({ daily_loss_pct: v })} testID="danger-daily-slider" />
+      </View>
 
-              <View style={[styles.card, { backgroundColor: theme.backgroundElement, alignItems: 'stretch', gap: Spacing.one }]} testID="risk-open">
-                <ThemedText type="smallBold" themeColor="textSecondary">
-                  OPEN · {open.length}
-                </ThemedText>
-                {open.length === 0 ? (
-                  <ThemedText type="small" themeColor="textSecondary">
-                    Nothing open. Nothing at risk.
-                  </ThemedText>
-                ) : (
-                  open.map((p) => <OpenRow key={`${p.strategy}-${p.id}`} p={p} />)
-                )}
-                {open.length > 0 ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={confirm ? 'Confirm close everything' : 'Close everything'}
-                    onPress={() => void closeAll()}
-                    disabled={busy}
-                    style={({ pressed }) => [styles.closeButton, { opacity: pressed || busy ? 0.6 : 1 }]}
-                    testID="close-all">
-                    <ThemedText style={styles.buttonLabel}>{confirm ? 'Tap again to close everything' : 'Close everything'}</ThemedText>
-                  </Pressable>
-                ) : null}
-                <NoticeBox notice={notice} />
-              </View>
+      <View style={{ gap: theme.space.s1 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <Text variant="small" style={{ color: theme.color.body }}>Open at once</Text>
+          <Text variant="num" style={{ color: tone(tier.max_open_positions > safe.max_open_positions) }} testID="danger-positions">{`${tier.max_open_positions}`}</Text>
+        </View>
+        <Slider value={tier.max_open_positions} min={1} max={ceiling.max_open_positions} step={1} onChange={(v) => set({ max_open_positions: v })} testID="danger-positions-slider" />
+      </View>
 
-              {report.strategies.map((s) => (
-                <StrategyRisk key={s.id} s={s} />
-              ))}
+      <View style={{ gap: theme.space.s1 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <Text variant="small" style={{ color: theme.color.body }}>Cooldown between taps</Text>
+          <Text variant="num" style={{ color: tone(tier.cooldown_seconds < safe.cooldown_seconds) }} testID="danger-cooldown">{`${tier.cooldown_seconds} s`}</Text>
+        </View>
+        <Slider value={tier.cooldown_seconds} min={ceiling.cooldown_seconds} max={60} step={1} onChange={(v) => set({ cooldown_seconds: v })} testID="danger-cooldown-slider" />
+      </View>
 
-              {report.market.map((m) => (
-                <View key={m.symbol} style={[styles.card, { backgroundColor: theme.backgroundElement, alignItems: 'stretch', gap: 4 }]} testID="risk-market">
-                  <ThemedText type="smallBold" themeColor="textSecondary">
-                    MARKET · {m.symbol}
-                  </ThemedText>
-                  <ThemedText type="small">
-                    A minute moves {m.vol_1m_bps.toFixed(1)} bps; a round trip costs {m.round_trip_bps.toFixed(1)} bps. Edge {m.edge.toFixed(1)}×.
-                  </ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    {m.edge >= 5
-                      ? 'The strategies were sized for 5× and above: fees are a small share of a typical move.'
-                      : m.edge >= 2
-                        ? 'Below the 5× the strategies were sized for: fees eat a bigger share of each move. Fewer, larger entries.'
-                        : 'Fees are most of a typical minute. A quiet market; an entry needs a bigger move than usual to pay.'}
-                    {m.bars < 30 ? ` · ${m.bars} bars` : ''}
-                  </ThemedText>
-                </View>
-              ))}
-              <ThemedText type="small" themeColor="textSecondary" style={styles.footer}>
-                Limits are enforced by the platform before any order reaches the exchange; stops are judged on the exchange&apos;s own mark.
-              </ThemedText>
-            </>
-          ) : (
-            <ThemedText type="small" themeColor="textSecondary" style={styles.footer}>
-              {locked ? 'Sign in with your passkey and enable a strategy to see your risk.' : offline ? 'Server unreachable' : 'Loading…'}
-            </ThemedText>
-          )}
-
-          <Link href="/" style={styles.link} accessibilityRole="link">
-            <ThemedText type="smallBold" themeColor="textSecondary">
-              ← Lobby
-            </ThemedText>
-          </Link>
-        </ScrollView>
-      </SafeAreaView>
-    </ThemedView>
+      <View style={{ gap: theme.space.s2 }}>
+        <Button
+          testID="danger-apply"
+          title={busy ? 'Applying…' : confirm ? 'Tap again to go past the safe tier' : 'Apply'}
+          variant={confirm ? 'danger' : danger(tier) ? 'outline' : 'primary'}
+          disabled={!dirty}
+          busy={busy}
+          onPress={() => void apply(tier)}
+        />
+        {danger(chosen) || danger(tier) ? (
+          <Text variant="small" testID="danger-reset" onPress={() => void apply(safe)} style={{ textAlign: 'center', color: theme.color.accent }}>
+            Back to safe defaults
+          </Text>
+        ) : null}
+        {notice ? <Text variant="small" testID="danger-notice" style={{ textAlign: 'center' }}>{notice}</Text> : null}
+      </View>
+    </Card>
   );
 }
 
-function PerfRow({ label, p }: { label: string; p?: Perf }) {
+/** The one red button: outline, then red with a countdown, then everything closes. */
+function CloseEverything({ open }: { open: number }) {
   const theme = useTheme();
-  if (!p) return null;
-  const pnl = Number(p.pnl);
-  const color = pnl > 0 ? UP : pnl < 0 ? DOWN : theme.text;
-  return (
-    <View style={styles.header} testID={`perf-${label.toLowerCase().replace(/\s/g, '-')}`}>
-      <ThemedText type="small" themeColor="textSecondary">
-        {label} · {p.trades} trade{p.trades === 1 ? '' : 's'}
-        {p.trades ? ` · ${Math.round(p.win_rate * 100)}% won · fees ${trim(p.fees)}` : ''}
-      </ThemedText>
-      <ThemedText type="smallBold" style={{ color }}>
-        {pnl > 0 ? '+' : ''}
-        {trim(p.pnl)}
-      </ThemedText>
-    </View>
-  );
-}
+  const [confirm, setConfirm] = useState<number>(0);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (confirm <= 0) return;
+    const id = setTimeout(() => setConfirm((c) => c - 1), 1000);
+    return () => clearTimeout(id);
+  }, [confirm]);
 
-function OpenRow({ p }: { p: RiskPosition }) {
-  const theme = useTheme();
-  const closesIn = useCountdown(p.closes_at ?? null);
-  const pnl = Number(p.unrealized_pnl);
-  const color = pnl > 0 ? UP : pnl < 0 ? DOWN : theme.text;
-  return (
-    <View style={{ gap: 2 }} testID="risk-position">
-      <View style={styles.header}>
-        <ThemedText type="small">
-          {STRATEGY_NAMES[p.strategy] ?? p.strategy} · {p.side === 'long' ? 'Up' : 'Down'} {trim(p.size)} {p.symbol} @ {trim(p.entry_price)} · {p.leverage}x
-        </ThemedText>
-        <ThemedText type="smallBold" style={{ color }}>
-          {pnl > 0 ? '+' : ''}
-          {trim(p.unrealized_pnl)}
-        </ThemedText>
-      </View>
-      <ThemedText type="small" themeColor="textSecondary">
-        at risk {trim(p.at_risk)}
-        {p.stop_pnl ? ` · stop at ${trim(p.stop_pnl)}` : ' · no stop'}
-        {closesIn ? ` · closes in ${closesIn}` : ''}
-        {p.distance_to_liquidation_pct ? ` · liquidation ${trim(p.distance_to_liquidation_pct)}% away` : ''}
-      </ThemedText>
-    </View>
-  );
-}
+  const press = async () => {
+    if (confirm === 0) {
+      setConfirm(3);
+      return;
+    }
+    setConfirm(0);
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.closeAll();
+      router.replace({ pathname: '/closed', params: { r: JSON.stringify(res) } });
+    } catch (e) {
+      setError(describeError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
-function StrategyRisk({ s }: { s: RiskStrategy }) {
-  const theme = useTheme();
-  const cooldown = s.usage?.cooldown_left_seconds ?? 0;
   return (
-    <View style={[styles.card, { backgroundColor: theme.backgroundElement, alignItems: 'stretch', gap: 6 }]} testID={`risk-${s.id}`}>
-      <View style={styles.header}>
-        <ThemedText type="smallBold">{s.name}</ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
-          {!s.enabled ? 'not enabled' : s.killed ? 'paused by the platform' : `${s.open.length} open`}
-        </ThemedText>
-      </View>
-      {s.enabled && s.usage && s.limits ? (
-        <>
-          <Bar label="Today's loss budget" used={Number(s.usage.daily_loss)} max={Number(s.limits.daily_loss)} pctLabel={`${trim(s.usage.daily_loss_left)} left of ${s.limits.daily_loss}`} />
-          <Bar label="Exposure" used={Number(s.usage.exposure)} max={Number(s.limits.max_total_exposure)} pctLabel={`${trim(s.usage.exposure)} of ${s.limits.max_total_exposure} · up to ${s.limits.max_notional} per position · ${s.limits.max_leverage}x`} />
-          {cooldown > 0 ? (
-            <ThemedText type="small" themeColor="textSecondary">
-              Cooldown: next entry in {Math.ceil(cooldown)}s
-            </ThemedText>
-          ) : null}
-          <PerfRow label="Today" p={s.today} />
-          <PerfRow label="This week" p={s.week} />
-          <PerfRow label="All time" p={s.all} />
-          {s.all && s.all.trades > 0 ? (
-            <ThemedText type="small" themeColor="textSecondary">
-              best {trim(s.all.best)} · worst {trim(s.all.worst)} · max drawdown {trim(s.all.max_drawdown)}
-              {s.all.streak ? ` · ${Math.abs(s.all.streak)} ${s.all.streak > 0 ? 'wins' : 'losses'} in a row` : ''}
-              {' · closed by '}
-              {Object.entries(s.all.by_reason)
-                .map(([k, v]) => `${k} ${v}`)
-                .join(', ') || 'nobody yet'}
-            </ThemedText>
-          ) : null}
-        </>
-      ) : null}
-    </View>
-  );
-}
-
-function Bar({ label, used, max, pctLabel }: { label: string; used: number; max: number; pctLabel: string }) {
-  const theme = useTheme();
-  const frac = max > 0 ? Math.max(0, Math.min(1, used / max)) : 0;
-  const color = frac >= 0.8 ? DOWN : frac >= 0.5 ? '#d97706' : UP;
-  return (
-    <View style={{ gap: 2 }}>
-      <View style={styles.header}>
-        <ThemedText type="small" themeColor="textSecondary">
-          {label}
-        </ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
-          {pctLabel}
-        </ThemedText>
-      </View>
-      <View style={{ height: 6, borderRadius: 3, backgroundColor: theme.backgroundSelected, overflow: 'hidden' }}>
-        <View style={{ width: `${Math.round(frac * 100)}%`, height: 6, backgroundColor: color }} />
-      </View>
+    <View style={{ marginTop: theme.space.s3, gap: theme.space.s3 }}>
+      {open === 0 ? (
+        <Button testID="close-all" title="Nothing to close" disabled />
+      ) : (
+        <Button
+          testID="close-all"
+          title={confirm > 0 ? `Tap again to close everything · ${confirm}` : 'Close everything'}
+          variant={confirm > 0 ? 'danger' : 'outline'}
+          busy={busy}
+          onPress={() => void press()}
+        />
+      )}
+      <Text variant="small" style={{ textAlign: 'center' }}>{error ?? 'One tap closes every open trade at market.'}</Text>
     </View>
   );
 }

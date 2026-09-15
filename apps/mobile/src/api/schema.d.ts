@@ -869,6 +869,95 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/limits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What the wallet trades under — its choice, the tiers, the numbers in force
+         * @description Two tiers bound what a wallet may choose for itself: the safe tier
+         *     everyone starts on, and the ceiling the danger zone ends at. The
+         *     active limits are what the choice means in money right now: the loss
+         *     budget is a share of the balance at the start of the day, leverage is
+         *     the venue's own maximum, and a position may use the whole balance.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LimitsBlock"];
+                    };
+                };
+                /** @description No wallet named and the platform serves enrolled wallets only. */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        /**
+         * Choose the wallet's limits, within the tiers
+         * @description The danger zone. Every number must sit between the safe tier and the
+         *     ceiling; a choice outside them is refused whole and nothing changes.
+         *     The choice applies to every strategy the wallet trades, from its next
+         *     read or tap. Routed and authenticated like the rest of the account.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["LimitTier"];
+                };
+            };
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LimitsBlock"];
+                    };
+                };
+                /** @description A number outside the tiers. */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/context": {
         parameters: {
             query?: never;
@@ -1520,6 +1609,7 @@ export interface components {
             max_leverage: components["schemas"]["Decimal"];
             max_total_exposure: components["schemas"]["Decimal"];
             max_open_positions: number;
+            /** @description What the day may lose, net — wins earn back the room losses took — before opening is refused. A share of the balance at the start of the day (see LimitsBlock). */
             daily_loss: components["schemas"]["Decimal"];
             cooldown_seconds: number;
         };
@@ -1755,8 +1845,35 @@ export interface components {
                 claim_tx?: string;
             }[];
         };
+        /** @description One set of choices a wallet may make for itself. */
+        LimitTier: {
+            /** @description The day's loss budget as a share of the balance at the start of the day */
+            daily_loss_pct: number;
+            /** @description How many positions may be open at once */
+            max_open_positions: number;
+            /** @description The pause between two taps. */
+            cooldown_seconds: number;
+        };
+        LimitsBlock: {
+            /** @description What the wallet chose */
+            chosen: components["schemas"]["LimitTier"];
+            /** @description What everyone starts on. */
+            safe: components["schemas"]["LimitTier"];
+            /** @description As far as the danger zone goes; the cooldown here is the floor. */
+            ceiling: components["schemas"]["LimitTier"];
+            /** @description The absolute limits in force right now; absent for a wallet with no strategy key yet. */
+            active?: components["schemas"]["Limits"];
+            /** @description What the budget is a share of. */
+            balance?: components["schemas"]["Decimal"];
+            /**
+             * Format: date-time
+             * @description When the loss budget starts over — the next midnight UTC.
+             */
+            day_resets_at: string;
+        };
         RiskReport: {
             wallet: string;
+            limits: components["schemas"]["LimitsBlock"];
             strategies: components["schemas"]["RiskStrategy"][];
             open: components["schemas"]["RiskPosition"][];
             totals: {
