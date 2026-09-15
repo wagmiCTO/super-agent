@@ -23,6 +23,7 @@ import { RiskGauge, StrategyRing } from '@/risk/gauge';
 import { hoursInPlay } from '@/risk/hours';
 import { riskLevel } from '@/strategy/risk';
 import { usePositionSettings } from '@/trading/useSettings';
+import { Bone, BoneCard, FadeIn, useSweep } from '@/ui/anim';
 import { Button } from '@/ui/button';
 import { useCountdown } from '@/ui/countdown';
 import { Slider } from '@/ui/slider';
@@ -89,18 +90,124 @@ export default function RiskScreen() {
   const { report, problem, refresh } = useRisk();
   const trades = useTodayTrades();
   const { settings } = usePositionSettings();
+  // Something in the way is worth a sentence; simply waiting is not. A word
+  // like "Loading…" on an empty screen is the app admitting it has nothing,
+  // so instead the screen draws itself — the panel, empty, with the needles
+  // sweeping — and the reading arrives into a dashboard that is already there.
+  const stalled = report === null && problem !== null;
 
   return (
     <Screen testID="risk">
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: 52, paddingBottom: theme.space.s6, gap: theme.space.s4 }}>
         <StubHeader title="Risk" badge={problem === 'offline' ? 'OFFLINE' : problem === 'locked' ? 'SIGN IN' : 'TESTNET'} />
-        {report ? (
-          <Body report={report} trades={trades} leverage={settings.leverage} refresh={refresh} />
+        {stalled ? (
+          <Text variant="small">
+            {problem === 'locked' ? 'Sign in with your passkey and open an account to see your risk.' : 'Server unreachable'}
+          </Text>
         ) : (
-          <Text variant="small">{problem === 'locked' ? 'Sign in with your passkey and open an account to see your risk.' : problem === 'offline' ? 'Server unreachable' : 'Loading…'}</Text>
+          <>
+            {/* Outside the branch below on purpose: the gauge is the same
+                instrument before and after the answer, so it keeps its place
+                in the tree and its needle hands the sweep over to the
+                reading instead of restarting at zero. */}
+            <Dial report={report} />
+            {report ? (
+              <FadeIn style={{ gap: theme.space.s4 }}>
+                <Body report={report} trades={trades} leverage={settings.leverage} refresh={refresh} />
+              </FadeIn>
+            ) : (
+              <Panel />
+            )}
+          </>
         )}
       </ScrollView>
     </Screen>
+  );
+}
+
+/** The day's share of the budget: the arc, the word, the sentence. */
+function Dial({ report }: { report: RiskReport | null }) {
+  const theme = useTheme();
+  const reading = report ? dayReading(report) : null;
+
+  return (
+    <>
+      <View style={{ alignItems: 'center' }} testID="risk-gauge">
+        <View style={{ width: 250, alignItems: 'center' }}>
+          <RiskGauge percent={reading?.percent ?? null} />
+          <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between' }}>
+            <Text variant="small" style={{ fontSize: theme.type.t2xs }}>calm</Text>
+            <Text variant="small" style={{ fontSize: theme.type.t2xs }}>hot</Text>
+          </View>
+        </View>
+      </View>
+      {reading ? (
+        <FadeIn style={{ alignItems: 'center', gap: 2 }}>
+          <Text variant="h1" testID="risk-level">{riskLevel(reading.percent)}</Text>
+          <Text variant="body" style={{ fontSize: theme.type.tSm, color: theme.color.body, textAlign: 'center' }} testID="risk-sub">{reading.sub}</Text>
+        </FadeIn>
+      ) : (
+        <View style={{ alignItems: 'center', gap: theme.space.s2, paddingVertical: theme.space.s1 }}>
+          <Bone width={130} height={22} radius={6} />
+          <Bone width={230} height={10} />
+        </View>
+      )}
+    </>
+  );
+}
+
+/** How hot the day is, and the one line that says why. */
+function dayReading(report: RiskReport) {
+  const budget = Number(report.limits.active?.daily_loss ?? 0);
+  const lost = Number(report.totals.daily_loss);
+  const atStake = Number(report.totals.at_risk);
+  const percent = budget > 0 ? Math.min(100, Math.round(((atStake + lost) / budget) * 100)) : 0;
+  const open = report.open.length;
+  const sub =
+    percent === 0
+      ? "Nothing open. The whole day's budget is still yours."
+      : `${open} ${open === 1 ? 'trade' : 'trades'} open · ${atStake.toFixed(2)} AUSD can still be lost right now.`;
+  return { percent, sub };
+}
+
+/** The screen before it has anything to say: its own shape, breathing. */
+function Panel() {
+  const theme = useTheme();
+  return (
+    <>
+      <View style={{ gap: theme.space.s2 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <Bone width={140} height={10} />
+          <Bone width={70} height={10} />
+        </View>
+        <Bone width="100%" height={10} radius={999} />
+        <Bone width="82%" height={8} />
+      </View>
+      <View style={{ flexDirection: 'row', gap: theme.space.s2 }}>
+        {STRATEGIES.map((id, i) => (
+          <View
+            key={id}
+            style={{
+              flex: 1,
+              alignItems: 'center',
+              gap: theme.space.s2,
+              paddingVertical: theme.space.s3,
+              paddingHorizontal: theme.space.s2,
+              borderRadius: theme.radius.rLg,
+              backgroundColor: theme.color.cardBg,
+              borderWidth: theme.color.cardLine === 'transparent' ? 0 : theme.size.bw,
+              borderColor: theme.color.cardLine,
+            }}
+          >
+            <StrategyRing percent={null} delay={i * 220} />
+            <Bone width={54} height={9} />
+            <Bone width={40} height={8} />
+          </View>
+        ))}
+      </View>
+      <BoneCard lines={3} />
+      <BoneCard lines={5} />
+    </>
   );
 }
 
@@ -110,44 +217,23 @@ function Body({ report, trades, leverage, refresh }: { report: RiskReport; trade
   const lost = Number(report.totals.daily_loss);
   const atStake = Number(report.totals.at_risk);
   const left = Math.max(0, budget - lost);
-  const percent = budget > 0 ? Math.min(100, Math.round(((atStake + lost) / budget) * 100)) : 0;
-  const level = riskLevel(percent);
   const open = report.open;
-  const sub =
-    percent === 0
-      ? "Nothing open. The whole day's budget is still yours."
-      : `${open.length} ${open.length === 1 ? 'trade' : 'trades'} open · ${atStake.toFixed(2)} AUSD can still be lost right now.`;
   const week = report.totals.week;
   const hours = useMemo(() => hoursInPlay(trades, open, new Date()), [trades, open]);
   const hour = new Date().getHours();
 
   return (
     <>
-      {/* The arc, the word, the sentence. */}
-      <View style={{ alignItems: 'center' }} testID="risk-gauge">
-        <View style={{ width: 250, alignItems: 'center' }}>
-          <RiskGauge percent={percent} />
-          <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text variant="small" style={{ fontSize: theme.type.t2xs }}>calm</Text>
-            <Text variant="small" style={{ fontSize: theme.type.t2xs }}>hot</Text>
-          </View>
-        </View>
-      </View>
-      <View style={{ alignItems: 'center', gap: 2 }}>
-        <Text variant="h1" testID="risk-level">{level}</Text>
-        <Text variant="body" style={{ fontSize: theme.type.tSm, color: theme.color.body, textAlign: 'center' }} testID="risk-sub">{sub}</Text>
-      </View>
-
       {/* Today's loss budget: lost, at stake, left. */}
       <View style={{ gap: theme.space.s2 }} testID="risk-budget">
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <Text variant="caps">Today&apos;s loss budget</Text>
           <Text variant="num">{`${lost.toFixed(2)} of ${budget.toFixed(0)}`}</Text>
         </View>
-        <View style={{ height: 10, borderRadius: 999, backgroundColor: theme.color.hair, overflow: 'hidden', flexDirection: 'row' }}>
-          <View style={{ width: `${budget > 0 ? Math.min(100, Math.round((lost / budget) * 100)) : 0}%`, backgroundColor: theme.color.down }} />
-          <View style={{ width: `${budget > 0 ? Math.min(100, Math.round((Math.min(atStake, left) / budget) * 100)) : 0}%`, backgroundColor: theme.color.accent, opacity: 0.45 }} />
-        </View>
+        <BudgetBar
+          lost={budget > 0 ? Math.min(100, (lost / budget) * 100) : 0}
+          stake={budget > 0 ? Math.min(100, (Math.min(atStake, left) / budget) * 100) : 0}
+        />
         <Text variant="small" style={{ fontSize: theme.type.t2xs }}>
           {`${lost.toFixed(2)} lost · ${Math.min(atStake, left).toFixed(2)} at stake now · ${left.toFixed(2)} left. At ${budget.toFixed(0)} the day closes itself.`}
         </Text>
@@ -155,7 +241,7 @@ function Body({ report, trades, leverage, refresh }: { report: RiskReport; trade
 
       {/* One ring per strategy. */}
       <View style={{ flexDirection: 'row', gap: theme.space.s2 }}>
-        {report.strategies.map((s) => {
+        {report.strategies.map((s, i) => {
           const stake = s.open.reduce((sum, p) => sum + Number(p.at_risk), 0);
           const first = s.open[0];
           return (
@@ -174,7 +260,7 @@ function Body({ report, trades, leverage, refresh }: { report: RiskReport; trade
                 borderColor: theme.color.cardLine,
               }}
             >
-              <StrategyRing percent={budget > 0 ? Math.min(100, Math.round((stake / budget) * 100)) : 0} />
+              <StrategyRing percent={budget > 0 ? Math.min(100, Math.round((stake / budget) * 100)) : 0} delay={i * 220} />
               <Text variant="bodyStrong" style={{ fontSize: theme.type.tXs }}>{s.name.replace(' Bounce', '')}</Text>
               <Text variant="small" style={{ fontSize: theme.type.t2xs, textAlign: 'center' }}>
                 {first ? `${Number(first.collateral).toFixed(2)} × ${trim(first.leverage)}x` : 'quiet'}
@@ -233,19 +319,7 @@ function Body({ report, trades, leverage, refresh }: { report: RiskReport; trade
           <Text variant="small">Today, hour by hour</Text>
           <Text variant="small">notional in play</Text>
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: 40, marginTop: theme.space.s2 }}>
-          {hours.map((v, i) => (
-            <View
-              key={i}
-              style={{
-                flex: 1,
-                height: `${Math.max(3, v)}%`,
-                borderRadius: 2,
-                backgroundColor: i === hour ? theme.color.accent : v ? theme.color.dim : theme.color.hair,
-              }}
-            />
-          ))}
-        </View>
+        <HourBars hours={hours} hour={hour} />
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           {['00', '06', '12', '18', '24'].map((h) => (
             <Text key={h} variant="small" style={{ fontSize: theme.type.t2xs }}>{h}</Text>
@@ -255,6 +329,49 @@ function Body({ report, trades, leverage, refresh }: { report: RiskReport; trade
 
       <CloseEverything open={open.length} />
     </>
+  );
+}
+
+/**
+ * The day's budget, filling: what is already lost, then what is still at
+ * stake on top of it. Both grow in rather than appear, so the bar is read as
+ * a level rather than as a picture.
+ */
+function BudgetBar({ lost, stake }: { lost: number; stake: number }) {
+  const theme = useTheme();
+  const l = useSweep(lost, { settle: 700 });
+  const s = useSweep(stake, { settle: 900 });
+  return (
+    <View style={{ height: 10, borderRadius: 999, backgroundColor: theme.color.hair, overflow: 'hidden', flexDirection: 'row' }}>
+      <View style={{ width: `${l}%`, backgroundColor: theme.color.down }} />
+      <View style={{ width: `${s}%`, backgroundColor: theme.color.accent, opacity: 0.45 }} />
+    </View>
+  );
+}
+
+/** Today hour by hour, rising left to right as the eye crosses it. */
+function HourBars({ hours, hour }: { hours: number[]; hour: number }) {
+  const theme = useTheme();
+  // One frame loop for the row: twenty-four springs would cost twenty-four
+  // re-renders a frame, and this is a decoration, not an instrument.
+  const swept = useSweep(100, { settle: 1000 });
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: 40, marginTop: theme.space.s2 }}>
+      {hours.map((v, i) => {
+        const grown = Math.max(0, Math.min(1, (swept - i * 2) / 45));
+        return (
+          <View
+            key={i}
+            style={{
+              flex: 1,
+              height: `${Math.max(3, v * grown)}%`,
+              borderRadius: 2,
+              backgroundColor: i === hour ? theme.color.accent : v ? theme.color.dim : theme.color.hair,
+            }}
+          />
+        );
+      })}
+    </View>
   );
 }
 
