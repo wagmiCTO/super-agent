@@ -39,7 +39,7 @@
   "rewrites": [
     {
       "source": "/v1/:path*",
-      "destination": "https://tradeagent-testnet.loca.lt/v1/:path*"
+      "destination": "https://platform-production-bf25.up.railway.app/v1/:path*"
     },
     {
       "source": "/((?!_expo|assets|\\.well-known).*)",
