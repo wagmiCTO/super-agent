@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -27,13 +26,19 @@ type Ledger struct {
 	journal *store.Store
 
 	mu       sync.Mutex
-	open     map[string]openTrade // by wallet + symbol
+	open     map[string]openTrade // by account + symbol
 	closed   []Trade
 	wallets  map[string]bool
 	onClosed []func(Trade)
 }
 
 type openTrade struct {
+	// Wallet is the address the round trip belongs to. The map is keyed by
+	// the policy account, which is "<wallet>/<strategy>" for a strategy's
+	// own key — one wallet can hold the same symbol under two strategies,
+	// so the key cannot be the wallet, and the wallet cannot be recovered
+	// from the key by cutting at the first slash.
+	Wallet   string
 	Strategy string
 	Symbol   string
 	OrderID  string
@@ -89,7 +94,7 @@ func (l *Ledger) Wallets() []string {
 	return out
 }
 
-func tradeKey(wallet, symbol string) string { return wallet + "/" + symbol }
+func tradeKey(account, symbol string) string { return account + "/" + symbol }
 
 // TradeRef ties a round trip to the venue: the hash of its order ids.
 func TradeRef(openOrderID, closeOrderID string) [32]byte {
@@ -98,10 +103,14 @@ func TradeRef(openOrderID, closeOrderID string) [32]byte {
 
 // Opened notes a position taken under a strategy; orderID is the venue's id
 // of the opening order and f what it filled.
-func (l *Ledger) Opened(wallet, strategyID, symbol, orderID string, f store.Fill) {
+//
+// `account` is the policy account the position is held under and `wallet`
+// the address it belongs to — the same wallet trading two strategies has two
+// accounts and one line on the board.
+func (l *Ledger) Opened(account, wallet, strategyID, symbol, orderID string, f store.Fill) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.open[tradeKey(wallet, symbol)] = openTrade{Strategy: strategyID, Symbol: symbol, OrderID: orderID, Fill: f, OpenedAt: l.now()}
+	l.open[tradeKey(account, symbol)] = openTrade{Wallet: wallet, Strategy: strategyID, Symbol: symbol, OrderID: orderID, Fill: f, OpenedAt: l.now()}
 	l.wallets[wallet] = true
 	if l.journal != nil {
 		if err := l.journal.TradeOpened(context.Background(), wallet, strategyID, symbol, orderID, f, l.now()); err != nil {
@@ -114,12 +123,12 @@ func (l *Ledger) Opened(wallet, strategyID, symbol, orderID string, f store.Fill
 // with no recorded open (a position from before a restart) counts under the
 // default strategy. closeOrderID is the venue's id of the closing order and
 // f what it filled.
-func (l *Ledger) Closed(wallet, symbol string, pnl fixed.D, closeOrderID string, f store.Fill, reason string) {
+func (l *Ledger) Closed(account, wallet, symbol string, pnl fixed.D, closeOrderID string, f store.Fill, reason string) {
 	l.mu.Lock()
-	key := tradeKey(wallet, symbol)
+	key := tradeKey(account, symbol)
 	o, ok := l.open[key]
 	if !ok {
-		o = openTrade{Strategy: strategy.DefaultStrategy, Symbol: symbol, OpenedAt: l.now()}
+		o = openTrade{Wallet: wallet, Strategy: strategy.DefaultStrategy, Symbol: symbol, OpenedAt: l.now()}
 	}
 	delete(l.open, key)
 	t := Trade{Wallet: wallet, Strategy: o.Strategy, Symbol: symbol, PnL: pnl, OpenedAt: o.OpenedAt, ClosedAt: l.now(), Ref: TradeRef(o.OrderID, closeOrderID), Entry: o.Fill, Exit: f, Reason: reason}
@@ -158,21 +167,21 @@ func (l *Ledger) Trades(ctx context.Context, wallet, symbol, strategyID string, 
 		}
 		out = append(out, store.ClosedTrade{Wallet: t.Wallet, Strategy: t.Strategy, Symbol: t.Symbol, Side: t.Entry.Side, Size: t.Entry.Size, EntryPrice: t.Entry.Price, ExitPrice: t.Exit.Price, EntryFee: t.Entry.Fee, ExitFee: t.Exit.Fee, PnL: t.PnL, CloseReason: t.Reason, OpenedAt: t.OpenedAt, ClosedAt: t.ClosedAt})
 	}
-	for key, o := range l.open {
-		w, sym, _ := strings.Cut(key, "/")
-		if w != wallet || (symbol != "" && sym != symbol) || (strategyID != "" && o.Strategy != strategyID) || len(out) >= limit {
+	for _, o := range l.open {
+		if o.Wallet != wallet || (symbol != "" && o.Symbol != symbol) || (strategyID != "" && o.Strategy != strategyID) || len(out) >= limit {
 			continue
 		}
-		out = append([]store.ClosedTrade{{Wallet: wallet, Strategy: o.Strategy, Symbol: sym, Side: o.Fill.Side, Size: o.Fill.Size, EntryPrice: o.Fill.Price, EntryFee: o.Fill.Fee, OpenedAt: o.OpenedAt}}, out...)
+		out = append([]store.ClosedTrade{{Wallet: o.Wallet, Strategy: o.Strategy, Symbol: o.Symbol, Side: o.Fill.Side, Size: o.Fill.Size, EntryPrice: o.Fill.Price, EntryFee: o.Fill.Fee, OpenedAt: o.OpenedAt}}, out...)
 	}
 	return out, nil
 }
 
-// StrategyOf reports which strategy a wallet's open position was taken under.
-func (l *Ledger) StrategyOf(wallet, symbol string) (string, bool) {
+// StrategyOf reports which strategy an account's open position was taken
+// under.
+func (l *Ledger) StrategyOf(account, symbol string) (string, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	o, ok := l.open[tradeKey(wallet, symbol)]
+	o, ok := l.open[tradeKey(account, symbol)]
 	return o.Strategy, ok
 }
 
@@ -283,11 +292,11 @@ func (l *Ledger) leaderboardFromMemory(since time.Time, period string) Leaderboa
 		st.Trades++
 	}
 	active := make(map[string]map[string]bool)
-	for key, o := range l.open {
+	for _, o := range l.open {
 		if active[o.Strategy] == nil {
 			active[o.Strategy] = make(map[string]bool)
 		}
-		active[o.Strategy][key[:len(key)-len(o.Symbol)-1]] = true
+		active[o.Strategy][o.Wallet] = true
 	}
 
 	out := Leaderboard{WeekStart: weekStart, Period: period, Source: "memory"}

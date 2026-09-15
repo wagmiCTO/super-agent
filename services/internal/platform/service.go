@@ -80,12 +80,17 @@ type CloseRequest struct {
 // Service is the trading core. One instance serves one exchange account; the
 // per-user layer arrives with the account layer and sits above this.
 type Service struct {
-	venue   venue.Adapter
-	policy  *policy.Engine
+	venue  venue.Adapter
+	policy *policy.Engine
+	// account is what the policy engine and the horizons are keyed by:
+	// the wallet, or "<wallet>/<strategy>" for a strategy's own key.
 	account string
-	log     *slog.Logger
-	timers  *strategy.Timers
-	now     func() time.Time
+	// wallet is the address behind that account — what the board, the
+	// journal and the prize contract know it by.
+	wallet string
+	log    *slog.Logger
+	timers *strategy.Timers
+	now    func() time.Time
 	// ledger is shared across wallets; nil keeps no leaderboard.
 	ledger *Ledger
 	// store, when set, keeps pending horizons across restarts.
@@ -126,7 +131,7 @@ func New(ctx context.Context, v venue.Adapter, p *policy.Engine, accountKey stri
 	if err := p.SetLimits(accountKey, limits); err != nil {
 		return nil, err
 	}
-	s := &Service{venue: v, policy: p, account: accountKey, log: log, timers: strategy.NewTimers(), now: time.Now}
+	s := &Service{venue: v, policy: p, account: accountKey, wallet: walletOf(accountKey), log: log, timers: strategy.NewTimers(), now: time.Now}
 	if err := s.reconcile(ctx); err != nil {
 		return nil, err
 	}
@@ -350,7 +355,7 @@ func (s *Service) Open(ctx context.Context, req OpenRequest) (venue.Order, error
 	}
 	s.policy.RecordOpen(s.account, opened)
 	if s.ledger != nil {
-		s.ledger.Opened(s.account, req.Strategy, req.Symbol, placed.VenueID, store.Fill{Side: req.Side.String(), Size: placed.FilledSize, Price: placed.AvgPrice, Fee: placed.Fee})
+		s.ledger.Opened(s.account, s.wallet, req.Strategy, req.Symbol, placed.VenueID, store.Fill{Side: req.Side.String(), Size: placed.FilledSize, Price: placed.AvgPrice, Fee: placed.Fee})
 	}
 	var closesAt time.Time
 	if req.Rules.Horizon > 0 {
@@ -558,7 +563,7 @@ func (s *Service) close(ctx context.Context, symbol string, reason CloseReason) 
 	pnl := realizedPnL(*pos, placed)
 	s.policy.RecordClose(s.account, notional, pnl)
 	if s.ledger != nil {
-		s.ledger.Closed(s.account, symbol, pnl, placed.VenueID, store.Fill{Side: pos.Side.String(), Size: placed.FilledSize, Price: placed.AvgPrice, Fee: placed.Fee}, string(reason))
+		s.ledger.Closed(s.account, s.wallet, symbol, pnl, placed.VenueID, store.Fill{Side: pos.Side.String(), Size: placed.FilledSize, Price: placed.AvgPrice, Fee: placed.Fee}, string(reason))
 	}
 	s.mu.Lock()
 	s.lastClose = &CloseEvent{Symbol: symbol, Side: pos.Side, Reason: reason, Price: placed.AvgPrice, PnL: pnl, At: s.now()}
@@ -574,7 +579,7 @@ func (s *Service) Trades(ctx context.Context, symbol, strategyID string, limit i
 	if s.ledger == nil {
 		return nil, nil
 	}
-	return s.ledger.Trades(ctx, s.account, strings.ToUpper(strings.TrimSpace(symbol)), strings.TrimSpace(strategyID), limit)
+	return s.ledger.Trades(ctx, s.wallet, strings.ToUpper(strings.TrimSpace(symbol)), strings.TrimSpace(strategyID), limit)
 }
 
 // Kill halts opening across the service; Revive lifts it.
@@ -606,4 +611,13 @@ func newClientID(kind string) string {
 		return fmt.Sprintf("%s-%d", kind, time.Now().UnixNano())
 	}
 	return kind + "-" + hex.EncodeToString(b[:])
+}
+
+// walletOf is the address inside a policy account: the account itself for a
+// wallet-wide key, the part before the slash for a strategy's own key. What
+// the board and the prize contract need is the address — a round trip
+// journaled under "<wallet>/<strategy>" belongs to nobody who can claim.
+func walletOf(account string) string {
+	wallet, _, _ := strings.Cut(account, "/")
+	return wallet
 }

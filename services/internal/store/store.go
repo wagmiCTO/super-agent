@@ -401,13 +401,16 @@ type ClosedTrade struct {
 func (s *Store) TradeClosed(ctx context.Context, wallet, symbol, fallbackStrategy, closeOrderID string, f Fill, pnl fixed.D, reason string, at time.Time) (ClosedTrade, error) {
 	var t ClosedTrade
 	var size, entry, exit, entryFee, pnlS string
+	// The strategy narrows the match: one wallet can hold the same symbol
+	// under two strategies at once — they are separate keys at the venue —
+	// and closing one must not settle the other's row.
 	err := s.pool.QueryRow(ctx, `
 		with open as (
-			select id from trades where wallet = $1 and symbol = $2 and closed_at is null order by opened_at desc limit 1
+			select id from trades where wallet = $1 and symbol = $2 and ($9 = '' or strategy = $9) and closed_at is null order by opened_at desc limit 1
 		)
 		update trades set close_order_id = $3, pnl = $4, closed_at = $5, exit_price = $6, exit_fee = $7, close_reason = $8 where id = (select id from open)
 		returning wallet, strategy, symbol, open_order_id, close_order_id, side, size::text, entry_price::text, exit_price::text, entry_fee::text, pnl::text, opened_at, closed_at`,
-		wallet, symbol, closeOrderID, pnl.String(), at, f.Price.String(), f.Fee.String(), reason).Scan(&t.Wallet, &t.Strategy, &t.Symbol, &t.OpenOrderID, &t.CloseOrderID, &t.Side, &size, &entry, &exit, &entryFee, &pnlS, &t.OpenedAt, &t.ClosedAt)
+		wallet, symbol, closeOrderID, pnl.String(), at, f.Price.String(), f.Fee.String(), reason, fallbackStrategy).Scan(&t.Wallet, &t.Strategy, &t.Symbol, &t.OpenOrderID, &t.CloseOrderID, &t.Side, &size, &entry, &exit, &entryFee, &pnlS, &t.OpenedAt, &t.ClosedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		_, err = s.pool.Exec(ctx, `insert into trades (wallet, strategy, symbol, open_order_id, close_order_id, side, size, entry_price, exit_price, exit_fee, pnl, close_reason, opened_at, closed_at)
 			values ($1, $2, $3, $4, $5, $6, $7, 0, $8, $9, $10, $11, $12, $12)`, wallet, fallbackStrategy, symbol, "unknown-"+closeOrderID, closeOrderID, f.Side, f.Size.String(), f.Price.String(), f.Fee.String(), pnl.String(), reason, at)

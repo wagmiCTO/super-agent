@@ -8,6 +8,17 @@ import (
 	"github.com/wagmiCTO/super-agent/services/internal/store"
 )
 
+// The two calls every test here makes: a position taken under a strategy
+// key, and the same one closed. The policy account is "<wallet>/<strategy>";
+// the board knows the wallet.
+func opened(l *Ledger, wallet, strategyID, symbol string) {
+	l.Opened(wallet+"/"+strategyID, wallet, strategyID, symbol, "o", store.Fill{})
+}
+
+func closed(l *Ledger, wallet, strategyID, symbol string, pnl int) {
+	l.Closed(wallet+"/"+strategyID, wallet, symbol, fixed.FromInt(int64(pnl)), "c", store.Fill{}, "manual")
+}
+
 // The week's board per strategy: who is up, what the strategy made for
 // everyone, who is in a position right now. Last week's trades do not count.
 func TestLeaderboardByStrategyAndWeek(t *testing.T) {
@@ -17,20 +28,20 @@ func TestLeaderboardByStrategyAndWeek(t *testing.T) {
 
 	// Last week: must not count.
 	now = time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
-	l.Opened("0xaaa", "direction", "MON", "o", store.Fill{})
-	l.Closed("0xaaa", "MON", fixed.FromInt(100), "c", store.Fill{}, "manual")
+	opened(l, "0xaaa", "direction", "MON")
+	closed(l, "0xaaa", "direction", "MON", 100)
 
 	now = time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
-	l.Opened("0xaaa", "direction", "MON", "o", store.Fill{})
-	l.Closed("0xaaa", "MON", fixed.FromInt(3), "c", store.Fill{}, "manual")
-	l.Opened("0xbbb", "direction", "MON", "o", store.Fill{})
-	l.Closed("0xbbb", "MON", fixed.FromInt(-1), "c", store.Fill{}, "manual")
-	l.Opened("0xbbb", "ma-cross", "MON", "o", store.Fill{})
-	l.Closed("0xbbb", "MON", fixed.FromInt(5), "c", store.Fill{}, "manual")
+	opened(l, "0xaaa", "direction", "MON")
+	closed(l, "0xaaa", "direction", "MON", 3)
+	opened(l, "0xbbb", "direction", "MON")
+	closed(l, "0xbbb", "direction", "MON", -1)
+	opened(l, "0xbbb", "ma-cross", "MON")
+	closed(l, "0xbbb", "ma-cross", "MON", 5)
 	// An untagged position from before a restart counts as Direction.
-	l.Closed("0xccc", "MON", fixed.FromInt(1), "c", store.Fill{}, "manual")
+	l.Closed("0xccc", "0xccc", "MON", fixed.FromInt(1), "c", store.Fill{}, "manual")
 	// Open right now under MA Cross.
-	l.Opened("0xaaa", "ma-cross", "MON", "o", store.Fill{})
+	opened(l, "0xaaa", "ma-cross", "MON")
 
 	now = time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
 	lb := l.Leaderboard()
@@ -50,8 +61,46 @@ func TestLeaderboardByStrategyAndWeek(t *testing.T) {
 	if ma.Strategy.ID != "ma-cross" || ma.PnL != fixed.FromInt(5) || ma.Players != 1 || ma.ActiveNow != 1 {
 		t.Errorf("ma-cross board = %+v", ma)
 	}
-	if s, ok := l.StrategyOf("0xaaa", "MON"); !ok || s != "ma-cross" {
+	if s, ok := l.StrategyOf("0xaaa/ma-cross", "MON"); !ok || s != "ma-cross" {
 		t.Errorf("StrategyOf = %q, %v", s, ok)
+	}
+}
+
+// The board knows wallets, not policy accounts.
+//
+// A strategy's own key trades under "<wallet>/<strategy>", and that string
+// used to land in the journal's wallet column: the board showed a name
+// nobody recognises, one wallet counted once per strategy, and the
+// settlement — which requires an address it can pay — skipped every line, so
+// no prize could ever be claimed. One wallet on two strategies is one line
+// on each board, under its address, and a position open under one of them
+// does not disturb the other.
+func TestBoardKnowsWalletsNotPolicyAccounts(t *testing.T) {
+	l := NewLedger()
+	now := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC) // a Thursday
+	l.now = func() time.Time { return now }
+
+	opened(l, "0xaaa", "direction", "MON")
+	opened(l, "0xaaa", "ma-cross", "MON") // the same symbol, the other key
+	closed(l, "0xaaa", "direction", "MON", 4)
+
+	lb := l.Leaderboard()
+	dir, ma := lb.Boards[0], lb.Boards[1]
+	if len(dir.Top) != 1 || dir.Top[0].Wallet != "0xaaa" {
+		t.Fatalf("direction top = %+v", dir.Top)
+	}
+	// Closing the one leaves the other open, and it is the other board that
+	// has somebody in it right now.
+	if dir.ActiveNow != 0 || ma.ActiveNow != 1 {
+		t.Errorf("active now = %d, %d", dir.ActiveNow, ma.ActiveNow)
+	}
+	if s, ok := l.StrategyOf("0xaaa/ma-cross", "MON"); !ok || s != "ma-cross" {
+		t.Errorf("StrategyOf = %q, %v", s, ok)
+	}
+	// And the wallet is listed once, by address — it is what the prize
+	// contract pays.
+	if ws := l.Wallets(); len(ws) != 1 || ws[0] != "0xaaa" {
+		t.Errorf("wallets = %v", ws)
 	}
 }
 
@@ -63,12 +112,12 @@ func TestAllTimeCountsEveryWeek(t *testing.T) {
 	l.now = func() time.Time { return now }
 
 	now = time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC) // last week
-	l.Opened("0xaaa", "direction", "MON", "o", store.Fill{})
-	l.Closed("0xaaa", "MON", fixed.FromInt(100), "c", store.Fill{}, "manual")
+	opened(l, "0xaaa", "direction", "MON")
+	closed(l, "0xaaa", "direction", "MON", 100)
 
 	now = time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC) // this week
-	l.Opened("0xbbb", "direction", "MON", "o", store.Fill{})
-	l.Closed("0xbbb", "MON", fixed.FromInt(3), "c", store.Fill{}, "manual")
+	opened(l, "0xbbb", "direction", "MON")
+	closed(l, "0xbbb", "direction", "MON", 3)
 
 	now = time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
 	week, all := l.Leaderboard(), l.AllTime()
