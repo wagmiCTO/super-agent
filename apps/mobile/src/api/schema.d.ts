@@ -1246,12 +1246,15 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * This week's board for every strategy
-         * @description One board per strategy, in lobby order: what the strategy made for everyone this week, how many played, how many hold a position right now, and the top wallets. Weeks start Monday 00:00 UTC.
+         * The board for every strategy, this week or all time
+         * @description One board per strategy, in lobby order: what the strategy made for everyone, how many played, how many hold a position right now, and the top wallets by result. Weeks start Monday 00:00 UTC. The prize block is always this week's — that is the only week that pays.
          */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    /** @description week (the week containing now) or all (every trade on record). */
+                    period?: "week" | "all";
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
@@ -1423,8 +1426,13 @@ export interface components {
             v: components["schemas"]["Decimal"];
         };
         Leaderboard: {
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description The Monday of the week containing now, whatever the period — the prize and its deadline are weekly.
+             */
             week_start: string;
+            /** @enum {string} */
+            period: "week" | "all";
             /**
              * @description journal when the boards come from the platform's database; memory when from the process alone.
              * @enum {string}

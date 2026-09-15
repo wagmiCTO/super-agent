@@ -572,11 +572,18 @@ paths:
 
   /v1/leaderboard:
     get:
-      summary: This week's board for every strategy
+      summary: The board for every strategy, this week or all time
       description: >-
         One board per strategy, in lobby order: what the strategy made for
-        everyone this week, how many played, how many hold a position right
-        now, and the top wallets. Weeks start Monday 00:00 UTC.
+        everyone, how many played, how many hold a position right now, and
+        the top wallets by result. Weeks start Monday 00:00 UTC. The prize
+        block is always this week's — that is the only week that pays.
+      parameters:
+        - in: query
+          name: period
+          required: false
+          schema: { type: string, enum: [week, all], default: week }
+          description: week (the week containing now) or all (every trade on record).
       responses:
         "200":
           content:
@@ -703,9 +710,15 @@ components:
 
     Leaderboard:
       type: object
-      required: [week_start, source, boards]
+      required: [week_start, period, source, boards]
       properties:
-        week_start: { type: string, format: date-time }
+        week_start:
+          type: string
+          format: date-time
+          description: The Monday of the week containing now, whatever the period — the prize and its deadline are weekly.
+        period:
+          type: string
+          enum: [week, all]
         source:
           type: string
           enum: [journal, memory]

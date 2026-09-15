@@ -55,6 +55,42 @@ func TestLeaderboardByStrategyAndWeek(t *testing.T) {
 	}
 }
 
+// All time is the same board over every trade on record: last week's 100
+// comes back, and the week's board is left alone.
+func TestAllTimeCountsEveryWeek(t *testing.T) {
+	l := NewLedger()
+	now := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC) // a Thursday
+	l.now = func() time.Time { return now }
+
+	now = time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC) // last week
+	l.Opened("0xaaa", "direction", "MON", "o", store.Fill{})
+	l.Closed("0xaaa", "MON", fixed.FromInt(100), "c", store.Fill{}, "manual")
+
+	now = time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC) // this week
+	l.Opened("0xbbb", "direction", "MON", "o", store.Fill{})
+	l.Closed("0xbbb", "MON", fixed.FromInt(3), "c", store.Fill{}, "manual")
+
+	now = time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+	week, all := l.Leaderboard(), l.AllTime()
+	if week.Period != "week" || all.Period != "all" {
+		t.Fatalf("periods = %q, %q", week.Period, all.Period)
+	}
+	// The week the prize belongs to is the same on both boards.
+	if !all.WeekStart.Equal(week.WeekStart) {
+		t.Errorf("all-time week start = %v, want %v", all.WeekStart, week.WeekStart)
+	}
+	if b := week.Boards[0]; b.PnL != fixed.FromInt(3) || b.Players != 1 {
+		t.Errorf("week direction = %+v", b)
+	}
+	b := all.Boards[0]
+	if b.PnL != fixed.FromInt(103) || b.Players != 2 || b.Trades != 2 {
+		t.Errorf("all-time direction = %+v", b)
+	}
+	if len(b.Top) != 2 || b.Top[0].Wallet != "0xaaa" || b.Top[1].Wallet != "0xbbb" {
+		t.Errorf("all-time top = %+v", b.Top)
+	}
+}
+
 func TestWeekStartsMondayUTC(t *testing.T) {
 	cases := map[time.Time]time.Time{
 		time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC):   time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC),  // Monday

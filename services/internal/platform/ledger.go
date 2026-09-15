@@ -196,9 +196,13 @@ type Board struct {
 	Top       []Standing
 }
 
-// Leaderboard is every strategy's board for the week containing now.
+// Leaderboard is every strategy's board over one stretch of time.
 type Leaderboard struct {
+	// WeekStart is the Monday of the week containing now, whatever the
+	// period: the prize pool and the deadline are weekly either way.
 	WeekStart time.Time
+	// Period is "week" or "all".
+	Period string
 	// Source is "journal" (Postgres) or "memory".
 	Source string
 	Boards []Board
@@ -207,15 +211,27 @@ type Leaderboard struct {
 // topN is how many standings a board carries.
 const topN = 10
 
+// epoch is where "all time" starts. Before the first trade by decades, and
+// a real timestamp rather than the zero time, which not every database
+// driver takes kindly to.
+var epoch = time.Unix(0, 0).UTC()
+
 // Leaderboard computes the week's boards. Weeks start Monday 00:00 UTC.
-// With a journal the boards come from Postgres; memory answers only while
-// the database is unreachable.
-func (l *Ledger) Leaderboard() Leaderboard {
+func (l *Ledger) Leaderboard() Leaderboard { return l.boards(weekStartOf(l.now()), "week") }
+
+// AllTime computes the same boards over every trade on record. The prize is
+// weekly, so this board pays nothing — it is the standing of the house.
+func (l *Ledger) AllTime() Leaderboard { return l.boards(epoch, "all") }
+
+// boards reads the standings for trades closed at or after `since`. With a
+// journal they come from Postgres; memory answers only while the database
+// is unreachable.
+func (l *Ledger) boards(since time.Time, period string) Leaderboard {
+	weekStart := weekStartOf(l.now())
 	if l.journal != nil {
-		weekStart := weekStartOf(l.now())
-		rows, err := l.journal.Boards(context.Background(), weekStart, weekStart.AddDate(0, 0, 7), topN)
+		rows, err := l.journal.Boards(context.Background(), since, weekStart.AddDate(0, 0, 7), topN)
 		if err == nil {
-			out := Leaderboard{WeekStart: weekStart, Source: "journal"}
+			out := Leaderboard{WeekStart: weekStart, Period: period, Source: "journal"}
 			for _, s := range strategy.Catalog {
 				b := Board{Strategy: s}
 				if r := rows[s.ID]; r != nil {
@@ -230,10 +246,10 @@ func (l *Ledger) Leaderboard() Leaderboard {
 		}
 		slog.Warn("ledger: boards not read from the journal, serving memory", "err", err)
 	}
-	return l.leaderboardFromMemory()
+	return l.leaderboardFromMemory(since, period)
 }
 
-func (l *Ledger) leaderboardFromMemory() Leaderboard {
+func (l *Ledger) leaderboardFromMemory(since time.Time, period string) Leaderboard {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now().UTC()
@@ -249,7 +265,7 @@ func (l *Ledger) leaderboardFromMemory() Leaderboard {
 		accs[s.ID] = &acc{by: make(map[string]*Standing)}
 	}
 	for _, t := range l.closed {
-		if t.ClosedAt.Before(weekStart) {
+		if t.ClosedAt.Before(since) {
 			continue
 		}
 		a, ok := accs[t.Strategy]
@@ -274,7 +290,7 @@ func (l *Ledger) leaderboardFromMemory() Leaderboard {
 		active[o.Strategy][key[:len(key)-len(o.Symbol)-1]] = true
 	}
 
-	out := Leaderboard{WeekStart: weekStart, Source: "memory"}
+	out := Leaderboard{WeekStart: weekStart, Period: period, Source: "memory"}
 	for _, s := range strategy.Catalog {
 		a := accs[s.ID]
 		b := Board{Strategy: s, PnL: a.pnl, Players: len(a.by), Trades: a.trades, ActiveNow: len(active[s.ID])}

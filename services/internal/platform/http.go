@@ -1157,6 +1157,9 @@ type prizeDTO struct {
 
 type leaderboardDTO struct {
 	WeekStart string `json:"week_start"`
+	// Period is "week" (the week containing now) or "all" (every trade on
+	// record). The prize is weekly whichever is asked for.
+	Period string `json:"period"`
 	// Source is "journal" when the boards come from the database, "memory"
 	// when from the process (no database, or it is unreachable).
 	Source string     `json:"source"`
@@ -1263,14 +1266,24 @@ func weeksOf(recs []store.PrizeRecord) []uint64 {
 	return out
 }
 
-// leaderboard serves the week's boards: one per strategy, in lobby order.
+// leaderboard serves the boards: one per strategy, in lobby order. `period`
+// is "week" by default, or "all" for every trade on record; the prize block
+// is this week's either way, because that is the only week that pays.
 func (h *handler) leaderboard(w http.ResponseWriter, r *http.Request) {
 	if h.ledger == nil {
 		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "leaderboard_unavailable", Message: "no ledger is running"})
 		return
 	}
+	period := strings.TrimSpace(r.URL.Query().Get("period"))
+	if period != "" && period != "week" && period != "all" {
+		writeJSON(w, http.StatusBadRequest, errorDTO{Error: "invalid_request", Message: "period must be week or all"})
+		return
+	}
 	lb := h.ledger.Leaderboard()
-	out := leaderboardDTO{WeekStart: timeOrEmpty(lb.WeekStart), Source: lb.Source, Boards: make([]boardDTO, 0, len(lb.Boards))}
+	if period == "all" {
+		lb = h.ledger.AllTime()
+	}
+	out := leaderboardDTO{WeekStart: timeOrEmpty(lb.WeekStart), Period: lb.Period, Source: lb.Source, Boards: make([]boardDTO, 0, len(lb.Boards))}
 	if h.prize != nil {
 		out.Prize = h.prizeBlock(r, WeekOf(lb.WeekStart))
 	}
