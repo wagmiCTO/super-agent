@@ -3,9 +3,9 @@
  *
  * Two rules. A number that stands for money or risk never jumps: it travels
  * to its new value, so the eye sees that it moved and in which direction. And
- * a screen with nothing to show yet is not blank — it draws itself empty and
- * runs its gauges through a sweep, the way a car checks its needles on
- * ignition, then settles them on the real reading.
+ * a screen with nothing to show yet is not blank — it draws itself with every
+ * instrument at zero and every number replaced by the shape it will have,
+ * then everything grows into the reading when it lands.
  *
  * Deliberately plain: a frame loop and a number, rather than a worklet. The
  * pieces that move are leaves — a gauge, a ring, a bar — so the re-render is
@@ -22,62 +22,40 @@ import { useTheme } from '@/theme';
 const NATIVE = Platform.OS !== 'web';
 
 const easeOut = (t: number) => 1 - (1 - t) ** 3;
-const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
-
-export type SweepOptions = {
-  /** How far the needle swings while there is nothing to show. */
-  max?: number;
-  /** The self test, out and back. */
-  up?: number;
-  down?: number;
-  /** How long it takes to settle on a real value. */
-  settle?: number;
-};
 
 /**
- * A number on its way to `target`, or sweeping while `target` is null.
+ * A number on its way to `target`, starting from wherever it already was.
  *
- * Whatever the sweep had reached is where the settle starts from, so the
- * needle never jumps at the moment the data lands — it simply stops swinging
- * and comes to rest on the reading.
+ * `null` is "no reading yet", and the answer to that is zero: an instrument
+ * that has nothing to show shows nothing, and the first reading is watched
+ * growing into place rather than found already there.
  */
-export function useSweep(target: number | null, { max = 100, up = 900, down = 800, settle = 800 }: SweepOptions = {}): number {
+export function useGrow(target: number | null, { settle = 800 }: { settle?: number } = {}): number {
   const [value, setValue] = useState(0);
-  // The last value rendered, so a target arriving mid-sweep is handed over
-  // rather than restarted.
+  // The last value rendered, so a new target is travelled to from here.
   const at = useRef(0);
 
   useEffect(() => {
-    let frame = 0;
+    const to = target ?? 0;
     const from = at.current;
+    if (from === to) return;
+    let frame = 0;
     const started = Date.now();
     const step = () => {
-      const t = Date.now() - started;
-      let next: number;
-      if (target === null) {
-        const cycle = up + down;
-        const phase = t % cycle;
-        const swing = phase < up ? max * easeInOut(phase / up) : max * (1 - easeInOut((phase - up) / down));
-        // Ease out of wherever the needle was into the first swing, so a
-        // sweep that starts part-way through does not snap to zero.
-        const blend = Math.min(1, t / up);
-        next = from * (1 - blend) + swing * blend;
-      } else {
-        const k = Math.min(1, t / settle);
-        next = from + (target - from) * easeOut(k);
-        if (k >= 1) {
-          at.current = target;
-          setValue(target);
-          return;
-        }
-      }
+      const k = Math.min(1, (Date.now() - started) / settle);
+      const next = from + (to - from) * easeOut(k);
       at.current = next;
       setValue(next);
+      if (k >= 1) {
+        at.current = to;
+        setValue(to);
+        return;
+      }
       frame = requestAnimationFrame(step);
     };
     frame = requestAnimationFrame(step);
     return () => cancelAnimationFrame(frame);
-  }, [target, max, up, down, settle]);
+  }, [target, settle]);
 
   return value;
 }

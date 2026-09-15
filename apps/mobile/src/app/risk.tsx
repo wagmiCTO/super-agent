@@ -23,7 +23,7 @@ import { RiskGauge, StrategyRing } from '@/risk/gauge';
 import { hoursInPlay } from '@/risk/hours';
 import { riskLevel } from '@/strategy/risk';
 import { usePositionSettings } from '@/trading/useSettings';
-import { Bone, BoneCard, FadeIn, useSweep } from '@/ui/anim';
+import { Bone, BoneCard, FadeIn, useGrow } from '@/ui/anim';
 import { Button } from '@/ui/button';
 import { useCountdown } from '@/ui/countdown';
 import { Slider } from '@/ui/slider';
@@ -132,14 +132,12 @@ function Dial({ report }: { report: RiskReport | null }) {
 
   return (
     <>
-      <View style={{ alignItems: 'center' }} testID="risk-gauge">
-        <View style={{ width: 250, alignItems: 'center' }}>
-          <RiskGauge percent={reading?.percent ?? null} />
-          <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text variant="small" style={{ fontSize: theme.type.t2xs }}>calm</Text>
-            <Text variant="small" style={{ fontSize: theme.type.t2xs }}>hot</Text>
-          </View>
-        </View>
+      {/* The prototype's box: a little taller than the drawing, with the two
+          words at the screen's edges rather than on the arc's ends. */}
+      <View style={{ height: 138, alignItems: 'center', justifyContent: 'flex-end' }} testID="risk-gauge">
+        <RiskGauge percent={reading?.percent ?? null} />
+        <Text variant="small" style={{ position: 'absolute', bottom: 0, left: 0, fontSize: theme.type.t2xs }}>calm</Text>
+        <Text variant="small" style={{ position: 'absolute', bottom: 0, right: 0, fontSize: theme.type.t2xs }}>hot</Text>
       </View>
       {reading ? (
         <FadeIn style={{ alignItems: 'center', gap: 2 }}>
@@ -339,8 +337,8 @@ function Body({ report, trades, leverage, refresh }: { report: RiskReport; trade
  */
 function BudgetBar({ lost, stake }: { lost: number; stake: number }) {
   const theme = useTheme();
-  const l = useSweep(lost, { settle: 700 });
-  const s = useSweep(stake, { settle: 900 });
+  const l = useGrow(lost, { settle: 700 });
+  const s = useGrow(stake, { settle: 900 });
   return (
     <View style={{ height: 10, borderRadius: 999, backgroundColor: theme.color.hair, overflow: 'hidden', flexDirection: 'row' }}>
       <View style={{ width: `${l}%`, backgroundColor: theme.color.down }} />
@@ -354,17 +352,17 @@ function HourBars({ hours, hour }: { hours: number[]; hour: number }) {
   const theme = useTheme();
   // One frame loop for the row: twenty-four springs would cost twenty-four
   // re-renders a frame, and this is a decoration, not an instrument.
-  const swept = useSweep(100, { settle: 1000 });
+  const grown = useGrow(100, { settle: 1000 });
   return (
     <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: 40, marginTop: theme.space.s2 }}>
       {hours.map((v, i) => {
-        const grown = Math.max(0, Math.min(1, (swept - i * 2) / 45));
+        const rise = Math.max(0, Math.min(1, (grown - i * 2) / 45));
         return (
           <View
             key={i}
             style={{
               flex: 1,
-              height: `${Math.max(3, v * grown)}%`,
+              height: `${Math.max(3, v * rise)}%`,
               borderRadius: 2,
               backgroundColor: i === hour ? theme.color.accent : v ? theme.color.dim : theme.color.hair,
             }}
