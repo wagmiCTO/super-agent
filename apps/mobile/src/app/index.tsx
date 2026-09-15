@@ -133,8 +133,9 @@ function LobbyScreen() {
   return (
     <Screen>
       <ScrollView
+        style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ flexGrow: 1, paddingTop: HEADER_TOP, paddingBottom: theme.space.s6, gap: theme.space.s4 }}
+        contentContainerStyle={{ paddingTop: HEADER_TOP, paddingBottom: theme.space.s4, gap: theme.space.s4 }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s3 }}>
           <Mark size={28} />
@@ -235,8 +236,11 @@ function LobbyScreen() {
           </Pressable>
         </Link>
 
-        <Footer />
       </ScrollView>
+
+      {/* Pinned under the scroll rather than at the end of it: on a short
+          screen the way to everything else must not need a scroll to find. */}
+      <Footer />
 
       {menu ? <NetworkMenu onClose={() => setMenu(false)} /> : null}
     </Screen>
@@ -256,7 +260,7 @@ function Footer() {
     </Text>
   );
   return (
-    <View style={{ marginTop: 'auto', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+    <View style={{ paddingBottom: theme.space.s6, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: theme.color.paper }}>
       <View style={{ flexDirection: 'row', gap: theme.space.s4 }}>
         {link('Leaderboard', '/leaderboard', 'leaderboard-link')}
         {link('Invite', '/invite', 'invite-link')}

@@ -33,7 +33,9 @@ export default function SettingsScreen() {
           <Text variant="small" numberOfLines={1} style={{ fontSize: theme.type.t2xs }}>applies to every tap</Text>
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: theme.space.s4 }}>
+        {/* `flex: 1` bounds the scroll to what is left of the screen: without
+            it a tall form pushes the outcomes and the button below the fold. */}
+        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: theme.space.s4 }}>
           <PositionForm />
         </ScrollView>
 

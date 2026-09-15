@@ -102,7 +102,8 @@ export default function LessonScreen() {
       <View style={{ flex: 1, paddingTop: 52, paddingBottom: theme.space.s6, gap: theme.space.s4 }}>
         {setup ? (
           <>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: theme.space.s4, paddingBottom: theme.space.s4 }}>
+            {/* Bounded, so the outcomes and the button below never leave the screen. */}
+            <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: theme.space.s4, paddingBottom: theme.space.s4 }}>
               {head}
               <Art id={id} kind={step.art} />
             </ScrollView>
