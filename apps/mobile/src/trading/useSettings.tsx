@@ -32,21 +32,57 @@ export const DEFAULT_SETTINGS: PositionSettings = {
   horizonMinutes: 15,
 };
 
+/**
+ * What the app opens with when nothing has been set: this much of your own
+ * money, at the most leverage allowed. A first standard position has to be a
+ * real one — a number small enough to lose and large enough to feel.
+ */
+export const DEFAULT_STAKE = 100;
+
 export type PositionBounds = {
   minSize: number;
-  maxSize: number;
+  /** The policy engine's cap on one position, in collateral units. */
+  maxNotional: number;
+  /** Free collateral in the exchange account: what a position can be backed with. */
+  balance: number;
   maxLeverage: number;
   /** True once the platform has said what it actually allows. */
   known: boolean;
 };
 
-const FALLBACK_BOUNDS: PositionBounds = { minSize: 5, maxSize: 50, maxLeverage: 3, known: false };
+const FALLBACK_BOUNDS: PositionBounds = { minSize: 5, maxNotional: 50, balance: 0, maxLeverage: 3, known: false };
+
+/**
+ * The largest position that can actually be opened at this leverage.
+ *
+ * A position is backed by your own collateral: the margin it locks is its
+ * value divided by the leverage, so the wallet can carry `balance × leverage`
+ * and no more. The policy engine caps it again, lower. Showing the policy cap
+ * alone — the whole of it, whatever the wallet holds — was a screen offering
+ * a size the venue would refuse for want of margin.
+ *
+ * With no account yet there is no balance to divide, and the policy cap is
+ * all there is to say.
+ */
+export function maxSizeFor(bounds: PositionBounds, leverage: number): number {
+  const backed = bounds.balance * Math.max(1, leverage);
+  const cap = backed > 0 ? Math.min(bounds.maxNotional, backed) : bounds.maxNotional;
+  return Math.max(bounds.minSize, Math.floor(cap));
+}
+
+/** The standard position the app proposes once it knows what is allowed. */
+function standardPosition(bounds: PositionBounds): Pick<PositionSettings, 'size' | 'leverage'> {
+  const leverage = bounds.maxLeverage;
+  return { leverage, size: Math.min(maxSizeFor(bounds, leverage), DEFAULT_STAKE * leverage) };
+}
 
 type SettingsState = {
   ready: boolean;
   settings: PositionSettings;
   bounds: PositionBounds;
   update: (change: Partial<PositionSettings>) => void;
+  /** Re-read the limits and the balance; the form does it as it opens. */
+  refresh: () => void;
 };
 
 const SettingsContext = createContext<SettingsState | null>(null);
@@ -55,12 +91,16 @@ export function PositionSettingsProvider({ children }: { children: ReactNode }) 
   const [settings, setSettings] = useState<PositionSettings>(DEFAULT_SETTINGS);
   const [bounds, setBounds] = useState<PositionBounds>(FALLBACK_BOUNDS);
   const [ready, setReady] = useState(false);
+  // Nothing stored yet: the app still owes this wallet its first standard
+  // position, and it can only be proposed once the limits are known.
+  const [unset, setUnset] = useState(false);
 
   useEffect(() => {
     let alive = true;
-    loadSettings(DEFAULT_SETTINGS).then((stored) => {
+    loadSettings().then((stored) => {
       if (!alive) return;
-      setSettings(stored);
+      setSettings(stored ? { ...DEFAULT_SETTINGS, ...stored } : DEFAULT_SETTINGS);
+      setUnset(stored === null);
       setReady(true);
     });
     return () => {
@@ -68,26 +108,27 @@ export function PositionSettingsProvider({ children }: { children: ReactNode }) 
     };
   }, []);
 
-  // Asked once: the limits are policy, not a live quote, and the screens that
-  // read them are open for seconds.
-  useEffect(() => {
-    let alive = true;
+  // The limits are policy rather than a live quote, but the balance they are
+  // read with is not: it moves with every round trip and every deposit. So
+  // this is asked on mount and again whenever a screen opens the form.
+  const refresh = useCallback(() => {
     api
       .state('direction')
-      .then((s) => {
-        if (!alive) return;
+      .then((s) =>
         setBounds({
           minSize: Number(s.limits.min_notional),
-          maxSize: Number(s.limits.max_notional),
+          maxNotional: Number(s.limits.max_notional),
+          balance: Number(s.account.balance),
           maxLeverage: Number(s.limits.max_leverage),
           known: true,
-        });
-      })
+        }),
+      )
       .catch(() => undefined);
-    return () => {
-      alive = false;
-    };
   }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
 
   // Written on every change rather than on a Done button: the screen has no
   // cancel, so there is nothing to commit.
@@ -102,19 +143,21 @@ export function PositionSettingsProvider({ children }: { children: ReactNode }) 
     [bounds],
   );
 
-  // A stored position from before the limits were known is brought inside them
-  // rather than left to be refused at the tap.
+  // A wallet that has never set a position gets the standard one as soon as
+  // the limits arrive; a stored position from before they were known is
+  // brought inside them rather than left to be refused at the tap.
   useEffect(() => {
     if (!ready || !bounds.known) return;
     setSettings((current) => {
-      const next = clamp(current, bounds);
+      const next = clamp(unset ? { ...current, ...standardPosition(bounds) } : current, bounds);
       if (next.size === current.size && next.leverage === current.leverage) return current;
       void saveSettings(next);
       return next;
     });
-  }, [ready, bounds]);
+    if (unset) setUnset(false);
+  }, [ready, bounds, unset]);
 
-  const value = useMemo(() => ({ ready, settings, bounds, update }), [ready, settings, bounds, update]);
+  const value = useMemo(() => ({ ready, settings, bounds, update, refresh }), [ready, settings, bounds, update, refresh]);
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
 }
 
@@ -123,7 +166,9 @@ function clamp(s: PositionSettings, b: PositionBounds): PositionSettings {
   return {
     ...s,
     leverage,
-    size: Math.min(b.maxSize, Math.max(b.minSize, s.size)),
+    // The ceiling follows the leverage: less leverage is less the wallet can
+    // back, so a size set at 3x has to come down when the slider does.
+    size: Math.min(maxSizeFor(b, leverage), Math.max(b.minSize, s.size)),
   };
 }
 

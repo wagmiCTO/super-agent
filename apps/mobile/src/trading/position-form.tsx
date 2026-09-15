@@ -11,9 +11,10 @@
  * failed to fill in.
  */
 
+import { useEffect } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 
-import { atRisk, ownStake, possibleWin, usePositionSettings } from '@/trading/useSettings';
+import { atRisk, maxSizeFor, ownStake, possibleWin, usePositionSettings } from '@/trading/useSettings';
 import { Slider } from '@/ui/slider';
 import { Card, Chip, Toggle } from '@/ui/surface';
 import { Text, grouped } from '@/ui/text';
@@ -31,8 +32,11 @@ function ticksTo(maxLeverage: number): number[] {
 
 export function PositionForm({ compact = false }: { compact?: boolean }) {
   const theme = useTheme();
-  const { settings, update, bounds } = usePositionSettings();
-  const max = bounds.maxSize;
+  const { settings, update, bounds, refresh } = usePositionSettings();
+  // The ceiling is the balance's, so it is only as good as the last read of
+  // it: a round trip or a deposit between two visits moves it.
+  useEffect(refresh, [refresh]);
+  const max = maxSizeFor(bounds, settings.leverage);
   const step = max > 200 ? 5 : 1;
   const win = possibleWin(settings);
 

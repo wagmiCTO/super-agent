@@ -21,12 +21,13 @@ export type PositionSettings = {
 
 const KEY = 'tradeagent.position';
 
-export async function loadSettings(fallback: PositionSettings): Promise<PositionSettings> {
+/** The stored position, or null when this wallet has never set one. */
+export async function loadSettings(): Promise<PositionSettings | null> {
   try {
     const raw = await SecureStore.getItemAsync(KEY);
-    return raw ? { ...fallback, ...(JSON.parse(raw) as Partial<PositionSettings>) } : fallback;
+    return raw ? (JSON.parse(raw) as PositionSettings) : null;
   } catch {
-    return fallback;
+    return null;
   }
 }
 
