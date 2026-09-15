@@ -1,19 +1,20 @@
 /**
- * This week's boards, polled: what each strategy made for its players, who
- * is up, and the on-chain prize pool when one is configured.
+ * The boards, polled: what each strategy made for its players, who is up,
+ * and the on-chain prize pool when one is configured. `period` is this week
+ * or every trade on record; the prize block is this week's either way.
  */
 import { useEffect, useState } from 'react';
 
 import { api, type Leaderboard } from '@/api/client';
 import { LEADERBOARD_POLL_MS } from '@/config';
 
-export function useLeaderboard(): Leaderboard | null {
+export function useLeaderboard(period: 'week' | 'all' = 'week'): Leaderboard | null {
   const [lb, setLb] = useState<Leaderboard | null>(null);
   useEffect(() => {
     let alive = true;
     const read = () =>
       api
-        .leaderboard()
+        .leaderboard(period)
         .then((next) => alive && setLb(next))
         .catch(() => undefined);
     void read();
@@ -22,6 +23,6 @@ export function useLeaderboard(): Leaderboard | null {
       alive = false;
       clearInterval(id);
     };
-  }, []);
+  }, [period]);
   return lb;
 }

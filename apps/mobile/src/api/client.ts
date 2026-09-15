@@ -190,7 +190,8 @@ export const api = {
   trades: (symbol: string, strategy: string) =>
     request<Trade[]>(`/v1/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&limit=50`, undefined, { strategy }),
   rsi: (symbol: string) => request<RSISignal>(`/v1/signals/rsi?symbol=${encodeURIComponent(symbol)}`),
-  leaderboard: () => request<Leaderboard>('/v1/leaderboard'),
+  /** The boards, by result: this week's, or every trade on record. */
+  leaderboard: (period: 'week' | 'all' = 'week') => request<Leaderboard>(`/v1/leaderboard?period=${period}`),
   context: (symbol: string) => request<MarketContext>(`/v1/context?symbol=${encodeURIComponent(symbol)}`),
   depositOptions: () => request<DepositOptions>('/v1/deposit/options'),
   depositQuote: (body: { origin_asset: string; amount: string; dry?: boolean }) =>

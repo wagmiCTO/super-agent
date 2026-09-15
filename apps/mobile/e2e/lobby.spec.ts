@@ -60,7 +60,7 @@ test('the lobby links open the screens the design names', async ({ page, context
 
   // The prize banner leads to the board.
   await page.getByTestId('prize-banner').click({ force: true });
-  await expect(page.getByTestId('stub-title')).toHaveText('Leaderboard', { timeout: 20_000 });
+  await expect(page.getByTestId('leaderboard-title')).toHaveText('Leaderboard', { timeout: 20_000 });
   await page.getByTestId('lobby-link').last().click();
   await expect(lobby).toBeVisible();
 
@@ -80,4 +80,15 @@ test('the leaderboard shows the on-chain prize pools from the indexer', async ({
   await expect(past).toContainText(/pools · [\d.]+ AUSD funded/);
   await expect(past).toContainText(/Indexed by Envio/);
   await expect(page.getByTestId('leaderboard-source')).toHaveText(/^Prizes paid by contract 0x[0-9a-f]{4}…[0-9a-f]{4} · week \d+/);
+
+  // The board itself: a tab per strategy and all of them together, this week
+  // or every trade on record. A fresh testnet has no closed trades on most
+  // boards, so what is asserted is the line that says what is being played
+  // for, which is there either way.
+  await expect(page.getByTestId('board-pool')).toContainText(/players · ends \w+$|No pool yet/);
+  await page.getByTestId('board-all').click();
+  await expect(page.getByTestId('board-pool')).toContainText(/entries/);
+  await page.getByTestId('period-all').click();
+  await expect(page.getByTestId('board-pool')).toContainText(/^Since launch/, { timeout: 20_000 });
+  await expect(page.getByTestId('board-note')).toContainText('The prize is weekly');
 });
