@@ -7,24 +7,27 @@
  */
 
 import { router } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { useAccount } from '@/account/useAccount';
 import { useOnboarding } from '@/onboarding/useOnboarding';
 import { Button } from '@/ui/button';
 import { Mark } from '@/ui/mark';
+import { Splash } from '@/ui/splash';
 import { Card, Screen } from '@/ui/surface';
 import { Text } from '@/ui/text';
 import { useTheme } from '@/theme';
 
 export default function PasskeyScreen() {
   const theme = useTheme();
-  const { state, busy, error, create, signIn } = useAccount();
+  const { state, error, create, signIn } = useAccount();
   const { markReturning } = useOnboarding();
   const signedIn = state.status === 'unlocked' || state.status === 'remembered';
   // Which button was pressed, so the effect below can tell a new account from
-  // one that already existed.
+  // one that already existed — and so the wait says which of the two is
+  // happening. A ref alone would not repaint the screen.
+  const [pressed, setPressed] = useState<'create' | 'signIn' | null>(null);
   const returning = useRef(false);
 
   // Once. The handoff used to re-run whenever the preferences changed, because
@@ -45,6 +48,22 @@ export default function PasskeyScreen() {
     if (returning.current) void markReturning().then(() => router.replace('/'));
     else router.replace('/');
   }, [signedIn, markReturning]);
+
+  // From the press until the app opens there is nothing on this screen to
+  // decide, and what it offers is the opposite of what is happening: someone
+  // who pressed "I already have one" was left looking at Create account —
+  // through the ceremony, and again in the gap between it and the handoff,
+  // where `busy` has already gone quiet. That gap reads as the app having
+  // forgotten the sign-in. A loader for the whole of it, and the screen comes
+  // back only if the ceremony failed, with the reason on it.
+  const waiting = signedIn || (pressed !== null && error === null);
+  if (waiting) return <Splash note={pressed === 'signIn' ? 'Signing you in…' : 'Creating your account…'} />;
+
+  const start = (which: 'create' | 'signIn') => {
+    setPressed(which);
+    returning.current = which === 'signIn';
+    void (which === 'signIn' ? signIn() : create());
+  };
 
   return (
     <Screen>
@@ -68,12 +87,12 @@ export default function PasskeyScreen() {
         <View style={{ flex: 1 }} />
 
         <View style={{ gap: theme.space.s3 }}>
-          <Button testID="passkey-create" title="Create account" busy={busy} onPress={() => { returning.current = false; void create(); }} />
+          <Button testID="passkey-create" title="Create account" onPress={() => start('create')} />
           <Text
             testID="passkey-signin"
             variant="small"
             style={{ textAlign: 'center', paddingVertical: theme.space.s2 }}
-            onPress={busy ? undefined : () => { returning.current = true; void signIn(); }}
+            onPress={() => start('signIn')}
           >
             I already have one · Sign in
           </Text>

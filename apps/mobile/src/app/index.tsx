@@ -23,6 +23,7 @@ import { useTrading } from '@/trading/useTrading';
 import { nextStep, useOnboarding } from '@/onboarding/useOnboarding';
 import { Mark, RiskDial } from '@/ui/mark';
 import { StrategyTile, type GlyphId } from '@/ui/glyph';
+import { Splash } from '@/ui/splash';
 import { Badge, Screen } from '@/ui/surface';
 import { riskPercent } from '@/strategy/risk';
 import { Text, money } from '@/ui/text';
@@ -97,19 +98,6 @@ export default function Entry() {
   // first frame is the app rather than a spinner on a foreign background.
   if (!settled || step) return <Splash />;
   return <LobbyScreen />;
-}
-
-function Splash() {
-  const theme = useTheme();
-  return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: theme.space.s5, backgroundColor: theme.color.ground }}>
-      <Mark size={84} />
-      <Text variant="h1" style={{ fontSize: theme.type.tXl }}>TradeAgent</Text>
-      <View style={{ width: 120, height: 3, borderRadius: 999, backgroundColor: theme.color.hair, overflow: 'hidden' }}>
-        <View style={{ height: 3, width: '40%', backgroundColor: theme.color.accent }} />
-      </View>
-    </View>
-  );
 }
 
 /** Where the header row sits, so the menu can hang under its badge. */

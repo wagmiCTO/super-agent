@@ -124,7 +124,7 @@ test('the first visit runs with no platform reachable', async ({ page, context }
   // so the activation screen stays away and the lobby comes next. It has no
   // strategy cards — those come from the platform — so the heading is what
   // says we got there.
-  await expect(page.getByText(/^STRATEGIES · THIS WEEK$/)).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText('Choose a strategy')).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText('Open your account')).toHaveCount(0);
 });
 
