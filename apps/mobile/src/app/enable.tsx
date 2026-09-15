@@ -69,15 +69,30 @@ export default function EnableScreen() {
     void activate();
   }, [started, hasKey, funded, running, done, activate]);
 
+  const failed = key.error ?? error;
+
   const start = () => {
     setStarted(true);
     // A second press is a retry, so the one-shot latch has to let go —
     // otherwise a failed activation leaves a live button that does nothing.
     activating.current = false;
+    // The retry starts here rather than being left to the effect above: both
+    // hooks drop their error the moment they start, so the press reaches the
+    // loader within one render, with no live frame in between. Left to the
+    // effect, a retry after a failed activation would not restart at all —
+    // nothing in the render changes, so the effect would not run again.
     if (!hasKey) void key.enable();
+    else if (funded && !running && !done) {
+      activating.current = true;
+      void activate();
+    }
   };
 
-  const failed = key.error ?? error;
+  // Between the key and the funds, and again between the last transaction and
+  // the lobby, no hook is busy — the screen is simply waiting on the venue.
+  // The button does not flicker awake in those gaps: from the press until the
+  // account exists it is one loader, and only a failure gives it back.
+  const working = started && failed === null;
 
   return (
     <Screen>
@@ -127,9 +142,9 @@ export default function EnableScreen() {
 
         <Button
           testID="enable-start"
-          title={running ? 'Working…' : 'Open account'}
-          busy={running}
-          disabled={running}
+          title={working ? 'Working…' : failed ? 'Try again' : 'Open account'}
+          busy={working}
+          disabled={working}
           onPress={start}
         />
       </View>
