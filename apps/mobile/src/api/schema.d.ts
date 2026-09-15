@@ -869,6 +869,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/referral": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * This wallet's invite — its code, its friends and what they earned
+         * @description The wallet named by X-Account-Address gets one code, minted on the first read and kept. Friends are the wallets that arrived on it, with what each has traded since; earned is our builder fee on that volume times the referrer's share. A venue where we charge no builder fee earns nothing, and says so with fee_bps 0.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Referral"];
+                    };
+                };
+                /** @description No wallet in the request. */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/referral/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Attribute this wallet to whoever owns an invite code
+         * @description Called once, after the wallet exists, with the code it arrived on. Attribution is final: a wallet already attributed keeps its referrer and the answer says the call changed nothing. A wallet cannot claim its own code.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        code: string;
+                    };
+                };
+            };
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @description True when this call is the one that attributed the wallet. */
+                            attributed: boolean;
+                            referred_by?: string;
+                        };
+                    };
+                };
+                /** @description No wallet owns that code. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/limits": {
         parameters: {
             query?: never;
@@ -1424,6 +1528,33 @@ export interface components {
             l: components["schemas"]["Decimal"];
             c: components["schemas"]["Decimal"];
             v: components["schemas"]["Decimal"];
+        };
+        Referral: {
+            /** @example K7RM29 */
+            code: string;
+            /** @example https://inflight.work/i/K7RM29 */
+            link: string;
+            /** @description The part of our builder fee a referrer keeps, as a percent. */
+            share_pct: number;
+            fee_bps: components["schemas"]["Decimal"];
+            friends: components["schemas"]["ReferralFriend"][];
+            totals: {
+                invited: number;
+                volume: components["schemas"]["Decimal"];
+                earned: components["schemas"]["Decimal"];
+            };
+            /** @description Who brought this wallet, if anyone did. */
+            referred_by?: string;
+        };
+        ReferralFriend: {
+            wallet: string;
+            /** Format: date-time */
+            joined_at: string;
+            trades: number;
+            /** @description What they have traded since joining, in collateral units. */
+            volume: components["schemas"]["Decimal"];
+            /** @description Our builder fee on that volume, times the share. */
+            earned: components["schemas"]["Decimal"];
         };
         Leaderboard: {
             /**

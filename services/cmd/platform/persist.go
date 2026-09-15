@@ -88,3 +88,34 @@ func (b limitsBackend) WalletLimits(ctx context.Context, address string) (platfo
 func (b limitsBackend) SaveWalletLimits(ctx context.Context, w platform.WalletLimits) error {
 	return b.st.SaveWalletLimits(ctx, store.WalletLimits{Address: w.Address, DailyLossPct: w.DailyLossPct, MaxOpenPositions: w.MaxOpenPositions, CooldownSeconds: w.CooldownSeconds})
 }
+
+// referralBackend adapts the store to the platform's Referrals.
+type referralBackend struct{ st *store.Store }
+
+func (b referralBackend) ReferralCode(ctx context.Context, wallet string) (string, error) {
+	return b.st.ReferralCode(ctx, wallet, platform.NewCode)
+}
+
+func (b referralBackend) ReferrerOf(ctx context.Context, wallet string) (string, bool, error) {
+	return b.st.ReferrerOf(ctx, wallet)
+}
+
+func (b referralBackend) WalletForCode(ctx context.Context, code string) (string, bool, error) {
+	return b.st.WalletForCode(ctx, code)
+}
+
+func (b referralBackend) SaveReferral(ctx context.Context, wallet, referrer, code string) (bool, error) {
+	return b.st.SaveReferral(ctx, wallet, referrer, code)
+}
+
+func (b referralBackend) ReferralsOf(ctx context.Context, referrer string) ([]platform.Referral, error) {
+	rows, err := b.st.ReferralsOf(ctx, referrer)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]platform.Referral, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, platform.Referral{Wallet: r.Wallet, JoinedAt: r.JoinedAt, Trades: r.Trades, Volume: r.Volume})
+	}
+	return out, nil
+}

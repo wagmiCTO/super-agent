@@ -139,6 +139,16 @@ func run(log *slog.Logger) error {
 	}
 	handlerOpts = append(handlerOpts, platform.WithLimitsStore(prefs))
 
+	// Who invited whom. In memory it is lost on restart, which would lose a
+	// friend their referrer, so this one is worth the loud line.
+	var invites platform.Referrals = platform.NewMemReferrals()
+	if db != nil {
+		invites = referralBackend{db}
+	} else {
+		log.Warn("no database: invite codes and attribution live in memory")
+	}
+	handlerOpts = append(handlerOpts, platform.WithReferrals(invites))
+
 	svc, err := platform.New(ctx, adapter, eng, ownKey, limits, log)
 	if err != nil {
 		return err

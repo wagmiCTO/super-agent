@@ -417,6 +417,60 @@ paths:
                         error: { type: string }
                         pnl: { $ref: "#/components/schemas/Decimal" }
 
+  /v1/referral:
+    get:
+      summary: This wallet's invite — its code, its friends and what they earned
+      description: >-
+        The wallet named by X-Account-Address gets one code, minted on the
+        first read and kept. Friends are the wallets that arrived on it, with
+        what each has traded since; earned is our builder fee on that volume
+        times the referrer's share. A venue where we charge no builder fee
+        earns nothing, and says so with fee_bps 0.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Referral" }
+        "403":
+          description: No wallet in the request.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/referral/claim:
+    post:
+      summary: Attribute this wallet to whoever owns an invite code
+      description: >-
+        Called once, after the wallet exists, with the code it arrived on.
+        Attribution is final: a wallet already attributed keeps its referrer
+        and the answer says the call changed nothing. A wallet cannot claim
+        its own code.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties: { code: { type: string } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [attributed]
+                properties:
+                  attributed:
+                    type: boolean
+                    description: True when this call is the one that attributed the wallet.
+                  referred_by: { type: string }
+        "404":
+          description: No wallet owns that code.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /v1/limits:
     get:
       summary: What the wallet trades under — its choice, the tiers, the numbers in force
@@ -707,6 +761,45 @@ components:
         l: { $ref: "#/components/schemas/Decimal" }
         c: { $ref: "#/components/schemas/Decimal" }
         v: { $ref: "#/components/schemas/Decimal" }
+
+    Referral:
+      type: object
+      required: [code, link, share_pct, fee_bps, friends, totals]
+      properties:
+        code: { type: string, example: K7RM29 }
+        link: { type: string, example: "https://inflight.work/i/K7RM29" }
+        share_pct:
+          type: number
+          description: The part of our builder fee a referrer keeps, as a percent.
+        fee_bps:
+          $ref: "#/components/schemas/Decimal"
+        friends:
+          type: array
+          items: { $ref: "#/components/schemas/ReferralFriend" }
+        totals:
+          type: object
+          required: [invited, volume, earned]
+          properties:
+            invited: { type: integer }
+            volume: { $ref: "#/components/schemas/Decimal" }
+            earned: { $ref: "#/components/schemas/Decimal" }
+        referred_by:
+          type: string
+          description: Who brought this wallet, if anyone did.
+
+    ReferralFriend:
+      type: object
+      required: [wallet, joined_at, trades, volume, earned]
+      properties:
+        wallet: { type: string }
+        joined_at: { type: string, format: date-time }
+        trades: { type: integer }
+        volume:
+          allOf: [{ $ref: "#/components/schemas/Decimal" }]
+          description: What they have traded since joining, in collateral units.
+        earned:
+          allOf: [{ $ref: "#/components/schemas/Decimal" }]
+          description: Our builder fee on that volume, times the share.
 
     Leaderboard:
       type: object

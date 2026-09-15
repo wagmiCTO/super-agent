@@ -43,7 +43,11 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	if limitsStore == nil {
 		limitsStore = NewMemLimits()
 	}
-	h := &handler{svc: s, log: log, enroll: o.enrollment, registry: o.registry, signals: o.signals, ledger: o.ledger, prize: o.prize, auth: newAuthenticator(authKeys), context: o.context, deposits: o.deposits, history: o.history, ownAccount: o.ownAccount, limits: limitsStore}
+	referrals := o.referrals
+	if referrals == nil {
+		referrals = NewMemReferrals()
+	}
+	h := &handler{svc: s, log: log, enroll: o.enrollment, registry: o.registry, signals: o.signals, ledger: o.ledger, prize: o.prize, auth: newAuthenticator(authKeys), context: o.context, deposits: o.deposits, history: o.history, ownAccount: o.ownAccount, limits: limitsStore, referrals: referrals}
 	if o.ledger != nil {
 		s.UseLedger(o.ledger)
 	}
@@ -63,6 +67,8 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /v1/trades", h.trades)
 	mux.HandleFunc("GET /v1/risk", h.risk)
 	mux.HandleFunc("POST /v1/risk/close-all", h.closeAll)
+	mux.HandleFunc("GET /v1/referral", h.referral)
+	mux.HandleFunc("POST /v1/referral/claim", h.claimReferral)
 	mux.HandleFunc("GET /v1/limits", h.getLimits)
 	mux.HandleFunc("PUT /v1/limits", h.putLimits)
 	mux.HandleFunc("GET /v1/context", h.marketContext)
@@ -99,6 +105,7 @@ type options struct {
 	history     *PrizeHistory
 	ownAccount  bool
 	limits      LimitsStore
+	referrals   Referrals
 }
 
 // WithOwnAccount lets requests without a wallet header trade the
@@ -136,6 +143,12 @@ func WithAuthKeys(k AuthKeys) Option {
 // live in memory and are lost on restart.
 func WithLimitsStore(s LimitsStore) Option {
 	return func(o *options) { o.limits = s }
+}
+
+// WithReferrals keeps the invite codes and who brought whom. Without it
+// they live in memory and are lost on restart.
+func WithReferrals(r Referrals) Option {
+	return func(o *options) { o.referrals = r }
 }
 
 // WithRegistry routes requests carrying X-Account-Address to that wallet's
@@ -213,6 +226,7 @@ type handler struct {
 	history    *PrizeHistory
 	ownAccount bool
 	limits     LimitsStore
+	referrals  Referrals
 }
 
 // AccountHeader names the wallet a request acts for. On its own it is
