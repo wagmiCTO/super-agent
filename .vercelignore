@@ -1,0 +1,32 @@
+# What the Vercel CLI may upload.
+#
+# The project's Root Directory is `apps/mobile`, but the CLI uploads the
+# directory it is run from — and it has to run from here, or it resolves the
+# root directory twice. So the upload is whitelisted: the app, and from it
+# only what the build reads. Everything else — the Go services, the contracts,
+# the indexer, local notes and env files — stays on the machine.
+#
+# This file replaces .gitignore for the upload: once it exists, .gitignore is
+# not consulted, so every heavy or private path has to be named here.
+
+/*
+!/apps
+/apps/*
+!/apps/mobile
+
+# Local secrets and machine-specific values. EXPO_PUBLIC_* is inlined at build
+# time, so an uploaded .env would bake a laptop's address into the site.
+/apps/mobile/.env
+/apps/mobile/.env.*
+!/apps/mobile/.env.example
+
+# Native projects, dependencies, build output, tests: the web build needs none
+# of them.
+/apps/mobile/node_modules
+/apps/mobile/ios
+/apps/mobile/android
+/apps/mobile/dist
+/apps/mobile/.expo
+/apps/mobile/e2e
+/apps/mobile/test-results
+/apps/mobile/playwright-report
