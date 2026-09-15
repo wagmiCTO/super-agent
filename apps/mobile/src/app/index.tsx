@@ -2,22 +2,22 @@
  * The lobby: the list of strategies, each with this week's board — what it
  * made for everyone, who is up, how many are in right now. The number people
  * argue about is the strategy's total, not any one player's.
+ *
+ * Laid out as the design has it: the mark, the network, the balance and the
+ * day's risk in one row; a prize to claim when there is one; the strategies;
+ * the promise of your own; and, pinned to the bottom, the way to everything
+ * else. Screens the design names and the app has not built yet open as
+ * stubs, so no link here leads nowhere.
  */
 import { Link, router, type Href } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Pressable, ScrollView, View } from 'react-native';
 
-import type { Wallet } from '@/account/derive';
 import { useAccount } from '@/account/useAccount';
-import { api, ApiError, describeError, type Board, type Leaderboard, type PrizeHistory } from '@/api/client';
-import { claimPrize, fetchMyPrizes, type MyPrizes as PrizeList } from '@/exchange/prize';
-import { AccountSection } from '@/components/account';
+import type { Board } from '@/api/client';
 import { trim } from '@/components/format';
-import { ThemedText } from '@/components/themed-text';
-import { styles as trading } from '@/components/trading';
-import { LEADERBOARD_POLL_MS, STRATEGY_NAMES } from '@/config';
-import { Spacing } from '@/constants/legacy-theme';
-import { useTheme } from '@/hooks/use-theme';
+import { unclaimedTotal, useMyPrizes } from '@/components/prizes';
+import { useLeaderboard } from '@/trading/useLeaderboard';
 import { useTrading } from '@/trading/useTrading';
 import { nextStep, useOnboarding } from '@/onboarding/useOnboarding';
 import { Mark, RiskDial } from '@/ui/mark';
@@ -25,7 +25,7 @@ import { StrategyTile, type GlyphId } from '@/ui/glyph';
 import { Badge, Screen } from '@/ui/surface';
 import { riskPercent } from '@/strategy/risk';
 import { Text, money } from '@/ui/text';
-import { useTheme as useTheme2 } from '@/theme';
+import { face, useTheme } from '@/theme';
 
 const ROUTES: Record<string, Href> = { direction: '/direction', 'ma-cross': '/ma-cross', rsi: '/rsi' };
 
@@ -99,7 +99,7 @@ export default function Entry() {
 }
 
 function Splash() {
-  const theme = useTheme2();
+  const theme = useTheme();
   return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: theme.space.s5, backgroundColor: theme.color.ground }}>
       <Mark size={84} />
@@ -111,31 +111,64 @@ function Splash() {
   );
 }
 
+/** Where the header row sits, so the menu can hang under its badge. */
+const HEADER_TOP = 52;
+
 function LobbyScreen() {
   const account = useAccount();
   const { taught } = useOnboarding();
-  const theme = useTheme2();
+  const theme = useTheme();
   // The lobby trades nothing itself; it reads the state for the balance, the
   // risk dial and whether a strategy has a position open right now.
   const t = useTrading('MON', 'direction');
   const lb = useLeaderboard();
   const boards = lb?.boards ?? null;
   const open = (id: string) => t.state?.positions.find(() => id === 'direction') ?? null;
+  const address = account.state.status === 'unlocked' || account.state.status === 'remembered' ? account.state.stored.address.toLowerCase() : null;
+  const prize = unclaimedTotal(useMyPrizes(lb?.prize && address ? address : null).mine);
+  const [menu, setMenu] = useState(false);
 
   return (
     <Screen>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: 52, paddingHorizontal: theme.space.s5, paddingBottom: theme.space.s6, gap: theme.space.s4 }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ flexGrow: 1, paddingTop: HEADER_TOP, paddingBottom: theme.space.s6, gap: theme.space.s4 }}
+      >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s3 }}>
           <Mark size={28} />
-          <Badge>TESTNET</Badge>
+          <Pressable testID="network-badge" accessibilityRole="button" accessibilityLabel="Network" onPress={() => setMenu((m) => !m)}>
+            <Badge>TESTNET ▾</Badge>
+          </Pressable>
           <View style={{ flex: 1 }} />
-          <Text variant="num" style={{ fontSize: theme.type.tSm }} testID="balance">
+          <Text variant="num" style={{ fontSize: theme.type.tXs, color: theme.color.muted }} testID="balance">
             {t.state ? `${Number(t.state.account.balance).toFixed(2)} AUSD` : t.offline ? 'offline' : '…'}
           </Text>
           <Pressable onPress={() => router.push('/risk')} testID="risk-dial" accessibilityRole="button" accessibilityLabel="Risk and performance">
             <RiskDial percent={riskPercent(t.state)} />
           </Pressable>
         </View>
+
+        {prize !== null ? (
+          <Pressable
+            testID="prize-banner"
+            accessibilityRole="button"
+            accessibilityLabel="Claim the prize of the week"
+            onPress={() => router.push('/leaderboard')}
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingHorizontal: theme.space.s4,
+              paddingVertical: theme.space.s3,
+              borderRadius: theme.radius.rLg,
+              backgroundColor: theme.color.accent,
+              opacity: pressed ? 0.8 : 1,
+            })}
+          >
+            <Text variant="bodyStrong" style={{ fontSize: theme.type.tSm, color: theme.color.onAccent }}>{`Prize of the week: ${prize.toFixed(2)} AUSD`}</Text>
+            <Text variant="bodyStrong" style={{ fontSize: theme.type.tSm, color: theme.color.onAccent }}>Claim</Text>
+          </Pressable>
+        ) : null}
 
         <View style={{ gap: 2 }}>
           <Text variant="h1" style={{ fontSize: theme.type.tXl }}>Choose a strategy</Text>
@@ -157,85 +190,155 @@ function LobbyScreen() {
               openPnl={open(b.id)?.unrealized_pnl ?? null}
               href={taught(b.id) ? (ROUTES[b.id] ?? '/') : { pathname: '/lesson', params: { strategy: b.id } }}
               pool={lb?.prize?.pools.find((p) => p.strategy === b.id)?.pool ?? null}
+              rank={rankOf(b, address)}
             />
           ))
         )}
 
-        {/* Named in the design, and honest about not being here yet. */}
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: theme.space.s3,
-            paddingHorizontal: theme.space.s4,
-            paddingVertical: theme.space.s3,
-            borderRadius: theme.radius.rLg,
-            borderWidth: theme.size.bw,
-            borderColor: theme.color.line,
-            backgroundColor: theme.color.cardBg,
-          }}
-        >
-          <View
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: theme.radius.rSm,
-              borderWidth: theme.size.bw,
-              borderStyle: 'dashed',
-              borderColor: theme.color.line,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Text variant="body" style={{ color: theme.color.muted }}>+</Text>
-          </View>
-          <Text variant="body" numberOfLines={1} style={{ flex: 1, fontSize: theme.type.tSm }}>Build your own strategy</Text>
-          <Text variant="small" numberOfLines={1} style={{ fontSize: theme.type.t2xs }}>coming soon</Text>
-        </View>
+        <Link href="/own" asChild>
+          <Pressable accessibilityRole="button" accessibilityLabel="Build your own strategy" testID="own-link">
+            {({ pressed }) => (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: theme.space.s3,
+                  paddingHorizontal: theme.space.s4,
+                  paddingVertical: theme.space.s3,
+                  borderRadius: theme.radius.rLg,
+                  borderWidth: theme.size.bw,
+                  borderColor: theme.color.line,
+                  backgroundColor: theme.color.cardBg,
+                  opacity: pressed ? 0.7 : 1,
+                }}
+              >
+                <View
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: theme.radius.rSm,
+                    borderWidth: theme.size.bw,
+                    borderStyle: 'dashed',
+                    borderColor: theme.color.line,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Text variant="body" style={{ color: theme.color.muted }}>+</Text>
+                </View>
+                <Text variant="body" numberOfLines={1} style={{ flex: 1, fontSize: theme.type.tSm }}>Build your own strategy</Text>
+                <Text variant="small" numberOfLines={1} style={{ fontSize: theme.type.t2xs }}>coming soon</Text>
+              </View>
+            )}
+          </Pressable>
+        </Link>
 
-        {account.state.status === 'unlocked' && lb?.prize ? (
-          <MyPrizes wallet={account.state.wallet} address={account.state.stored.address} contract={lb.prize.contract} />
-        ) : null}
-
-        {/* Below the fold: what the design gives its own screens, until they
-            have them. The account lives here rather than nowhere. */}
-        <AccountSection account={account} state={t.state} onChange={t.refresh} />
-        <PastWeeks />
-
-        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: theme.space.s5 }}>
-          <Text variant="small" testID="risk-link" onPress={() => router.push('/risk')} style={{ color: theme.color.accent }}>Risk</Text>
-          <Text variant="small" testID="deposit-link" onPress={() => router.push('/deposit')} style={{ color: theme.color.accent }}>Add funds</Text>
-        </View>
-
-        {lb ? (
-          <Text variant="small" style={{ textAlign: 'center', fontSize: theme.type.t2xs }} testID="leaderboard-source">
-            {lb.prize
-              ? `Prizes paid by contract ${short(lb.prize.contract)} · week ${lb.prize.week}${lb.prize.winners.length ? ` · last week: ${lb.prize.winners.length} winners` : ''}`
-              : 'No prize pool this week'}
-          </Text>
-        ) : null}
+        <Footer />
       </ScrollView>
+
+      {menu ? <NetworkMenu onClose={() => setMenu(false)} /> : null}
     </Screen>
   );
 }
 
-function useLeaderboard(): Leaderboard | null {
-  const [lb, setLb] = useState<Leaderboard | null>(null);
-  useEffect(() => {
-    let alive = true;
-    const read = () =>
-      api
-        .leaderboard()
-        .then((next) => alive && setLb(next))
-        .catch(() => undefined);
-    void read();
-    const id = setInterval(read, LEADERBOARD_POLL_MS);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, []);
-  return lb;
+/**
+ * The way to everything that is not a strategy, pinned under the fold. Two
+ * groups, as the design draws them: the boards and the invite on the left,
+ * the ledger on the right.
+ */
+function Footer() {
+  const theme = useTheme();
+  const link = (title: string, href: Href, testID: string) => (
+    <Text variant="small" testID={testID} onPress={() => router.push(href)} style={{ paddingVertical: theme.space.s2 }}>
+      {title}
+    </Text>
+  );
+  return (
+    <View style={{ marginTop: 'auto', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+      <View style={{ flexDirection: 'row', gap: theme.space.s4 }}>
+        {link('Leaderboard', '/leaderboard', 'leaderboard-link')}
+        {link('Invite', '/invite', 'invite-link')}
+      </View>
+      <View style={{ flexDirection: 'row', gap: theme.space.s4 }}>
+        {link('History', '/history', 'history-link')}
+        {link('Risk', '/risk', 'risk-link')}
+        {link('Account', '/account', 'account-link')}
+      </View>
+    </View>
+  );
+}
+
+/**
+ * The network menu, hung under the badge as the design draws it. Testnet is
+ * where the app lives; the other entry says what mainnet would mean and leads
+ * to the screen that says it is not here yet. A tap anywhere else closes it.
+ */
+function NetworkMenu({ onClose }: { onClose: () => void }) {
+  const theme = useTheme();
+  const entry = (name: string, note: string, current: boolean, onPress: () => void, testID: string) => (
+    <Pressable
+      testID={testID}
+      accessibilityRole="menuitem"
+      onPress={onPress}
+      style={({ pressed }) => ({
+        padding: theme.space.s3,
+        borderRadius: theme.radius.rMd,
+        backgroundColor: current ? theme.color.soft : theme.color.paper,
+        gap: 2,
+        opacity: pressed ? 0.7 : 1,
+      })}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: theme.space.s2 }}>
+        <Text style={{ fontFamily: face(theme, 'display', 700), fontSize: theme.type.tLg, letterSpacing: theme.type.tLg * theme.tracking, color: theme.color.ink }}>{name}</Text>
+        {current ? <Text style={{ fontFamily: face(theme, 'display', 700), fontSize: theme.type.tMd, color: theme.color.accent }}>✓</Text> : null}
+      </View>
+      <Text variant="small" style={{ fontSize: theme.type.tXs }}>{note}</Text>
+    </Pressable>
+  );
+  return (
+    <>
+      <Pressable testID="network-scrim" accessibilityLabel="Close the menu" onPress={onClose} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} />
+      <View
+        testID="network-menu"
+        style={{
+          position: 'absolute',
+          top: HEADER_TOP + 36,
+          left: theme.space.s5 + 38,
+          width: 250,
+          borderRadius: theme.radius.rLg,
+          backgroundColor: theme.color.paper,
+          borderWidth: 1,
+          borderColor: theme.color.line,
+          padding: theme.space.s2,
+          gap: 2,
+          shadowColor: theme.color.shadowMenu,
+          shadowOpacity: 1,
+          shadowRadius: 30,
+          shadowOffset: { width: 0, height: 12 },
+          elevation: 8,
+        }}
+      >
+        {entry('TESTNET', 'Practice money · nothing to lose', true, onClose, 'network-testnet')}
+        {entry(
+          'MAINNET',
+          'Your own money · every win and loss is real',
+          false,
+          () => {
+            onClose();
+            router.push('/mainnet');
+          },
+          'network-mainnet',
+        )}
+      </View>
+    </>
+  );
+}
+
+/** Where this wallet stands on the strategy's board, if it is on it at all. */
+function rankOf(board: Board, address: string | null): number | null {
+  if (!address) return null;
+  const i = board.top.findIndex((w) => w.wallet.toLowerCase() === address);
+  return i === -1 ? null : i + 1;
 }
 
 /**
@@ -245,11 +348,12 @@ function useLeaderboard(): Leaderboard | null {
  * The first card a new player sees carries START HERE; a card with a position
  * open says so instead — that is the one thing more urgent than starting.
  */
-function StrategyCard({ board, href, pool, lead, openPnl }: { board: Board; href: Href; pool: string | null; lead: boolean; openPnl: string | null }) {
-  const theme = useTheme2();
+function StrategyCard({ board, href, pool, lead, openPnl, rank }: { board: Board; href: Href; pool: string | null; lead: boolean; openPnl: string | null; rank: number | null }) {
+  const theme = useTheme();
   const sub = [
     pool !== null ? `Pool ${trim(pool)} AUSD` : 'No pool yet',
     `${board.players} ${board.players === 1 ? 'player' : 'players'}`,
+    rank !== null ? `you #${rank}` : null,
     board.active_now > 0 ? `${board.active_now} in now` : null,
   ]
     .filter(Boolean)
@@ -297,137 +401,4 @@ function StrategyCard({ board, href, pool, lead, openPnl }: { board: Board; href
 /** The board ids the platform uses, as the three signs the lobby draws. */
 function glyphOf(id: string): GlyphId {
   return id === 'ma-cross' || id === 'rsi' ? id : 'direction';
-}
-
-/**
- * The wallet's published prizes, with a claim for each one not taken yet.
- * The claim is the wallet's own transaction, like its activation.
- */
-function MyPrizes({ wallet, address, contract }: { wallet: Wallet; address: string; contract: string }) {
-  const theme = useTheme();
-  const [mine, setMine] = useState<PrizeList | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const load = useCallback(() => {
-    fetchMyPrizes(address)
-      .then(setMine)
-      .catch(() => setMine(null));
-  }, [address]);
-  useEffect(load, [load]);
-  if (!mine || mine.prizes.length === 0) return null;
-  const claim = async (i: number) => {
-    const p = mine.prizes[i];
-    const key = `${mine.weeks[i]}-${p.strategy}`;
-    setBusy(key);
-    setNotice(null);
-    try {
-      await claimPrize(wallet, contract, mine.weeks[i], p.strategy);
-      setNotice(`Claimed ${trim(p.amount)} AUSD`);
-      load();
-    } catch (e) {
-      setNotice(describeError(e));
-    } finally {
-      setBusy(null);
-    }
-  };
-  return (
-    <View style={[styles.card, { backgroundColor: theme.backgroundElement }]} testID="my-prizes">
-      <ThemedText type="subtitle">Your prizes</ThemedText>
-      {mine.prizes.map((p, i) => (
-        <View key={`${mine.weeks[i]}-${p.strategy}`} style={trading.header}>
-          <ThemedText type="small">
-            Week {mine.weeks[i]} · {p.strategy} · {trim(p.amount)} AUSD
-          </ThemedText>
-          {p.claimed ? (
-            <ThemedText type="small" themeColor="textSecondary">
-              claimed
-            </ThemedText>
-          ) : (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Claim ${trim(p.amount)}`}
-              disabled={busy !== null}
-              onPress={() => void claim(i)}
-              style={[trading.smallButton, { backgroundColor: theme.backgroundSelected, opacity: busy ? 0.6 : 1 }]}>
-              <ThemedText type="smallBold">Claim</ThemedText>
-            </Pressable>
-          )}
-        </View>
-      ))}
-      {notice ? (
-        <ThemedText type="small" themeColor="textSecondary">
-          {notice}
-        </ThemedText>
-      ) : null}
-    </View>
-  );
-}
-
-function short(address: string): string {
-  return address.length > 12 ? `${address.slice(0, 6)}…${address.slice(-4)}` : address;
-}
-
-const styles = StyleSheet.create({
-  card: { borderRadius: 16, padding: Spacing.three, gap: Spacing.one },
-});
-
-/**
- * The weeks gone by as the chain recorded them, read from the prize-pool
- * indexer: what each pool held, who won, who has collected. The platform's
- * own numbers are above; this is the same story from the chain's side.
- */
-function PastWeeks() {
-  const theme = useTheme();
-  const [history, setHistory] = useState<PrizeHistory | null | 'unavailable'>(null);
-  useEffect(() => {
-    let alive = true;
-    api
-      .prizeHistory()
-      .then((h) => alive && setHistory(h))
-      .catch((e) => alive && setHistory(e instanceof ApiError && e.code === 'history_unavailable' ? 'unavailable' : null));
-    return () => {
-      alive = false;
-    };
-  }, []);
-  if (!history || history === 'unavailable') return null;
-  const settled = history.pools.filter((p) => p.settled);
-  return (
-    <View style={[styles.card, { backgroundColor: theme.backgroundElement }]} testID="past-weeks">
-      <View style={trading.header}>
-        <ThemedText type="smallBold" themeColor="textSecondary">
-          ON-CHAIN · PRIZE POOLS
-        </ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
-          {history.totals.pools} pools · {micros(history.totals.funded)} AUSD funded
-        </ThemedText>
-      </View>
-      {settled.length === 0 ? (
-        <ThemedText type="small" themeColor="textSecondary">
-          No week settled yet — the first settlement runs when the current week ends.
-        </ThemedText>
-      ) : (
-        settled.slice(0, 6).map((p) => (
-          <View key={`${p.week}-${p.strategy}`} style={{ gap: 2 }} testID="past-week">
-            <ThemedText type="small">
-              {STRATEGY_NAMES[p.strategy] ?? p.strategy} · week of {new Date(p.week_start).toLocaleDateString()} · pool {micros(p.funded)} AUSD
-            </ThemedText>
-            {p.prizes.map((pr) => (
-              <ThemedText key={pr.wallet} type="small" themeColor="textSecondary">
-                #{pr.rank} {short(pr.wallet)} · {micros(pr.amount)} AUSD · {pr.claimed ? 'claimed' : 'unclaimed'}
-              </ThemedText>
-            ))}
-          </View>
-        ))
-      )}
-      <ThemedText type="small" themeColor="textSecondary" style={{ opacity: 0.7 }}>
-        Indexed by Envio{history.stale ? ' · last known' : ''}
-      </ThemedText>
-    </View>
-  );
-}
-
-/** Token units (6 decimals) to a short decimal. */
-function micros(units: string): string {
-  const n = Number(units) / 1e6;
-  return Number.isFinite(n) ? String(Math.round(n * 100) / 100) : units;
 }

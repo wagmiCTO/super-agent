@@ -38,10 +38,14 @@ export default function EnableScreen() {
   const keys = account.state.status === 'unlocked' ? account.state.keys : null;
 
   const t = useTrading('MON', 'direction');
-  const pending =
-    t.state?.account.status === 'no_exchange_account' || t.state?.account.status === 'forwarding_disabled'
-      ? t.state.account.status
-      : null;
+  // Only an answer asked in this wallet's name says anything about it. The
+  // first poll can leave before the account layer has named the wallet, and
+  // the platform then answers for its own account, which is always open:
+  // read as the user's, that sent the screen to the lobby, and the gate sent
+  // it straight back here, for ever.
+  const heard = wallet !== null && t.state !== null && t.stateFor?.toLowerCase() === wallet.address.toLowerCase();
+  const status = heard ? t.state!.account.status : null;
+  const pending = status === 'no_exchange_account' || status === 'forwarding_disabled' ? status : null;
 
   const key = useStrategyKey(keys, 'direction');
   const { network, funding, funded, progress, busy, error, activate } = useActivation(wallet, pending);
@@ -54,7 +58,7 @@ export default function EnableScreen() {
   const running = key.busy || busy || progress !== null;
 
   // Activated: the design goes straight to the lobby from here.
-  const done = hasKey && t.state !== null && !pending;
+  const done = hasKey && heard && !pending;
   useEffect(() => {
     if (done) router.replace('/');
   }, [done]);

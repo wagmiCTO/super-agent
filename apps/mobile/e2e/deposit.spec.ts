@@ -9,21 +9,19 @@ import { asReturningUser } from './onboarded';
  * address is reserved by this test.
  */
 test('the deposit screen lists origins and relays Aurora’s answer', async ({ page, context }) => {
-  const cdp = await context.newCDPSession(page);
-  await cdp.send('WebAuthn.enable');
-  await cdp.send('WebAuthn.addVirtualAuthenticator', {
-    options: { protocol: 'ctap2', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, hasPrf: true, automaticPresenceSimulation: true },
-  });
-
+  // Arriving brings the virtual authenticator with it; Chrome allows one.
   await asReturningUser(page, context);
+  // Add funds lives on the account screen, as the design has it.
+  await page.getByTestId('account-link').click({ force: true });
   await page.getByTestId('deposit-link').click();
   await expect(page.getByTestId('deposit')).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText(/Arrives as USDC on Monad/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Chain base', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Asset USDC', exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Create account', exact: true }).click();
-  await expect(page.getByText('Signed in with passkey')).toBeVisible();
+  // Arriving signed the wallet in; the deposit screen says so.
+  // The account stub stays mounted under the deposit screen in the stack.
+  await expect(page.getByText('Signed in with passkey').last()).toBeVisible();
 
   await page.getByLabel('Amount').fill('10');
   await page.getByRole('button', { name: 'Get deposit address', exact: true }).click();
