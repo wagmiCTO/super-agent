@@ -50,9 +50,12 @@ const res = await fetch(url, {
   redirect: 'follow',
 });
 if (!res.ok || !res.body) {
+  // Loud, but not fatal. A site that will not deploy because a chart could
+  // not be fetched is a worse outcome than a site with the chart page's
+  // "unavailable" line on it; the build log says which happened.
   // Never print the URL: it can carry a signature.
-  console.error(`charting library download failed: HTTP ${res.status}`);
-  process.exit(1);
+  console.error(`charting library download failed: HTTP ${res.status} — building without a chart`);
+  process.exit(0);
 }
 
 await mkdir(new URL('../public/static/', import.meta.url), { recursive: true });
@@ -61,8 +64,16 @@ await mkdir(OUT, { recursive: true });
 
 // `--strip-components 1` so both shapes work: an archive of the directory and
 // an archive of its contents under one wrapper (which is what GitHub sends).
-await run('tar', ['xzf', TMP.pathname, '-C', OUT.pathname, '--strip-components', '1']);
+try {
+  await run('tar', ['xzf', TMP.pathname, '-C', OUT.pathname, '--strip-components', '1']);
+} catch (e) {
+  console.error(`charting library could not be unpacked: ${e.message} — building without a chart`);
+}
 await rm(TMP, { force: true });
 
-await stat(new URL('charting_library.standalone.js', OUT));
-console.log('charting library fetched');
+try {
+  await stat(new URL('charting_library.standalone.js', OUT));
+  console.log('charting library fetched');
+} catch {
+  console.error('the archive had no charting_library.standalone.js — building without a chart');
+}
