@@ -14,7 +14,9 @@ import { useTheme } from '@/theme';
 export function Screen({ children, style, ...rest }: ViewProps) {
   const theme = useTheme();
   return (
-    <View style={[{ flex: 1, backgroundColor: theme.color.ground, paddingHorizontal: theme.space.s5 }, style]} {...rest}>
+    // `paper`, not `ground`: in the prototype `ground` is the stage the phone
+    // stands on, and every screen inside the phone is drawn on paper.
+    <View style={[{ flex: 1, backgroundColor: theme.color.paper, paddingHorizontal: theme.space.s5 }, style]} {...rest}>
       {children}
     </View>
   );
@@ -65,7 +67,8 @@ export function Badge({ children, strong }: { children: string; strong?: boolean
         backgroundColor: strong ? theme.color.accent : 'transparent',
       }}
     >
-      <Text variant="caps" style={{ color: strong ? theme.color.onAccent : theme.color.text2 }}>{children}</Text>
+      {/* The design's badge is a size up from the caps label above a block. */}
+      <Text variant="caps" style={{ fontSize: theme.type.tXs, lineHeight: theme.type.tXs * 1.3, color: strong ? theme.color.onAccent : theme.color.text2 }}>{children}</Text>
     </View>
   );
 }

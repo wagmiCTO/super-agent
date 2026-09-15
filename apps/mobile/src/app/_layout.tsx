@@ -45,7 +45,7 @@ function Shell() {
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: theme.color.ground },
+          contentStyle: { backgroundColor: theme.color.paper },
           animation: 'slide_from_right',
         }}
       />

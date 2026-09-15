@@ -51,14 +51,16 @@ test('the lobby links open the screens the design names', async ({ page, context
   }
 
   // The network badge opens the menu; testnet is where the app lives, and
-  // the other entry leads to a screen that says mainnet is not here yet.
+  // mainnet is there to be seen but not chosen yet.
   await page.getByTestId('network-badge').click();
   await expect(page.getByTestId('network-menu')).toBeVisible();
+  await expect(page.getByTestId('network-mainnet')).toBeDisabled();
   await page.getByTestId('network-testnet').click();
   await expect(page.getByTestId('network-menu')).toBeHidden();
-  await page.getByTestId('network-badge').click();
-  await page.getByTestId('network-mainnet').click();
-  await expect(page.getByTestId('stub-title')).toHaveText('Mainnet', { timeout: 20_000 });
+
+  // The prize banner leads to the board.
+  await page.getByTestId('prize-banner').click({ force: true });
+  await expect(page.getByTestId('stub-title')).toHaveText('Leaderboard', { timeout: 20_000 });
   await page.getByTestId('lobby-link').last().click();
   await expect(lobby).toBeVisible();
 

@@ -17,6 +17,7 @@ import { useAccount } from '@/account/useAccount';
 import type { Board } from '@/api/client';
 import { trim } from '@/components/format';
 import { unclaimedTotal, useMyPrizes } from '@/components/prizes';
+import { PLACEHOLDER_PRIZE_AUSD } from '@/config';
 import { useLeaderboard } from '@/trading/useLeaderboard';
 import { useTrading } from '@/trading/useTrading';
 import { nextStep, useOnboarding } from '@/onboarding/useOnboarding';
@@ -125,7 +126,8 @@ function LobbyScreen() {
   const boards = lb?.boards ?? null;
   const open = (id: string) => t.state?.positions.find(() => id === 'direction') ?? null;
   const address = account.state.status === 'unlocked' || account.state.status === 'remembered' ? account.state.stored.address.toLowerCase() : null;
-  const prize = unclaimedTotal(useMyPrizes(lb?.prize && address ? address : null).mine);
+  // A real prize first; the design's placeholder until there is one.
+  const prize = unclaimedTotal(useMyPrizes(lb?.prize && address ? address : null).mine) ?? PLACEHOLDER_PRIZE_AUSD;
   const [menu, setMenu] = useState(false);
 
   return (
@@ -136,16 +138,16 @@ function LobbyScreen() {
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s3 }}>
           <Mark size={28} />
-          <Pressable testID="network-badge" accessibilityRole="button" accessibilityLabel="Network" onPress={() => setMenu((m) => !m)}>
-            <Badge>TESTNET ▾</Badge>
-          </Pressable>
+          <NetworkBadge onPress={() => setMenu((m) => !m)} />
           <View style={{ flex: 1 }} />
-          <Text variant="num" style={{ fontSize: theme.type.tXs, color: theme.color.muted }} testID="balance">
-            {t.state ? `${Number(t.state.account.balance).toFixed(2)} AUSD` : t.offline ? 'offline' : '…'}
-          </Text>
-          <Pressable onPress={() => router.push('/risk')} testID="risk-dial" accessibilityRole="button" accessibilityLabel="Risk and performance">
-            <RiskDial percent={riskPercent(t.state)} />
-          </Pressable>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s2 }}>
+            <Text variant="num" style={{ fontSize: theme.type.tXs, color: theme.color.muted }} testID="balance">
+              {t.state ? `${Number(t.state.account.balance).toFixed(2)} AUSD` : t.offline ? 'offline' : '…'}
+            </Text>
+            <Pressable onPress={() => router.push('/risk')} testID="risk-dial" accessibilityRole="button" accessibilityLabel="Risk and performance">
+              <RiskDial percent={riskPercent(t.state)} />
+            </Pressable>
+          </View>
         </View>
 
         {prize !== null ? (
@@ -171,7 +173,7 @@ function LobbyScreen() {
         ) : null}
 
         <View style={{ gap: 2 }}>
-          <Text variant="h1" style={{ fontSize: theme.type.tXl }}>Choose a strategy</Text>
+          <Text variant="h1" style={{ fontSize: theme.type.tXl, lineHeight: theme.type.tXl * 1.2, letterSpacing: theme.type.tXl * theme.heading.tracking }}>Choose a strategy</Text>
           {boards && factionLine(boards) ? (
             <Text variant="small" testID="faction-line">{factionLine(boards)}</Text>
           ) : (
@@ -227,7 +229,7 @@ function LobbyScreen() {
                   <Text variant="body" style={{ color: theme.color.muted }}>+</Text>
                 </View>
                 <Text variant="body" numberOfLines={1} style={{ flex: 1, fontSize: theme.type.tSm }}>Build your own strategy</Text>
-                <Text variant="small" numberOfLines={1} style={{ fontSize: theme.type.t2xs }}>coming soon</Text>
+                <Text variant="small" numberOfLines={1}>coming soon</Text>
               </View>
             )}
           </Pressable>
@@ -275,24 +277,27 @@ function Footer() {
  */
 function NetworkMenu({ onClose }: { onClose: () => void }) {
   const theme = useTheme();
-  const entry = (name: string, note: string, current: boolean, onPress: () => void, testID: string) => (
+  const entry = (name: string, note: string, current: boolean, onPress: (() => void) | null, testID: string) => (
     <Pressable
       testID={testID}
       accessibilityRole="menuitem"
-      onPress={onPress}
+      accessibilityState={{ disabled: onPress === null }}
+      disabled={onPress === null}
+      onPress={onPress ?? undefined}
       style={({ pressed }) => ({
         padding: theme.space.s3,
         borderRadius: theme.radius.rMd,
         backgroundColor: current ? theme.color.soft : theme.color.paper,
         gap: 2,
-        opacity: pressed ? 0.7 : 1,
+        // The design's `.dim`: there, but not a choice yet.
+        opacity: onPress === null ? 0.4 : pressed ? 0.7 : 1,
       })}
     >
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: theme.space.s2 }}>
-        <Text style={{ fontFamily: face(theme, 'display', 700), fontSize: theme.type.tLg, letterSpacing: theme.type.tLg * theme.tracking, color: theme.color.ink }}>{name}</Text>
+        <Text style={{ fontFamily: face(theme, 'display', 700), fontSize: theme.type.tLg, lineHeight: theme.type.tLg * 1.3, letterSpacing: theme.type.tLg * theme.tracking, color: theme.color.ink }}>{name}</Text>
         {current ? <Text style={{ fontFamily: face(theme, 'display', 700), fontSize: theme.type.tMd, color: theme.color.accent }}>✓</Text> : null}
       </View>
-      <Text variant="small" style={{ fontSize: theme.type.tXs }}>{note}</Text>
+      <Text variant="small" style={{ fontSize: theme.type.tXs, lineHeight: theme.type.tXs * 1.4 }}>{note}</Text>
     </Pressable>
   );
   return (
@@ -319,18 +324,36 @@ function NetworkMenu({ onClose }: { onClose: () => void }) {
         }}
       >
         {entry('TESTNET', 'Practice money · nothing to lose', true, onClose, 'network-testnet')}
-        {entry(
-          'MAINNET',
-          'Your own money · every win and loss is real',
-          false,
-          () => {
-            onClose();
-            router.push('/mainnet');
-          },
-          'network-mainnet',
-        )}
+        {entry('MAINNET', 'Your own money · every win and loss is real', false, null, 'network-mainnet')}
       </View>
     </>
+  );
+}
+
+/** The design's badge with the caret that says it opens something. */
+function NetworkBadge({ onPress }: { onPress: () => void }) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      testID="network-badge"
+      accessibilityRole="button"
+      accessibilityLabel="Network"
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: theme.space.s2,
+        paddingVertical: theme.space.s1,
+        paddingHorizontal: theme.space.s2,
+        borderRadius: theme.radius.rSm,
+        borderWidth: theme.size.bw,
+        borderColor: theme.color.line,
+        opacity: pressed ? 0.7 : 1,
+      })}
+    >
+      <Text variant="caps" style={{ fontSize: theme.type.tXs, lineHeight: theme.type.tXs * 1.3, color: theme.color.text2 }}>TESTNET</Text>
+      <Text style={{ fontFamily: face(theme, 'display', 600), fontSize: theme.type.t2xs, color: theme.color.text2 }}>▼</Text>
+    </Pressable>
   );
 }
 
@@ -379,7 +402,7 @@ function StrategyCard({ board, href, pool, lead, openPnl, rank }: { board: Board
               <StrategyTile id={glyphOf(board.id)} size={56} />
               <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
                 <Text variant="bodyStrong" numberOfLines={1} style={{ fontSize: theme.type.tLg }}>{board.name}</Text>
-                <Text variant="small" numberOfLines={1} style={{ fontSize: theme.type.tXs }} testID={`prize-pool-${board.id}`}>{sub}</Text>
+                <Text variant="small" numberOfLines={1} testID={`prize-pool-${board.id}`}>{sub}</Text>
               </View>
               {openPnl !== null ? (
                 <Badge strong>{`OPEN · ${money(Number(openPnl))}`}</Badge>
@@ -387,7 +410,7 @@ function StrategyCard({ board, href, pool, lead, openPnl, rank }: { board: Board
                 <Badge strong>START HERE</Badge>
               ) : null}
             </View>
-            <Text variant="body" style={{ fontSize: theme.type.tSm }}>{board.tagline}</Text>
+            <Text variant="body" style={{ fontSize: theme.type.tSm, lineHeight: theme.type.tSm * 1.4, color: theme.color.body }}>{board.tagline}</Text>
             <Text variant="num" signOf={Number(board.pnl)} style={{ fontSize: theme.type.tXs }} testID={`board-pnl-${board.id}`}>
               {`${money(Number(board.pnl))} this week · ${board.trades} ${board.trades === 1 ? 'trade' : 'trades'}`}
             </Text>

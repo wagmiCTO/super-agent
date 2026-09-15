@@ -91,6 +91,13 @@ export const STRATEGY_KEY_INDEX: Record<string, number> = { direction: 0, 'ma-cr
 export const STRATEGY_NAMES: Record<string, string> = { direction: 'Direction', 'ma-cross': 'MA Cross', rsi: 'RSI Bounce' };
 
 /**
+ * What the lobby's prize banner shows while no pool has paid this wallet
+ * yet: the design's number, so the banner can be seen at all. `null` hides
+ * the banner until a real prize exists.
+ */
+export const PLACEHOLDER_PRIZE_AUSD: number | null = 1.2;
+
+/**
  * Stops a strategy screen offers: the share of the position's collateral
  * the platform may let it lose before closing it. "Off" leaves the exit to
  * the horizon and, past that, to the exchange's liquidation.
