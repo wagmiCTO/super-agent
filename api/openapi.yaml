@@ -417,6 +417,44 @@ paths:
                         error: { type: string }
                         pnl: { $ref: "#/components/schemas/Decimal" }
 
+  /v1/limits:
+    get:
+      summary: What the wallet trades under — its choice, the tiers, the numbers in force
+      description: |
+        Two tiers bound what a wallet may choose for itself: the safe tier
+        everyone starts on, and the ceiling the danger zone ends at. The
+        active limits are what the choice means in money right now: the loss
+        budget is a share of the balance at the start of the day, leverage is
+        the venue's own maximum, and a position may use the whole balance.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LimitsBlock" }
+        "403":
+          description: No wallet named and the platform serves enrolled wallets only.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    put:
+      summary: Choose the wallet's limits, within the tiers
+      description: |
+        The danger zone. Every number must sit between the safe tier and the
+        ceiling; a choice outside them is refused whole and nothing changes.
+        The choice applies to every strategy the wallet trades, from its next
+        read or tap. Routed and authenticated like the rest of the account.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LimitTier" }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LimitsBlock" }
+        "400":
+          description: A number outside the tiers.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
   /v1/context:
     get:
       summary: What the crowd on-chain is doing with the market's asset — the card before an entry
@@ -886,7 +924,9 @@ components:
         max_leverage: { $ref: "#/components/schemas/Decimal" }
         max_total_exposure: { $ref: "#/components/schemas/Decimal" }
         max_open_positions: { type: integer }
-        daily_loss: { $ref: "#/components/schemas/Decimal" }
+        daily_loss:
+          $ref: "#/components/schemas/Decimal"
+          description: What the day may lose, net — wins earn back the room losses took — before opening is refused. A share of the balance at the start of the day (see LimitsBlock).
         cooldown_seconds: { type: number }
 
     Risk:
@@ -1169,11 +1209,34 @@ components:
               claimed_at: { type: string, format: date-time }
               claim_tx: { type: string }
 
+    LimitTier:
+      type: object
+      description: One set of choices a wallet may make for itself.
+      required: [daily_loss_pct, max_open_positions, cooldown_seconds]
+      properties:
+        daily_loss_pct: { type: number, description: The day's loss budget as a share of the balance at the start of the day, in percent. }
+        max_open_positions: { type: integer, description: How many positions may be open at once, across every strategy. }
+        cooldown_seconds: { type: number, description: The pause between two taps. }
+
+    LimitsBlock:
+      type: object
+      required: [chosen, safe, ceiling, day_resets_at]
+      properties:
+        chosen: { $ref: "#/components/schemas/LimitTier", description: What the wallet chose, or the safe tier. }
+        safe: { $ref: "#/components/schemas/LimitTier", description: What everyone starts on. }
+        ceiling: { $ref: "#/components/schemas/LimitTier", description: As far as the danger zone goes; the cooldown here is the floor. }
+        active:
+          $ref: "#/components/schemas/Limits"
+          description: The absolute limits in force right now; absent for a wallet with no strategy key yet.
+        balance: { $ref: "#/components/schemas/Decimal", description: What the budget is a share of. }
+        day_resets_at: { type: string, format: date-time, description: When the loss budget starts over — the next midnight UTC. }
+
     RiskReport:
       type: object
-      required: [wallet, strategies, open, totals, market, updated_at]
+      required: [wallet, strategies, open, totals, market, limits, updated_at]
       properties:
         wallet: { type: string }
+        limits: { $ref: "#/components/schemas/LimitsBlock" }
         strategies:
           type: array
           items: { $ref: "#/components/schemas/RiskStrategy" }

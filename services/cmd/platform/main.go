@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -131,6 +132,13 @@ func run(log *slog.Logger) error {
 	} else {
 		log.Warn("DATABASE_URL is not set: state lives in memory and is lost on restart")
 	}
+	// Each wallet's chosen limits: the danger zone on the risk screen.
+	var prefs platform.LimitsStore = platform.NewMemLimits()
+	if db != nil {
+		prefs = limitsBackend{db}
+	}
+	handlerOpts = append(handlerOpts, platform.WithLimitsStore(prefs))
+
 	svc, err := platform.New(ctx, adapter, eng, ownKey, limits, log)
 	if err != nil {
 		return err
@@ -140,6 +148,11 @@ func run(log *slog.Logger) error {
 			return err
 		}
 	}
+	// The platform's own account trades under the same tiers as a wallet.
+	own := svc
+	svc.UseLimits(func(ctx context.Context, balance, lossToday fixed.D) policy.Limits {
+		return platform.ComputeLimits(limits, platform.SafeTier, balance, lossToday, ownMaxLeverage(ctx, own, limits))
+	})
 
 	// Enrollment of user wallets needs our builder code; without one the
 	// endpoints answer 503 and the platform trades with its own key only.
@@ -162,6 +175,7 @@ func run(log *slog.Logger) error {
 			return err
 		}
 		registry := platform.NewRegistry(store, platform.PerplFactory(cfg, log), limits, ledger, eng, log)
+		registry.UsePrefs(prefs)
 		if db != nil {
 			registry.OnConnect = func(s *platform.Service) error { return s.Restore(ctx, db) }
 		}
@@ -388,4 +402,26 @@ func prizePerTrade(v string, decimals int) (*big.Int, error) {
 	units := new(big.Int).SetInt64(int64(d))
 	div := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(8-decimals)), nil)
 	return units.Div(units, div), nil
+}
+
+// ownMaxLeverage is the venue's leverage ceiling across the allowed markets,
+// for the platform's own account; the configured number when unknown.
+func ownMaxLeverage(ctx context.Context, svc *platform.Service, limits policy.Limits) fixed.D {
+	ms, err := svc.Markets(ctx)
+	if err != nil {
+		return limits.MaxLeverage
+	}
+	var out fixed.D
+	for _, m := range ms {
+		if !slices.Contains(limits.AllowedSymbols, strings.ToUpper(m.Symbol)) {
+			continue
+		}
+		if m.MaxLeverage.Cmp(out) > 0 {
+			out = m.MaxLeverage
+		}
+	}
+	if !out.IsPos() {
+		return limits.MaxLeverage
+	}
+	return out
 }

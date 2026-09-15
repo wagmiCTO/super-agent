@@ -96,8 +96,11 @@ type riskReportDTO struct {
 		Week      *perfDTO `json:"week,omitempty"`
 		All       *perfDTO `json:"all,omitempty"`
 	} `json:"totals"`
-	Market    []riskMarketDTO `json:"market"`
-	UpdatedAt string          `json:"updated_at"`
+	Market []riskMarketDTO `json:"market"`
+	// Limits is what the wallet chose against what it could: the tiers and
+	// the absolute limits in force.
+	Limits    limitsBlockDTO `json:"limits"`
+	UpdatedAt string         `json:"updated_at"`
 }
 
 func toPerfDTO(p PerfStats) *perfDTO {
@@ -282,6 +285,7 @@ func (h *handler) risk(w http.ResponseWriter, r *http.Request) {
 	}
 	out.Totals.Exposure, out.Totals.AtRisk, out.Totals.DailyLoss = exposure.String(), atRisk.String(), dailyLoss.String()
 	out.Totals.Today, out.Totals.Week, out.Totals.All = toPerfDTO(allToday), toPerfDTO(allWeek), toPerfDTO(allAll)
+	out.Limits = limitsBlockFrom(tierFor(ctx, h.limits, wallet), states, now)
 
 	// The market's own risk, for every market the platform allows.
 	allowed := map[string]bool{}

@@ -44,9 +44,14 @@ type Registry struct {
 	ledger *Ledger
 	// OnConnect runs for every newly built service (restoring its state).
 	OnConnect func(*Service) error
-	mu        sync.Mutex
-	byKey     map[string]*Service // by keys.Key.ID()
-	pending   map[string]chan struct{}
+	// prefs keeps each wallet's chosen limits; nil means the safe tier.
+	prefs LimitsStore
+	// maxLeverage is the venue's own ceiling, read once from the markets.
+	maxLeverage     fixed.D
+	maxLeverageOnce sync.Once
+	mu              sync.Mutex
+	byKey           map[string]*Service // by keys.Key.ID()
+	pending         map[string]chan struct{}
 }
 
 // NewRegistry wires a registry. limits apply to every wallet until per-wallet
@@ -160,6 +165,37 @@ func limitsWithCap(base policy.Limits, notionalCap string) policy.Limits {
 	return out
 }
 
+// UsePrefs makes wallets trade under the limits they chose.
+func (r *Registry) UsePrefs(s LimitsStore) {
+	r.mu.Lock()
+	r.prefs = s
+	r.mu.Unlock()
+}
+
+// venueMaxLeverage is the highest leverage the venue allows on any market the
+// platform trades: leverage is the venue's call, not the platform's.
+func (r *Registry) venueMaxLeverage(ctx context.Context, svc *Service) fixed.D {
+	r.maxLeverageOnce.Do(func() {
+		ms, err := svc.Markets(ctx)
+		if err != nil {
+			return
+		}
+		allowed := map[string]bool{}
+		for _, sym := range r.limits.AllowedSymbols {
+			allowed[strings.ToUpper(sym)] = true
+		}
+		for _, m := range ms {
+			if len(allowed) > 0 && !allowed[strings.ToUpper(m.Symbol)] {
+				continue
+			}
+			if m.MaxLeverage.Cmp(r.maxLeverage) > 0 {
+				r.maxLeverage = m.MaxLeverage
+			}
+		}
+	})
+	return r.maxLeverage
+}
+
 // connect builds the venue connection and service for one key. It runs on
 // the registry's own context: the request that triggered it only waits.
 func (r *Registry) connect(k keys.Key) (*Service, error) {
@@ -172,11 +208,20 @@ func (r *Registry) connect(k keys.Key) (*Service, error) {
 	if k.Strategy != "" {
 		limits = LimitsFor(r.limits, k.Strategy)
 	}
+	// One person, one day: every strategy the wallet trades shares its
+	// budget, its cooldown and its count of open positions.
+	limits.Group = strings.ToLower(addr)
 	svc, err := New(r.ctx, v, r.policy, PolicyAccount(k), limits, r.log.With("wallet", addr, "strategy", k.Strategy))
 	if err != nil {
 		_ = v.Close()
 		return nil, err
 	}
+	r.mu.Lock()
+	prefs := r.prefs
+	r.mu.Unlock()
+	svc.UseLimits(func(ctx context.Context, balance, lossToday fixed.D) policy.Limits {
+		return ComputeLimits(limits, tierFor(ctx, prefs, addr), balance, lossToday, r.venueMaxLeverage(ctx, svc))
+	})
 	if r.ledger != nil {
 		svc.UseLedger(r.ledger)
 	}

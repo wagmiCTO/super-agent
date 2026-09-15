@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/wagmiCTO/super-agent/services/internal/keys"
+	"github.com/wagmiCTO/super-agent/services/internal/platform"
 	"github.com/wagmiCTO/super-agent/services/internal/policy"
 	"github.com/wagmiCTO/super-agent/services/internal/store"
 )
@@ -71,4 +72,19 @@ func restorePolicy(ctx context.Context, eng *policy.Engine, st *store.Store) err
 	eng.Restore(states, killed, note)
 	eng.Persist(policyPersister{st})
 	return nil
+}
+
+// limitsBackend adapts the store to the platform's LimitsStore.
+type limitsBackend struct{ st *store.Store }
+
+func (b limitsBackend) WalletLimits(ctx context.Context, address string) (platform.WalletLimits, bool, error) {
+	w, ok, err := b.st.WalletLimits(ctx, address)
+	if err != nil || !ok {
+		return platform.WalletLimits{}, ok, err
+	}
+	return platform.WalletLimits{Address: w.Address, LimitTier: platform.LimitTier{DailyLossPct: w.DailyLossPct, MaxOpenPositions: w.MaxOpenPositions, CooldownSeconds: w.CooldownSeconds}}, true, nil
+}
+
+func (b limitsBackend) SaveWalletLimits(ctx context.Context, w platform.WalletLimits) error {
+	return b.st.SaveWalletLimits(ctx, store.WalletLimits{Address: w.Address, DailyLossPct: w.DailyLossPct, MaxOpenPositions: w.MaxOpenPositions, CooldownSeconds: w.CooldownSeconds})
 }

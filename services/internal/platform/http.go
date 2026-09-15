@@ -39,7 +39,11 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	if authKeys == nil {
 		authKeys = NewMemAuthKeys()
 	}
-	h := &handler{svc: s, log: log, enroll: o.enrollment, registry: o.registry, signals: o.signals, ledger: o.ledger, prize: o.prize, auth: newAuthenticator(authKeys), context: o.context, deposits: o.deposits, history: o.history, ownAccount: o.ownAccount}
+	limitsStore := o.limits
+	if limitsStore == nil {
+		limitsStore = NewMemLimits()
+	}
+	h := &handler{svc: s, log: log, enroll: o.enrollment, registry: o.registry, signals: o.signals, ledger: o.ledger, prize: o.prize, auth: newAuthenticator(authKeys), context: o.context, deposits: o.deposits, history: o.history, ownAccount: o.ownAccount, limits: limitsStore}
 	if o.ledger != nil {
 		s.UseLedger(o.ledger)
 	}
@@ -59,6 +63,8 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /v1/trades", h.trades)
 	mux.HandleFunc("GET /v1/risk", h.risk)
 	mux.HandleFunc("POST /v1/risk/close-all", h.closeAll)
+	mux.HandleFunc("GET /v1/limits", h.getLimits)
+	mux.HandleFunc("PUT /v1/limits", h.putLimits)
 	mux.HandleFunc("GET /v1/context", h.marketContext)
 	mux.HandleFunc("GET /v1/deposit/options", h.depositOptions)
 	mux.HandleFunc("POST /v1/deposit/quote", h.depositQuote)
@@ -92,6 +98,7 @@ type options struct {
 	deposits    *Deposits
 	history     *PrizeHistory
 	ownAccount  bool
+	limits      LimitsStore
 }
 
 // WithOwnAccount lets requests without a wallet header trade the
@@ -123,6 +130,12 @@ func WithDeposits(d *Deposits) Option {
 // live in memory and are forgotten on restart.
 func WithAuthKeys(k AuthKeys) Option {
 	return func(o *options) { o.authKeys = k }
+}
+
+// WithLimitsStore keeps each wallet's chosen limits. Without it the choices
+// live in memory and are lost on restart.
+func WithLimitsStore(s LimitsStore) Option {
+	return func(o *options) { o.limits = s }
 }
 
 // WithRegistry routes requests carrying X-Account-Address to that wallet's
@@ -172,7 +185,7 @@ func cors(next http.Handler, allowed []string) http.Handler {
 			h := w.Header()
 			h.Set("Access-Control-Allow-Origin", origin)
 			h.Set("Vary", "Origin")
-			h.Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
 			// Bypass-Tunnel-Reminder is what the app sends when the platform
 			// sits behind a localtunnel during phone testing; harmless otherwise.
 			h.Set("Access-Control-Allow-Headers", "Content-Type, "+AccountHeader+", "+StrategyHeader+", "+AuthKeyHeader+", "+AuthTimeHeader+", "+AuthSigHeader+", Bypass-Tunnel-Reminder")
@@ -199,6 +212,7 @@ type handler struct {
 	deposits   *Deposits
 	history    *PrizeHistory
 	ownAccount bool
+	limits     LimitsStore
 }
 
 // AccountHeader names the wallet a request acts for. On its own it is

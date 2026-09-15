@@ -115,6 +115,40 @@ func (s *Store) migrate(ctx context.Context) error {
 	return nil
 }
 
+// --- wallet limits ---
+
+// WalletLimits is what a wallet chose for its own limits.
+type WalletLimits struct {
+	Address          string
+	DailyLossPct     float64
+	MaxOpenPositions int
+	CooldownSeconds  float64
+	UpdatedAt        time.Time
+}
+
+func (s *Store) SaveWalletLimits(ctx context.Context, w WalletLimits) error {
+	_, err := s.pool.Exec(ctx, `
+		insert into wallet_limits (address, daily_loss_pct, max_open_positions, cooldown_seconds, updated_at)
+		values ($1, $2, $3, $4, now())
+		on conflict (address) do update set daily_loss_pct = excluded.daily_loss_pct,
+			max_open_positions = excluded.max_open_positions, cooldown_seconds = excluded.cooldown_seconds, updated_at = now()`,
+		strings.ToLower(w.Address), w.DailyLossPct, w.MaxOpenPositions, w.CooldownSeconds)
+	return err
+}
+
+// WalletLimits reads a wallet's choice; ok is false when it never made one.
+func (s *Store) WalletLimits(ctx context.Context, address string) (w WalletLimits, ok bool, err error) {
+	err = s.pool.QueryRow(ctx, `select address, daily_loss_pct::float8, max_open_positions, cooldown_seconds::float8, updated_at from wallet_limits where address = $1`,
+		strings.ToLower(address)).Scan(&w.Address, &w.DailyLossPct, &w.MaxOpenPositions, &w.CooldownSeconds, &w.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return WalletLimits{}, false, nil
+	}
+	if err != nil {
+		return WalletLimits{}, false, err
+	}
+	return w, true, nil
+}
+
 // --- keys ---
 
 // KeyRecord is an enrolled venue API key as stored.

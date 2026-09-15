@@ -95,6 +95,14 @@ type Service struct {
 	lastClose *CloseEvent
 	stops     map[string]*stop // armed stops by symbol; guarded by mu
 	stopEvery time.Duration    // zero means defaultStopEvery
+
+	// limitsFn, when set, recomputes the limits from the balance before
+	// every read and every opening order — the daily budget is a share of
+	// the balance, so it cannot be set once at connect. balance is the last
+	// one read, so an order does not pay for a second venue round trip.
+	limitsFn     func(ctx context.Context, balance, lossToday fixed.D) policy.Limits
+	balance      fixed.D
+	balanceKnown bool
 }
 
 // New wires the service and reconciles the policy engine against the venue's
@@ -197,6 +205,49 @@ type State struct {
 	KillNote  string
 }
 
+// UseLimits makes the limits follow the balance: fn is asked before every
+// read and every opening order, with the balance and what the day has lost.
+func (s *Service) UseLimits(fn func(ctx context.Context, balance, lossToday fixed.D) policy.Limits) {
+	s.mu.Lock()
+	s.limitsFn = fn
+	s.mu.Unlock()
+}
+
+// refreshLimits recomputes the limits from a balance just read.
+func (s *Service) refreshLimits(ctx context.Context, balance fixed.D) {
+	s.mu.Lock()
+	fn := s.limitsFn
+	s.balance, s.balanceKnown = balance, true
+	s.mu.Unlock()
+	if fn == nil {
+		return
+	}
+	loss := s.policy.Snapshot(s.account).DailyLoss
+	if err := s.policy.SetLimits(s.account, fn(ctx, balance, loss)); err != nil {
+		s.log.Warn("limits not refreshed", "err", err)
+	}
+}
+
+// refreshLimitsForOrder does the same before an opening order, reading the
+// balance only when no read has happened yet.
+func (s *Service) refreshLimitsForOrder(ctx context.Context) {
+	s.mu.Lock()
+	fn, balance, known := s.limitsFn, s.balance, s.balanceKnown
+	s.mu.Unlock()
+	if fn == nil {
+		return
+	}
+	if !known {
+		acct, err := s.venue.Account(ctx)
+		if err != nil {
+			s.log.Warn("balance not read before order; limits stay as they were", "err", err)
+			return
+		}
+		balance = acct.Balance
+	}
+	s.refreshLimits(ctx, balance)
+}
+
 // State returns balance, open positions, the limits in force and how much of
 // them is used.
 func (s *Service) State(ctx context.Context) (State, error) {
@@ -208,6 +259,7 @@ func (s *Service) State(ctx context.Context) (State, error) {
 	if err != nil {
 		return State{}, err
 	}
+	s.refreshLimits(ctx, acct.Balance)
 	limits, _ := s.policy.Limits(s.account)
 	killed, note := s.policy.Killed()
 	deadlines := make(map[string]time.Time, len(positions))
@@ -277,6 +329,7 @@ func (s *Service) Open(ctx context.Context, req OpenRequest) (venue.Order, error
 		Notional: req.Notional,
 		Leverage: req.Leverage,
 	}
+	s.refreshLimitsForOrder(ctx)
 	if err := s.policy.Authorize(policy.FromOrder(s.account, order)); err != nil {
 		return venue.Order{}, err
 	}

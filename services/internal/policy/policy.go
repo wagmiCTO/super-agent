@@ -82,6 +82,12 @@ type Limits struct {
 	DailyLoss fixed.D
 	// Cooldown is the minimum gap between two opening orders.
 	Cooldown time.Duration
+	// Group names the state these limits are judged against. Accounts with
+	// the same group share one day: one loss budget, one cooldown, one count
+	// of open positions. Empty means the account is its own group. A wallet
+	// trading three strategies through three keys is one person with one
+	// budget, not three.
+	Group string
 }
 
 // Validate reports whether the limits are internally coherent. It is called
@@ -143,6 +149,11 @@ func FromOrder(account string, o venue.OrderRequest) Request {
 
 // accountState is the little history the limits need. It is rebuilt from the
 // venue on startup rather than trusted from disk.
+//
+// realizedLoss is the day's net realized result with the sign flipped: a
+// positive value is money lost, a negative one is money made. Wins offset
+// losses, because "how much did I lose today" is a question about the day,
+// not about its worst trades.
 type accountState struct {
 	lastOpen      time.Time
 	dayStart      time.Time
@@ -151,7 +162,16 @@ type accountState struct {
 	exposure      fixed.D
 }
 
-// AccountState is the engine's state for one account, as persisted.
+// dailyLoss is what the day is down, never negative.
+func (st *accountState) dailyLoss() fixed.D {
+	if st.realizedLoss.IsNeg() {
+		return 0
+	}
+	return st.realizedLoss
+}
+
+// AccountState is the engine's state for one account, as persisted. Account
+// is the state's key: the limits' Group where one is set.
 type AccountState struct {
 	Account       string
 	DayStart      time.Time
@@ -213,10 +233,11 @@ func (e *Engine) persistAccountLocked(account string) {
 	if e.persist == nil {
 		return
 	}
+	key := e.stateKeyLocked(account)
 	st := e.stateLocked(account)
-	a := AccountState{Account: account, DayStart: st.dayStart, RealizedLoss: st.realizedLoss, LastOpen: st.lastOpen, OpenPositions: st.openPositions, Exposure: st.exposure}
+	a := AccountState{Account: key, DayStart: st.dayStart, RealizedLoss: st.realizedLoss, LastOpen: st.lastOpen, OpenPositions: st.openPositions, Exposure: st.exposure}
 	if err := e.persist.SaveAccount(context.Background(), a); err != nil {
-		slog.Warn("policy: state not persisted", "account", account, "err", err)
+		slog.Warn("policy: state not persisted", "account", key, "err", err)
 	}
 }
 
@@ -336,11 +357,11 @@ func (e *Engine) Authorize(req Request) error {
 	st := e.stateLocked(req.Account)
 	e.rollDayLocked(st)
 
-	if st.realizedLoss.Cmp(limits.DailyLoss) >= 0 {
+	if st.dailyLoss().Cmp(limits.DailyLoss) >= 0 {
 		return &Denial{
 			Reason:  ReasonDailyLossReached,
 			Message: fmt.Sprintf("daily loss limit of %s reached; opening resumes tomorrow", limits.DailyLoss),
-			Limit:   limits.DailyLoss, Actual: st.realizedLoss,
+			Limit:   limits.DailyLoss, Actual: st.dailyLoss(),
 			RetryAfter: e.untilTomorrowLocked(st),
 		}
 	}
@@ -388,7 +409,8 @@ func (e *Engine) RecordOpen(account string, notional fixed.D) {
 }
 
 // RecordClose notes a position closing with its realized profit or loss.
-// A loss is a negative pnl.
+// A loss is a negative pnl. Wins count too: the day's budget is judged on
+// the day's net result, so a win earns back room a loss took.
 func (e *Engine) RecordClose(account string, notional, pnl fixed.D) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -404,9 +426,7 @@ func (e *Engine) RecordClose(account string, notional, pnl fixed.D) {
 	if st.exposure.IsNeg() || st.openPositions == 0 {
 		st.exposure = 0
 	}
-	if pnl.IsNeg() {
-		st.realizedLoss = st.realizedLoss.Add(pnl.Abs())
-	}
+	st.realizedLoss = st.realizedLoss.Sub(pnl)
 	e.persistAccountLocked(account)
 }
 
@@ -446,16 +466,26 @@ func (e *Engine) Snapshot(account string) Snapshot {
 	return Snapshot{
 		OpenPositions: st.openPositions,
 		Exposure:      st.exposure,
-		DailyLoss:     st.realizedLoss,
+		DailyLoss:     st.dailyLoss(),
 		LastOpen:      st.lastOpen,
 	}
 }
 
+// stateKeyLocked is where an account's state lives: its limits' Group when
+// one is set, otherwise the account itself.
+func (e *Engine) stateKeyLocked(account string) string {
+	if l, ok := e.limits[account]; ok && l.Group != "" {
+		return l.Group
+	}
+	return account
+}
+
 func (e *Engine) stateLocked(account string) *accountState {
-	st, ok := e.state[account]
+	key := e.stateKeyLocked(account)
+	st, ok := e.state[key]
 	if !ok {
 		st = &accountState{dayStart: startOfDay(e.now())}
-		e.state[account] = st
+		e.state[key] = st
 	}
 	return st
 }

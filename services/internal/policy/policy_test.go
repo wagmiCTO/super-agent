@@ -220,12 +220,40 @@ func TestDailyLossLimitAndRollover(t *testing.T) {
 		t.Fatalf("reason = %s, want %s", got, ReasonDailyLossReached)
 	}
 
-	// A profit does not buy back the allowance: the limit is on losses taken,
-	// not on net PnL, so a losing streak cannot be masked by one good trade.
+	// The budget is judged on the day's net result: a win earns back the room
+	// a loss took, because "how much am I down today" is the question the
+	// budget answers. 55 lost, then 100 made: the day is up 45.
 	e.RecordOpen(account, fixed.FromInt(10))
 	e.RecordClose(account, fixed.FromInt(10), fixed.FromInt(100))
+	now = now.Add(time.Minute)
+	if err := e.Authorize(openReq(10, 1)); err != nil {
+		t.Errorf("a day that is net up is still refused: %v", err)
+	}
+	if got := e.Snapshot(account).DailyLoss; !got.IsZero() {
+		t.Errorf("DailyLoss after a net-up day = %s, want 0", got)
+	}
+	// And the next loss counts from zero, not from below it: 30 down on a
+	// day that was 45 up is 30 down... no — it is the net that counts, so
+	// 45 up then 30 down is still up 15, and a further 60 down is 45 down.
+	e.RecordOpen(account, fixed.FromInt(10))
+	e.RecordClose(account, fixed.FromInt(10), fixed.MustParse("-30"))
+	if got := e.Snapshot(account).DailyLoss; !got.IsZero() {
+		t.Errorf("DailyLoss after +45 −30 = %s, want 0", got)
+	}
+	e.RecordOpen(account, fixed.FromInt(10))
+	e.RecordClose(account, fixed.FromInt(10), fixed.MustParse("-60"))
+	if got := e.Snapshot(account).DailyLoss; got != fixed.FromInt(45) {
+		t.Errorf("DailyLoss after +45 −30 −60 = %s, want 45", got)
+	}
+	now = now.Add(time.Minute)
+	if err := e.Authorize(openReq(10, 1)); err != nil {
+		t.Errorf("45 of a 50 loss limit should still allow trading: %v", err)
+	}
+	e.RecordOpen(account, fixed.FromInt(10))
+	e.RecordClose(account, fixed.FromInt(10), fixed.MustParse("-5"))
+	now = now.Add(time.Minute)
 	if got := denialReason(t, e.Authorize(openReq(10, 1))); got != ReasonDailyLossReached {
-		t.Errorf("a profit lifted the daily loss limit: reason = %s", got)
+		t.Fatalf("reason at 50 of 50 = %s, want %s", got, ReasonDailyLossReached)
 	}
 
 	// The next UTC day resets it.
@@ -345,5 +373,42 @@ func TestExposureIsZeroWhenFlat(t *testing.T) {
 	e.RecordClose(account, closed, 0)
 	if got := e.Snapshot(account).Exposure; got != 0 {
 		t.Fatalf("exposure when flat = %s, want 0", got)
+	}
+}
+
+// A wallet trading three strategies through three keys is one person with
+// one day: the accounts share the budget, the cooldown and the count of
+// open positions through their limits' Group.
+func TestGroupSharesOneDay(t *testing.T) {
+	now := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
+	e := testEngine(t, &now)
+	l, _ := e.Limits(account)
+	l.Group = "wallet"
+	l.MaxOpenPositions = 2
+	l.Cooldown = 0
+	for _, a := range []string{"wallet/direction", "wallet/ma-cross", "wallet/rsi"} {
+		if err := e.SetLimits(a, l); err != nil {
+			t.Fatal(err)
+		}
+	}
+	open := func(a string) error {
+		return e.Authorize(Request{Account: a, Symbol: "MON", Notional: fixed.FromInt(10), Leverage: fixed.FromInt(1)})
+	}
+	e.RecordOpen("wallet/direction", fixed.FromInt(10))
+	e.RecordOpen("wallet/ma-cross", fixed.FromInt(10))
+	if got := denialReason(t, open("wallet/rsi")); got != ReasonTooManyPositions {
+		t.Fatalf("third strategy saw its own count: reason = %s", got)
+	}
+	e.RecordClose("wallet/direction", fixed.FromInt(10), fixed.MustParse("-50"))
+	e.RecordClose("wallet/ma-cross", fixed.FromInt(10), fixed.FromInt(0))
+	if got := e.Snapshot("wallet/rsi").DailyLoss; got != fixed.FromInt(50) {
+		t.Fatalf("the loss did not reach the sibling: %s", got)
+	}
+	if got := denialReason(t, open("wallet/rsi")); got != ReasonDailyLossReached {
+		t.Fatalf("a sibling's loss did not spend the budget: reason = %s", got)
+	}
+	// An account outside the group keeps its own day.
+	if err := open(account); err != nil {
+		t.Fatalf("an unrelated account was refused: %v", err)
 	}
 }
