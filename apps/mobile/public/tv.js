@@ -25,6 +25,18 @@
   var GRID = THEME === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
   var PERIOD = 60; // the strategies work on one-minute bars
 
+  // The library is licensed and not in the repository, so a deployment that
+  // was never given a copy has no chart to draw. Say so in a line of text: a
+  // blank rectangle reads as a bug in the app, which it is not.
+  if (typeof TradingView === 'undefined') {
+    document.body.style.background = BG;
+    var note = document.createElement('div');
+    note.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;text-align:center;font:500 13px/1.4 -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:' + TEXT;
+    note.textContent = 'Chart unavailable on this build';
+    document.body.appendChild(note);
+    return;
+  }
+
   function post(msg) {
     if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify(msg));
     else if (window.parent !== window) window.parent.postMessage(msg, '*');

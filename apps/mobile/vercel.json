@@ -42,7 +42,7 @@
       "destination": "https://platform-production-bf25.up.railway.app/v1/:path*"
     },
     {
-      "source": "/((?!_expo|assets|\\.well-known).*)",
+      "source": "/((?!_expo|assets|static|\\.well-known).*)",
       "destination": "/index.html"
     }
   ]
