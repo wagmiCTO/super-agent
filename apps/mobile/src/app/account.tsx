@@ -102,11 +102,11 @@ export default function AccountScreen() {
             <View style={{ flex: 1 }}>
               <Chip label="Testnet" on={testnet} center testID="network-testnet" />
             </View>
-            {/* Mainnet is not a choice yet, but it is not dead either: dimmed
-                to nothing it read as a disabled control nobody would press,
-                and what is behind it is the screen that says when it opens. */}
+            {/* Mainnet is drawn, not offered: the app trades testnet only,
+                so the chip is disabled and leads nowhere, like the lobby's
+                menu entry. The line under it says what it is. */}
             <View style={{ flex: 1 }}>
-              <Chip label="Mainnet · soon" center testID="network-mainnet" onPress={() => router.push('/mainnet')} />
+              <Chip label="Mainnet" center disabled testID="network-mainnet" />
             </View>
           </View>
           {/* Both in one line each: which money it is, and whose it is. */}
@@ -114,7 +114,7 @@ export default function AccountScreen() {
             Testnet · practice money on Monad, nothing to lose.
           </Text>
           <Text variant="small" style={{ fontSize: theme.type.t2xs }}>
-            Mainnet · your own money, its own account and balance. Not open yet — tap to see what changes.
+            Mainnet · your own money, its own account and balance. Not open yet.
           </Text>
         </Card>
 

@@ -74,14 +74,32 @@ export function Badge({ children, strong }: { children: string; strong?: boolean
 }
 
 /** `small` is the tab-sized chip: a row of four has to fit a phone. */
-export function Chip({ label, on, small, center, onPress, testID }: { label: string; on?: boolean; small?: boolean; center?: boolean; onPress?: () => void; testID?: string }) {
+export function Chip({
+  label,
+  on,
+  small,
+  center,
+  disabled,
+  onPress,
+  testID,
+}: {
+  label: string;
+  on?: boolean;
+  small?: boolean;
+  center?: boolean;
+  /** Drawn, not offered: dimmed, and a press does nothing. */
+  disabled?: boolean;
+  onPress?: () => void;
+  testID?: string;
+}) {
   const theme = useTheme();
   return (
     <Pressable
       testID={testID}
       accessibilityRole="button"
-      accessibilityState={{ selected: Boolean(on) }}
-      onPress={onPress}
+      accessibilityState={{ selected: Boolean(on), disabled: Boolean(disabled) }}
+      disabled={disabled}
+      onPress={disabled ? undefined : onPress}
       style={({ pressed }) => ({
         paddingVertical: small ? theme.space.s1 : theme.space.s2,
         paddingHorizontal: small ? theme.space.s2 : theme.space.s3,
@@ -90,7 +108,7 @@ export function Chip({ label, on, small, center, onPress, testID }: { label: str
         borderColor: on ? theme.color.accent : theme.color.line,
         backgroundColor: on ? theme.color.accent : 'transparent',
         alignItems: center ? 'center' : 'flex-start',
-        opacity: pressed ? 0.7 : 1,
+        opacity: disabled ? 0.4 : pressed ? 0.7 : 1,
       })}
     >
       <Text variant="bodyStrong" style={{ fontSize: small ? theme.type.tXs : theme.type.tSm, color: on ? theme.color.onAccent : theme.color.body }}>

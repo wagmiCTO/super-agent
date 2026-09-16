@@ -112,10 +112,10 @@ test('history, account and the invite link, on one account', async ({ page, cont
   await expect(page.getByTestId('add-funds')).toHaveCount(0);
   await expect(page.getByTestId('withdraw')).toHaveCount(0);
   await expect(page.getByTestId('testnet-funding').last()).toContainText('Practice money');
-  // Mainnet is drawn but not open; the practice network is the one in force.
+  // Mainnet is drawn but not offered: disabled, and a press goes nowhere.
+  await expect(page.getByTestId('network-mainnet').last()).toBeDisabled();
   await page.getByTestId('network-mainnet').last().click({ force: true });
-  await expect(page.getByTestId('stub-title')).toHaveText('Mainnet', { timeout: 20_000 });
-  await page.goBack();
+  await expect(page.getByTestId('account-title').last()).toBeVisible();
 
   // --- Invite, reached from the account row as the design has it.
   await page.getByTestId('invite-row').last().click({ force: true });
