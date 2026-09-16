@@ -110,6 +110,9 @@ const shape = (name) => {
     heading: { weight: Number(t['--h1-weight']), tracking: Number(String(t['--h1-track']).replace('em', '')) },
     tracking: Number(String(t['--track']).replace('em', '')),
     elevated: t['--elev'] !== 'none',
+    // The card's depth, as CSS box-shadow lists; empty where the skin draws
+    // a hairline instead. React Native understands the same syntax.
+    shadow: { card: t['--elev'] === 'none' ? '' : t['--elev'], lift: t['--elev-lift'] === 'none' ? '' : t['--elev-lift'] },
     faces: FACES[name],
   };
 };
@@ -165,6 +168,7 @@ export type Theme = {
   heading: { weight: number; tracking: number };
   tracking: number;
   elevated: boolean;
+  shadow: { card: string; lift: string };
   faces: { display: Record<Weight, string>; num: Record<Weight, string> };
 };
 

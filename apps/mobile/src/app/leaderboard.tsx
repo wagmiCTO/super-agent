@@ -16,15 +16,18 @@
  * prize you can take from `/v1/prizes` and the contract itself.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, ScrollView, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
+import Svg, { Path, Rect } from 'react-native-svg';
 
 import { useAccount } from '@/account/useAccount';
 import { api, ApiError, describeError, type Leaderboard, type PrizeHistory, type Standing, type Standings } from '@/api/client';
 import { shortAddress, unclaimedTotal, useMyPrizes } from '@/components/prizes';
-import { STRATEGY_NAMES } from '@/config';
+import { PAGE_SIZE, STRATEGY_NAMES } from '@/config';
+import { copy } from '@/ui/clipboard';
 import { claimPrize } from '@/exchange/prize';
 import { useLeaderboard } from '@/trading/useLeaderboard';
 import { Bone, FadeIn } from '@/ui/anim';
+import { Pager } from '@/ui/pager';
 import { back } from '@/ui/stub';
 import { Card, Chip, Screen } from '@/ui/surface';
 import { Text, grouped, money } from '@/ui/text';
@@ -57,18 +60,11 @@ export default function LeaderboardScreen() {
   // it belongs to is not loaded.
   const own = rows && board.you && !rows.some((r) => r.you) ? board.you : null;
 
-  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
-    if (layoutMeasurement.height + contentOffset.y >= contentSize.height - 400) board.more();
-  };
-
   return (
     <Screen testID="leaderboard">
       <ScrollView
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
-        onScroll={onScroll}
-        scrollEventThrottle={200}
         contentContainerStyle={{ paddingTop: 52, paddingBottom: theme.space.s6, gap: theme.space.s4 }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s3 }}>
@@ -130,9 +126,11 @@ export default function LeaderboardScreen() {
           </Text>
         ) : (
           <FadeIn style={{ gap: 0 }}>
-            {rows.map((r, i) => <BoardRow key={`${r.wallet}-${i}`} row={r} rank={i + 1} />)}
-            {board.loading ? (
-              <Text variant="small" style={{ fontSize: theme.type.t2xs, textAlign: 'center', paddingTop: theme.space.s2 }} testID="board-more">Loading…</Text>
+            {rows.map((r, i) => <BoardRow key={`${r.wallet}-${i}`} row={r} rank={(board.page - 1) * PAGE_SIZE + i + 1} />)}
+            {board.pages > 1 ? (
+              <View style={{ paddingTop: theme.space.s3 }}>
+                <Pager page={board.page} pages={board.pages} hasNext={board.page < board.pages} onPrev={board.prev} onNext={board.next} busy={board.loading} testID="board-pager" />
+              </View>
             ) : null}
             {own ? (
               <View style={{ marginTop: theme.space.s2, borderTopWidth: theme.size.bw, borderTopColor: theme.color.line }}>
@@ -165,6 +163,14 @@ export default function LeaderboardScreen() {
 /** One wallet's line: rank, who, what they traded, and what it made them. */
 function BoardRow({ row, rank }: { row: Row; rank: number | null }) {
   const theme = useTheme();
+  const [copied, setCopied] = useState(false);
+  const take = async () => {
+    const res = await copy(row.wallet);
+    if (res === 'copied') {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
+  };
   return (
     <View
       testID={row.you ? 'board-you' : 'board-row'}
@@ -181,15 +187,36 @@ function BoardRow({ row, rank }: { row: Row; rank: number | null }) {
       <Text
         variant={row.you ? 'bodyStrong' : 'num'}
         numberOfLines={1}
-        style={{ flex: 1, fontSize: theme.type.tSm, color: theme.color.ink }}
+        style={{ flexShrink: 1, fontSize: theme.type.tSm, color: theme.color.ink }}
       >
-        {row.you ? 'you' : shortAddress(row.wallet)}
+        {row.you ? 'you' : copied ? 'Copied' : shortAddress(row.wallet)}
       </Text>
+      {/* The whole address, one tap away: a short one is for reading, not for finding on the explorer. */}
+      <Pressable
+        testID="board-copy"
+        accessibilityRole="button"
+        accessibilityLabel="Copy the address"
+        onPress={() => void take()}
+        hitSlop={8}
+        style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1, marginRight: 'auto' })}
+      >
+        <CopyGlyph size={13} color={copied ? theme.color.accent : theme.color.dim} />
+      </Pressable>
       <View style={{ alignItems: 'flex-end', gap: 1 }}>
         <Text variant="num" style={{ fontSize: theme.type.tSm }} testID="board-volume">{`${grouped(row.volume)} AUSD`}</Text>
         <Text variant="num" signOf={row.pnl} style={{ fontSize: theme.type.t2xs }}>{`${money(row.pnl)} · ${row.trades} ${row.trades === 1 ? 'trade' : 'trades'}`}</Text>
       </View>
     </View>
+  );
+}
+
+/** Two sheets, one over the other: the sign for "copy" everywhere. */
+function CopyGlyph({ size, color }: { size: number; color: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Rect x={9} y={9} width={12} height={12} rx={2} />
+      <Path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </Svg>
   );
 }
 
@@ -321,16 +348,17 @@ function OnChain() {
  *
  * The standings come ordered and counted from the platform — a board is a
  * table that grows, and the first screen of it must not wait for the rest.
- * Your own line is pinned under the page until the page it belongs to is
- * loaded: a board that shows everyone but you is the one board nobody wants.
+ * Pages already read are kept, so going back is free. Your own line is
+ * pinned under the page until the page it belongs to is shown: a board that
+ * shows everyone but you is the one board nobody wants.
  */
 function useStandings(tab: Tab, period: Period, ready: boolean) {
   const key = `${tab}:${period}`;
   // Keyed by the board it belongs to, so switching tabs shows nothing
   // rather than the other board's rows for a frame.
-  const [page, setPage] = useState<{ key: string; rows: Standing[]; players: number; next: number | null; you: You | null }>({ key: '', rows: [], players: 0, next: null, you: null });
+  const [book, setBook] = useState<{ key: string; pages: Standing[][]; players: number; next: number | null; you: You | null; at: number }>({ key: '', pages: [], players: 0, next: null, you: null, at: 0 });
   const [loading, setLoading] = useState(false);
-  const current = page.key === key;
+  const current = book.key === key;
 
   useEffect(() => {
     if (!ready) return;
@@ -340,9 +368,9 @@ function useStandings(tab: Tab, period: Period, ready: boolean) {
         .standings(tab, period)
         .then((answer) => {
           if (!alive) return;
-          setPage({ key, rows: answer.standings, players: answer.players, next: answer.next_offset ?? null, you: answer.you ?? null });
+          setBook({ key, pages: [answer.standings], players: answer.players, next: answer.next_offset ?? null, you: answer.you ?? null, at: 0 });
         })
-        .catch(() => alive && setPage({ key, rows: [], players: 0, next: null, you: null }));
+        .catch(() => alive && setBook({ key, pages: [[]], players: 0, next: null, you: null, at: 0 }));
     }, 0);
     return () => {
       alive = false;
@@ -350,23 +378,42 @@ function useStandings(tab: Tab, period: Period, ready: boolean) {
     };
   }, [tab, period, ready, key]);
 
-  const more = useCallback(() => {
-    if (!current || page.next === null || loading) return;
+  const next = useCallback(() => {
+    if (!current || loading) return;
+    if (book.at + 1 < book.pages.length) {
+      setBook((have) => ({ ...have, at: have.at + 1 }));
+      return;
+    }
+    if (book.next === null) return;
     setLoading(true);
     api
-      .standings(tab, period, page.next)
+      .standings(tab, period, book.next)
       .then((answer) => {
-        setPage((have) =>
+        setBook((have) =>
           have.key === key
-            ? { key, rows: [...have.rows, ...answer.standings], players: answer.players, next: answer.next_offset ?? null, you: answer.you ?? have.you }
+            ? { key, pages: [...have.pages, answer.standings], players: answer.players, next: answer.next_offset ?? null, you: answer.you ?? have.you, at: have.pages.length }
             : have,
         );
       })
       .catch(() => undefined)
       .finally(() => setLoading(false));
-  }, [tab, period, page.next, loading, current, key]);
+  }, [tab, period, book.at, book.pages.length, book.next, loading, current, key]);
 
-  return { rows: current ? page.rows : null, players: page.players, you: current ? page.you : null, more, loading };
+  const prev = useCallback(() => {
+    if (!current || book.at === 0) return;
+    setBook((have) => ({ ...have, at: Math.max(0, have.at - 1) }));
+  }, [current, book.at]);
+
+  return {
+    rows: current ? (book.pages[book.at] ?? null) : null,
+    players: book.players,
+    you: current ? book.you : null,
+    page: book.at + 1,
+    pages: Math.max(1, Math.ceil(book.players / PAGE_SIZE)),
+    next,
+    prev,
+    loading,
+  };
 }
 
 /** The page as the screen draws it: whose line is yours. */
@@ -386,7 +433,7 @@ function poolOf(lb: Leaderboard, strategy: string): number {
 
 /** What the board is playing for, in one line. */
 function poolLine(lb: Leaderboard | null, tab: Tab, period: Period, players: number): string {
-  const who = `${players} ${players === 1 ? 'player' : 'players'}`;
+  const who = `${players} ${players === 1 ? 'trader' : 'traders'}`;
   if (period === 'all') return `Since launch · ${who}`;
   if (!lb) return who;
   const pool = tab === 'all' ? lb.boards.reduce((sum, b) => sum + poolOf(lb, b.id), 0) : poolOf(lb, tab);

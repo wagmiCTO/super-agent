@@ -31,9 +31,9 @@ export function Card({ children, style, onPress, testID }: { children: React.Rea
     borderColor: theme.color.cardLine,
     padding: theme.space.s4,
     gap: theme.space.s3,
-    ...(theme.elevated
-      ? { shadowColor: theme.color.ink, shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 2 }
-      : null),
+    // The skin's own depth: Paper lifts a card off the page, Terminal draws a
+    // hairline. `boxShadow` is what both React Native and the web understand.
+    ...(theme.elevated && theme.shadow.card ? { boxShadow: theme.shadow.card } : null),
   };
   if (!onPress) return <View style={[base, style]} testID={testID}>{children}</View>;
   return (

@@ -7,20 +7,20 @@
  * with the fee it paid. The same trades either way; only the reading
  * changes. Either one opens the card that reports it.
  *
- * Paged: the list only grows, so it arrives a screen at a time and the next
- * page is asked for as the bottom comes into view. No totals above it: the
- * risk screen has the week and the all-time figures, and a total of the
- * first page is not a total.
+ * Paged: seven round trips at a time, with the way to the next seven under
+ * them. No totals above it: the risk screen has the week and the all-time
+ * figures, and a total of one page is not a total.
  */
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, ScrollView, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 
 import { useAccount } from '@/account/useAccount';
 import { api, ApiError, type Trade } from '@/api/client';
 import { trim } from '@/components/format';
 import { STRATEGY_NAMES } from '@/config';
 import { Bone, FadeIn } from '@/ui/anim';
+import { Pager } from '@/ui/pager';
 import { back } from '@/ui/stub';
 import { Card, Chip, Screen } from '@/ui/surface';
 import { Text, money } from '@/ui/text';
@@ -42,20 +42,13 @@ export default function HistoryScreen() {
   const knows = useAccount().state.status !== 'loading';
   const [tab, setTab] = useState<Tab>('positions');
   const [filter, setFilter] = useState('all');
-  const { trades, problem, more, loading } = useHistory(knows, filter);
-
-  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
-    if (layoutMeasurement.height + contentOffset.y >= contentSize.height - 400) more();
-  };
+  const { trades, problem, page, hasNext, next, prev, loading } = useHistory(knows, filter);
 
   return (
     <Screen testID="history">
       <ScrollView
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
-        onScroll={onScroll}
-        scrollEventThrottle={200}
         contentContainerStyle={{ paddingTop: 52, paddingBottom: theme.space.s6, gap: theme.space.s4 }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s3 }}>
@@ -100,9 +93,7 @@ export default function HistoryScreen() {
               ))
             )}
 
-            {loading && trades.length > 0 ? (
-              <Text variant="small" style={{ fontSize: theme.type.t2xs, textAlign: 'center' }} testID="history-more">Loading…</Text>
-            ) : null}
+            {trades.length > 0 || page > 1 ? <Pager page={page} hasNext={hasNext} onPrev={prev} onNext={next} busy={loading} testID="history-pager" /> : null}
           </FadeIn>
         )}
       </ScrollView>
@@ -227,16 +218,17 @@ function Loading({ problem }: { problem: 'locked' | 'offline' | null }) {
  * One call, not one per strategy: the platform answers for the wallet, and
  * the filter chips narrow it server-side. The request is routed by the
  * filtered strategy's own key, or by Direction's when the filter is off —
- * every account that ever traded has that one.
+ * every account that ever traded has that one. Pages already read are kept,
+ * so going back is free; going forward past them asks for the next.
  */
 function useHistory(ready: boolean, filter: string) {
   // One state, keyed by the filter it belongs to: switching filters must
   // show nothing rather than the last one's rows, and resetting state from
   // inside the effect that reloads it is a render the screen does not need.
-  const [page, setPage] = useState<{ key: string; trades: Trade[]; cursor: string | null }>({ key: '', trades: [], cursor: null });
+  const [book, setBook] = useState<{ key: string; pages: Trade[][]; cursor: string | null; at: number }>({ key: '', pages: [], cursor: null, at: 0 });
   const [loading, setLoading] = useState(false);
   const [problem, setProblem] = useState<'locked' | 'offline' | null>(null);
-  const current = page.key === filter;
+  const current = book.key === filter;
 
   const read = useCallback(
     async (after?: string) => {
@@ -261,7 +253,7 @@ function useHistory(ready: boolean, filter: string) {
       setProblem(null);
       const answer = await read();
       if (!alive || !answer) return;
-      setPage({ key: filter, trades: answer.trades, cursor: answer.next_cursor ?? null });
+      setBook({ key: filter, pages: [answer.trades], cursor: answer.next_cursor ?? null, at: 0 });
     }, 0);
     return () => {
       alive = false;
@@ -269,20 +261,38 @@ function useHistory(ready: boolean, filter: string) {
     };
   }, [ready, filter, read]);
 
-  const more = useCallback(() => {
-    if (!current || !page.cursor || loading) return;
+  const next = useCallback(() => {
+    if (!current || loading) return;
+    if (book.at + 1 < book.pages.length) {
+      setBook((have) => ({ ...have, at: have.at + 1 }));
+      return;
+    }
+    if (!book.cursor) return;
     setLoading(true);
-    void read(page.cursor)
+    void read(book.cursor)
       .then((answer) => {
         if (!answer) return;
-        setPage((have) =>
-          have.key === filter ? { key: filter, trades: [...have.trades, ...answer.trades], cursor: answer.next_cursor ?? null } : have,
+        setBook((have) =>
+          have.key === filter ? { key: filter, pages: [...have.pages, answer.trades], cursor: answer.next_cursor ?? null, at: have.pages.length } : have,
         );
       })
       .finally(() => setLoading(false));
-  }, [current, page.cursor, loading, read, filter]);
+  }, [current, book.at, book.pages.length, book.cursor, loading, read, filter]);
 
-  return { trades: current ? page.trades : null, problem, more, loading };
+  const prev = useCallback(() => {
+    if (!current || book.at === 0) return;
+    setBook((have) => ({ ...have, at: Math.max(0, have.at - 1) }));
+  }, [current, book.at]);
+
+  return {
+    trades: current ? (book.pages[book.at] ?? []) : null,
+    problem,
+    page: book.at + 1,
+    hasNext: current && (book.at + 1 < book.pages.length || book.cursor !== null),
+    next,
+    prev,
+    loading,
+  };
 }
 
 /** The trades of each day, newest day first. */
@@ -314,5 +324,5 @@ function hm(iso: string): string {
 /** Who closed it, in the design's words. */
 function why(t: Trade): string {
   if (!t.closed_at) return 'open now';
-  return t.close_reason === 'horizon' ? 'by timer' : t.close_reason === 'stop' ? 'stop' : 'closed';
+  return t.close_reason === 'horizon' ? 'by timer' : t.close_reason === 'stop' ? 'stop' : t.close_reason === 'take_profit' ? 'take profit' : 'closed';
 }

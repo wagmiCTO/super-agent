@@ -54,6 +54,7 @@ export type Theme = {
   heading: { weight: number; tracking: number };
   tracking: number;
   elevated: boolean;
+  shadow: { card: string; lift: string };
   faces: { display: Record<Weight, string>; num: Record<Weight, string> };
 };
 
@@ -146,6 +147,10 @@ export const Themes: Record<ThemeName, Theme> = {
     },
     "tracking": 0.05,
     "elevated": true,
+    "shadow": {
+      "card": "0 1px 2px rgba(14,16,15,0.05), 0 8px 24px rgba(14,16,15,0.05)",
+      "lift": "0 2px 6px rgba(14,16,15,0.07), 0 14px 34px rgba(14,16,15,0.08)"
+    },
     "faces": {
       "display": {
         "400": "SpaceGrotesk_400Regular",
@@ -249,6 +254,10 @@ export const Themes: Record<ThemeName, Theme> = {
     },
     "tracking": 0.07,
     "elevated": false,
+    "shadow": {
+      "card": "",
+      "lift": ""
+    },
     "faces": {
       "display": {
         "400": "Archivo_400Regular",

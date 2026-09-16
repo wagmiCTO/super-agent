@@ -43,7 +43,8 @@ export function RiskGauge({ percent }: { percent: number | null }) {
           strokeDashoffset={Math.round(ARC - (ARC * p) / 100)}
         />
       ) : null}
-      <G rotation={angle} origin="130, 130">
+      {/* A transform string rather than rotation/origin props: on the web the latter become a DOM attribute React does not know. */}
+      <G transform={`rotate(${angle} 130 130)`}>
         <Path d="M130 130 L130 44" stroke={theme.color.ink} strokeWidth={4} strokeLinecap="round" />
       </G>
       <Circle cx={130} cy={130} r={9} fill={theme.color.ink} />
@@ -75,8 +76,7 @@ export function StrategyRing({ percent, size = 58, delay = 0 }: { percent: numbe
           strokeLinecap="round"
           strokeDasharray={`${RING}`}
           strokeDashoffset={Math.round(RING - (RING * p) / 100)}
-          rotation={-90}
-          origin="32, 32"
+          transform="rotate(-90 32 32)"
         />
       ) : null}
       {target === null ? (
