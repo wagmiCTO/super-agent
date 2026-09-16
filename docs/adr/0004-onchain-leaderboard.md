@@ -28,12 +28,19 @@ through; a restart restores from the database.
 the venue's collateral token (AUSD):
 
 - `fund(week, strategy, amount)`: anyone can add to a strategy's pool for a
-  week. The platform does, out of its builder fees, a fixed amount per
-  closed trade, so the pool grows in front of the players during the week.
+  week. The platform does, out of its builder fees: half of the builder fee
+  each closed round trip paid (both legs; `PLATFORM_PRIZE_FEE_SHARE`), so
+  the pool grows in front of the traders during the week and never faster
+  than the platform earns. A round trip that paid no builder fee — the
+  platform's own account — adds nothing.
 - `settle(week, strategy, winners, amounts, pnls)`: once the week is over, a
   settler publishes who won and with what result. Amounts must fit in the
-  pool; what is not allocated carries into the next week of the same
-  strategy. Settling is final: no second settle, no funding a settled week.
+  pool. What is not allocated travels once: the week's own contributions
+  carry into the next week of the same strategy, and are paid out of before
+  anything newer; what had already been carried in and is still unpaid is
+  retained (`Retained`) for the owner to take back with `sweep`. Money is
+  never carried twice. Settling is final: no second settle, no funding a
+  settled week.
 - `claim(week, strategy)`: each winner takes their own prize. The platform
   never holds the payout and cannot redirect it.
 

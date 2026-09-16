@@ -19,17 +19,17 @@ import (
 )
 
 // Prize keeps the StrategyPrizePool contract fed and settled: every closed
-// round trip adds a fixed amount to its strategy's pool for the week (sent in
-// batches, one transaction per strategy), and once a week is over the top of
-// each board is published as that week's winners. Payouts are the winners'
-// own claims; the platform never holds them.
+// round trip adds a share of the builder fee it paid to its strategy's pool
+// for the week (sent in batches, one transaction per strategy), and once a
+// week is over the top of each board is published as that week's winners.
+// Payouts are the winners' own claims; the platform never holds them.
 type Prize struct {
 	client   *chain.Client
 	key      *chain.Key
 	contract [20]byte
 	token    [20]byte
 	chainID  uint64
-	perTrade *big.Int // token units per closed trade
+	share    int // percent of each round trip's builder fee that goes to the pool
 	store    *store.Store
 	log      *slog.Logger
 	now      func() time.Time
@@ -52,9 +52,10 @@ type PrizeConfig struct {
 	PrivateKey string
 	Contract   string
 	Token      string
-	// PerTrade is the amount added to the pool per closed trade, in the
-	// token's units (AUSD micros).
-	PerTrade *big.Int
+	// FeeShare is the percent (0..100) of the builder fee a round trip paid
+	// that goes to its strategy's pool. The fee is the platform's income;
+	// the pool is what it gives back.
+	FeeShare int
 }
 
 // Shares of the pool for first, second and third, in percent.
@@ -78,15 +79,15 @@ func NewPrize(ctx context.Context, cfg PrizeConfig, st *store.Store, log *slog.L
 	if err != nil {
 		return nil, err
 	}
-	if cfg.PerTrade == nil || cfg.PerTrade.Sign() < 0 {
-		return nil, errors.New("platform: prize per trade must be >= 0")
+	if cfg.FeeShare < 0 || cfg.FeeShare > 100 {
+		return nil, errors.New("platform: prize fee share must be 0..100 percent")
 	}
 	client := chain.NewClient(cfg.RPCURL)
 	chainID, err := client.ChainID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("platform: prize: %w", err)
 	}
-	p := &Prize{client: client, key: key, contract: contract, token: token, chainID: chainID, perTrade: cfg.PerTrade, store: st, log: log, now: time.Now, due: make(map[fundKey]*big.Int)}
+	p := &Prize{client: client, key: key, contract: contract, token: token, chainID: chainID, share: cfg.FeeShare, store: st, log: log, now: time.Now, due: make(map[fundKey]*big.Int)}
 	ok, err := p.boolCall(ctx, chain.Encode("settlers(address)", key.Address))
 	if err != nil {
 		return nil, fmt.Errorf("platform: prize: %w", err)
@@ -97,7 +98,7 @@ func NewPrize(ctx context.Context, cfg PrizeConfig, st *store.Store, log *slog.L
 	if err := p.ensureAllowance(ctx); err != nil {
 		return nil, fmt.Errorf("platform: prize: %w", err)
 	}
-	log.Info("prize pool ready", "contract", cfg.Contract, "token", cfg.Token, "settler", addrHex(key.Address), "per_trade", cfg.PerTrade.String())
+	log.Info("prize pool ready", "contract", cfg.Contract, "token", cfg.Token, "settler", addrHex(key.Address), "fee_share_pct", cfg.FeeShare)
 	return p, nil
 }
 
@@ -115,9 +116,12 @@ func WeekStart(week uint64) time.Time { return time.Unix(int64(week)*7*86400-3*8
 func (p *Prize) Contract() string { return addrHex(p.contract) }
 func (p *Prize) Token() string    { return addrHex(p.token) }
 
-// OnClosed is the ledger hook: one more contribution to this week's pool.
+// OnClosed is the ledger hook: the round trip's share of its builder fee,
+// both legs, owed to this week's pool. A trade that paid no builder fee —
+// the platform's own account, a key enrolled without one — owes nothing.
 func (p *Prize) OnClosed(t Trade) {
-	if p.perTrade.Sign() == 0 {
+	amount := p.contribution(t)
+	if amount.Sign() == 0 {
 		return
 	}
 	k := fundKey{week: WeekOf(t.ClosedAt), strategy: t.Strategy}
@@ -125,8 +129,22 @@ func (p *Prize) OnClosed(t Trade) {
 	if p.due[k] == nil {
 		p.due[k] = new(big.Int)
 	}
-	p.due[k].Add(p.due[k], p.perTrade)
+	p.due[k].Add(p.due[k], amount)
 	p.mu.Unlock()
+}
+
+// contribution is what a closed round trip adds to the pool, in token units.
+func (p *Prize) contribution(t Trade) *big.Int {
+	if p.share <= 0 {
+		return new(big.Int)
+	}
+	fee := t.Entry.BuilderFee.Add(t.Exit.BuilderFee)
+	if !fee.IsPos() {
+		return new(big.Int)
+	}
+	v := collateralMicros(fee)
+	v.Mul(v, big.NewInt(int64(p.share)))
+	return v.Div(v, big.NewInt(100))
 }
 
 const (

@@ -378,6 +378,9 @@ type Fill struct {
 	Size  fixed.D
 	Price fixed.D
 	Fee   fixed.D
+	// BuilderFee is the part of Fee the venue credits to the platform's
+	// builder code; zero for keys that carry none. Not journaled.
+	BuilderFee fixed.D
 }
 
 // TradeOpened journals an opening fill.

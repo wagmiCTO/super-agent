@@ -381,7 +381,7 @@ func (s *Service) Open(ctx context.Context, req OpenRequest) (venue.Order, error
 	s.policy.RecordOpen(s.account, opened)
 	if s.ledger != nil {
 		s.ledger.Opened(s.account, s.wallet, req.Strategy, req.Symbol, placed.VenueID,
-			store.Fill{Side: req.Side.String(), Size: placed.FilledSize, Price: placed.AvgPrice, Fee: placed.Fee}, termsOf(opened, req.Leverage, req.MaxLoss, req.TakeProfit))
+			store.Fill{Side: req.Side.String(), Size: placed.FilledSize, Price: placed.AvgPrice, Fee: placed.Fee, BuilderFee: placed.BuilderFee}, termsOf(opened, req.Leverage, req.MaxLoss, req.TakeProfit))
 	}
 	var closesAt time.Time
 	if req.Rules.Horizon > 0 {
@@ -602,7 +602,7 @@ func (s *Service) close(ctx context.Context, symbol string, reason CloseReason) 
 	s.policy.RecordClose(s.account, notional, pnl)
 	if s.ledger != nil {
 		s.ledger.Closed(s.account, s.wallet, symbol, pnl, placed.VenueID,
-			store.Fill{Side: pos.Side.String(), Size: placed.FilledSize, Price: placed.AvgPrice, Fee: placed.Fee}, string(reason), s.takeExcursion(symbol))
+			store.Fill{Side: pos.Side.String(), Size: placed.FilledSize, Price: placed.AvgPrice, Fee: placed.Fee, BuilderFee: placed.BuilderFee}, string(reason), s.takeExcursion(symbol))
 	}
 	s.mu.Lock()
 	s.lastClose = &CloseEvent{Symbol: symbol, Side: pos.Side, Reason: reason, Price: placed.AvgPrice, PnL: pnl, At: s.now()}

@@ -134,26 +134,34 @@ const (
 	testToken      = "0xa9012a055bd4e0edff8ce09f960291c09d5322dc"
 )
 
-func newTestPrize(t *testing.T, rpc *fakeRPC, st *store.Store, perTrade int64) *Prize {
+func newTestPrize(t *testing.T, rpc *fakeRPC, st *store.Store, share int) *Prize {
 	t.Helper()
 	srv := httptest.NewServer(rpc)
 	t.Cleanup(srv.Close)
-	p, err := NewPrize(context.Background(), PrizeConfig{RPCURL: srv.URL, PrivateKey: testSettlerKey, Contract: testPool, Token: testToken, PerTrade: big.NewInt(perTrade)}, st, nil)
+	p, err := NewPrize(context.Background(), PrizeConfig{RPCURL: srv.URL, PrivateKey: testSettlerKey, Contract: testPool, Token: testToken, FeeShare: share}, st, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return p
 }
 
-// Closed trades are owed to their week's pool per strategy; one flush sends
-// one transaction per (week, strategy) carrying the sum.
+// paid is a round trip whose two fills carried this much builder fee each.
+func paid(strategy string, at time.Time, builderFee string) Trade {
+	f := store.Fill{BuilderFee: fixed.MustParse(builderFee)}
+	return Trade{Strategy: strategy, ClosedAt: at, Entry: f, Exit: f}
+}
+
+// Closed trades owe half of the builder fee they paid, both legs, to their
+// week's pool per strategy; one flush sends one transaction per (week,
+// strategy) carrying the sum. A trade that paid no builder fee owes nothing.
 func TestPrizeFundsPerStrategyInBatches(t *testing.T) {
 	rpc := newFakeRPC()
-	p := newTestPrize(t, rpc, nil, 100_000)
+	p := newTestPrize(t, rpc, nil, 50)
 	at := time.Date(2035, 3, 10, 12, 0, 0, 0, time.UTC)
-	p.OnClosed(Trade{Strategy: "direction", ClosedAt: at})
-	p.OnClosed(Trade{Strategy: "direction", ClosedAt: at.Add(time.Minute)})
-	p.OnClosed(Trade{Strategy: "rsi", ClosedAt: at})
+	p.OnClosed(paid("direction", at, "0.1"))                  // 0.2 paid → 0.1 owed
+	p.OnClosed(paid("direction", at.Add(time.Minute), "0.1")) // another 0.1
+	p.OnClosed(paid("rsi", at, "0.1"))
+	p.OnClosed(Trade{Strategy: "rsi", ClosedAt: at}) // the platform's own account: no builder fee
 	p.flush(context.Background())
 
 	week := WeekOf(at)
@@ -179,9 +187,9 @@ func TestPrizeFundsPerStrategyInBatches(t *testing.T) {
 // A failed funding transaction is owed again and goes out with the next flush.
 func TestPrizeFundingRetriesAfterFailure(t *testing.T) {
 	rpc := newFakeRPC()
-	p := newTestPrize(t, rpc, nil, 100_000)
+	p := newTestPrize(t, rpc, nil, 50)
 	at := time.Date(2035, 3, 10, 12, 0, 0, 0, time.UTC)
-	p.OnClosed(Trade{Strategy: "ma-cross", ClosedAt: at})
+	p.OnClosed(paid("ma-cross", at, "0.1"))
 	rpc.failNext = 1
 	p.flush(context.Background())
 	if len(rpc.sent) != 0 {
@@ -190,7 +198,7 @@ func TestPrizeFundingRetriesAfterFailure(t *testing.T) {
 	if st := p.Stats(); st.Failed != 1 || st.Due != 1 || st.LastError == "" {
 		t.Fatalf("stats after failure = %+v", st)
 	}
-	p.OnClosed(Trade{Strategy: "ma-cross", ClosedAt: at})
+	p.OnClosed(paid("ma-cross", at, "0.1"))
 	p.flush(context.Background())
 	if n := rpc.sentWith(chain.Encode("fund(uint64,bytes32,uint256)", WeekOf(at), StrategyKey("ma-cross"), big.NewInt(200_000))); n != 1 {
 		t.Fatalf("retry did not carry the owed amount plus the new trade")
@@ -200,14 +208,14 @@ func TestPrizeFundingRetriesAfterFailure(t *testing.T) {
 	}
 }
 
-// With no funding per trade the pool is never touched.
-func TestPrizeZeroPerTradeSendsNothing(t *testing.T) {
+// With no share of the fee the pool is never touched.
+func TestPrizeZeroShareSendsNothing(t *testing.T) {
 	rpc := newFakeRPC()
 	p := newTestPrize(t, rpc, nil, 0)
-	p.OnClosed(Trade{Strategy: "direction", ClosedAt: time.Now()})
+	p.OnClosed(paid("direction", time.Now(), "0.1"))
 	p.flush(context.Background())
 	if len(rpc.sent) != 0 {
-		t.Fatal("funded with per-trade 0")
+		t.Fatal("funded with a zero share")
 	}
 }
 
@@ -253,7 +261,7 @@ func journalRoundTrip(t *testing.T, st *store.Store, wallet, strategy string, pn
 func TestPrizeSettlesLastWeekFromTheJournal(t *testing.T) {
 	st := testStoreForPrize(t)
 	rpc := newFakeRPC()
-	p := newTestPrize(t, rpc, st, 100_000)
+	p := newTestPrize(t, rpc, st, 50)
 	// A week nobody else's test writes into, and no earlier run of this one:
 	// the journal persists between runs.
 	now := time.Date(2035, 3, 10, 12, 0, 0, 0, time.UTC).Add(time.Duration(rand.IntN(20000)) * 7 * 24 * time.Hour)
@@ -314,7 +322,7 @@ func TestPrizeSettlesLastWeekFromTheJournal(t *testing.T) {
 func TestPrizeSkipsEmptyPools(t *testing.T) {
 	st := testStoreForPrize(t)
 	rpc := newFakeRPC()
-	p := newTestPrize(t, rpc, st, 100_000)
+	p := newTestPrize(t, rpc, st, 50)
 	now := time.Date(2036, 1, 20, 12, 0, 0, 0, time.UTC).Add(time.Duration(rand.IntN(20000)) * 7 * 24 * time.Hour)
 	p.now = func() time.Time { return now }
 	journalRoundTrip(t, st, testWallet(t, 1), "rsi", fixed.MustParse("2"), WeekStart(WeekOf(now)-1).Add(time.Hour))

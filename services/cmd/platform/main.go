@@ -14,7 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"math/big"
 	"net/http"
 	"os"
 	"os/signal"
@@ -257,12 +256,12 @@ func run(log *slog.Logger) error {
 		if err != nil {
 			return fmt.Errorf("prize pool: read collateral token: %w", err)
 		}
-		perTrade, err := prizePerTrade(envOr("PLATFORM_PRIZE_PER_TRADE", "0"), act.CollateralDecimals)
-		if err != nil {
-			return err
+		share, err := strconv.Atoi(envOr("PLATFORM_PRIZE_FEE_SHARE", "50"))
+		if err != nil || share < 0 || share > 100 {
+			return fmt.Errorf("PLATFORM_PRIZE_FEE_SHARE: want a percent 0..100, got %q", envOr("PLATFORM_PRIZE_FEE_SHARE", "50"))
 		}
 		prize, err := platform.NewPrize(ctx, platform.PrizeConfig{
-			RPCURL: envOr("PLATFORM_CHAIN_RPC", act.RPCURL), PrivateKey: key, Contract: pool, Token: act.CollateralToken, PerTrade: perTrade,
+			RPCURL: envOr("PLATFORM_CHAIN_RPC", act.RPCURL), PrivateKey: key, Contract: pool, Token: act.CollateralToken, FeeShare: share,
 		}, db, log)
 		if err != nil {
 			return err
@@ -400,18 +399,6 @@ func splitList(s string) []string {
 		}
 	}
 	return out
-}
-
-// prizePerTrade converts a collateral amount such as "0.1" to token units.
-func prizePerTrade(v string, decimals int) (*big.Int, error) {
-	d, err := fixed.Parse(v)
-	if err != nil || d.IsNeg() {
-		return nil, fmt.Errorf("PLATFORM_PRIZE_PER_TRADE: %q", v)
-	}
-	// fixed has 8 decimals; scale to the token's.
-	units := new(big.Int).SetInt64(int64(d))
-	div := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(8-decimals)), nil)
-	return units.Div(units, div), nil
 }
 
 // ownMaxLeverage is the venue's leverage ceiling across the allowed markets,
