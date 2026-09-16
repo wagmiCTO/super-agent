@@ -3,14 +3,17 @@
  * on the platform's candles, and one moving average drawn on top.
  *
  * Loaded at /tv.html by the app — inside an iframe on web, a WebView on the
- * phone — with the platform and the market in the query string:
+ * phone — with the platform, the market and the skin's colours in the query:
  *
  *   /tv.html?api=http://host:8080&symbol=MON&theme=light&ma=20&bg=%23F0F0F3
+ *          &up=%231C9A6B&down=%23DC5546&accent=%23836EF9&text=%236E6862&grid=%23E8E4DE
  *
  * The app talks to the page with postMessage: chartType (candles | line),
- * trend (up | down | flat), box ({top, bottom} | null), trades (the round
- * trips to mark) and position (the open one, or null). The page answers
- * { type: 'ready' } once the chart is drawn.
+ * interval ('1' | '5' | '15' | '30' | '60' minutes), trend (up | down | flat),
+ * box ({top, bottom} | null), trades (the round trips to mark) and position
+ * (the open one, or null). The page answers { type: 'ready' } once the chart
+ * is drawn and { type: 'price', price, change } with the last close and its
+ * move since the day opened, on every bar it receives.
  */
 (function () {
   var params = new URLSearchParams(location.search);
@@ -20,10 +23,17 @@
   var MA_LENGTH = Number(params.get('ma') || 20);
   var STUDY = params.get('study') || '';
   var BG = params.get('bg') || (THEME === 'dark' ? '#212225' : '#F0F0F3');
-  var UP = '#16a34a', DOWN = '#dc2626', MA = '#2563eb';
-  var TEXT = THEME === 'dark' ? '#9ca3af' : '#6b7280';
-  var GRID = THEME === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
-  var PERIOD = 60; // the strategies work on one-minute bars
+  var UP = params.get('up') || '#16a34a', DOWN = params.get('down') || '#dc2626', MA = params.get('accent') || '#2563eb';
+  var TEXT = params.get('text') || (THEME === 'dark' ? '#9ca3af' : '#6b7280');
+  var GRID = params.get('grid') || (THEME === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)');
+  var LINE = params.get('line') || TEXT;
+  // The bars the venue serves, by the library's resolution name.
+  var PERIODS = { '1': 60, '5': 300, '15': 900, '30': 1800, '60': 3600 };
+  var RESOLUTIONS = Object.keys(PERIODS);
+  var VISIBLE_BARS = 90; // what the first view shows, whatever the resolution
+  // ?debug=1 narrates the datafeed in the console, for a chart that stays blank.
+  var DEBUG = params.get('debug') === '1';
+  function log() { if (DEBUG) console.log.apply(console, ['tv:'].concat([].slice.call(arguments))); }
 
   // The library is licensed and not in the repository, so a deployment that
   // was never given a copy has no chart to draw. Say so in a line of text: a
@@ -42,8 +52,8 @@
     else if (window.parent !== window) window.parent.postMessage(msg, '*');
   }
 
-  function fetchBars(from, to) {
-    var url = API + '/v1/candles?symbol=' + encodeURIComponent(SYMBOL) + '&period_seconds=' + PERIOD + '&from=' + from + '&to=' + to;
+  function fetchBars(period, from, to) {
+    var url = API + '/v1/candles?symbol=' + encodeURIComponent(SYMBOL) + '&period_seconds=' + period + '&from=' + from + '&to=' + to;
     // A localtunnel in front of the platform shows browsers a reminder page
     // unless asked not to; only relevant when testing a phone against a laptop.
     var headers = /\.loca\.lt$/.test(new URL(API).hostname) ? { 'Bypass-Tunnel-Reminder': '1' } : {};
@@ -52,7 +62,8 @@
       return r.json();
     }).then(function (rows) {
       return rows.map(function (b) {
-        return { time: b.t * 1000, open: +b.o, high: +b.h, low: +b.l, close: +b.c, volume: +b.v };
+        // `text` keeps the venue's own decimals for the price the app shows.
+        return { time: b.t * 1000, open: +b.o, high: +b.h, low: +b.l, close: +b.c, volume: +b.v, text: b.c };
       });
     });
   }
@@ -66,44 +77,77 @@
     return Math.pow(10, Math.min(d, 8));
   }
 
+  // --- the price the app shows above the chart ---
+  // The last close, and where the day opened: the first minute bar after
+  // local midnight, or, before there is one, the oldest bar the chart has.
+  var last = null, dayOpen = null, oldest = null;
+  function tell() {
+    if (!last) return;
+    var ref = dayOpen || oldest;
+    post({ type: 'price', price: last.text, change: ref ? (last.close / ref - 1) * 100 : null });
+  }
+  function saw(bar) {
+    if (!last || bar.time >= last.time) { last = bar; }
+    if (oldest === null || bar.time < oldest.time) { oldest = bar; }
+  }
+  (function findDayOpen() {
+    var midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+    var from = Math.floor(midnight.getTime() / 1000);
+    fetchBars(60, from, from + 15 * 60).then(function (bars) {
+      bars.sort(function (a, b) { return a.time - b.time; });
+      if (bars.length) { dayOpen = bars[0].open; tell(); }
+    }).catch(function () {});
+  })();
+
   // --- datafeed (TradingView JS API) ---
   var subscribers = {};
+  var newest = {}; // the last bar time the chart has, by resolution
   var pricescale = 100000;
-  var newestBar = 0; // the chart refuses a bar older than the last one it got
   var datafeed = {
     onReady: function (cb) {
-      setTimeout(function () { cb({ supported_resolutions: ['1'], supports_marks: false, supports_timescale_marks: false, supports_time: true }); }, 0);
+      setTimeout(function () { cb({ supported_resolutions: RESOLUTIONS, supports_marks: false, supports_timescale_marks: false, supports_time: false }); }, 0);
     },
     searchSymbols: function (_q, _e, _t, cb) { cb([]); },
     resolveSymbol: function (name, onResolve, onError) {
+      log('resolveSymbol', name);
       // Read a little history first so the price scale matches the market.
       var now = Math.floor(Date.now() / 1000);
-      fetchBars(now - 3600, now).then(function (bars) {
+      fetchBars(60, now - 3600, now).then(function (bars) {
         if (bars.length) pricescale = pricescaleFor(bars);
-      }).catch(function () {}).then(function () {
+      }).catch(function (e) { log('resolveSymbol: history', e && e.message); }).then(function () {
+        log('resolveSymbol: pricescale', pricescale);
         onResolve({
           ticker: SYMBOL, name: SYMBOL, description: SYMBOL + ' perpetual', type: 'crypto',
           session: '24x7', timezone: 'Etc/UTC', exchange: 'Perpl', listed_exchange: 'Perpl', format: 'price',
           minmov: 1, pricescale: pricescale, has_intraday: true, has_daily: false, has_weekly_and_monthly: false,
-          intraday_multipliers: ['1'], supported_resolutions: ['1'], volume_precision: 2, data_status: 'streaming',
+          intraday_multipliers: RESOLUTIONS, supported_resolutions: RESOLUTIONS, volume_precision: 2, data_status: 'streaming',
         });
       });
     },
-    getBars: function (_symbol, _res, range, onResult, onError) {
-      fetchBars(range.from, range.to).then(function (bars) {
+    getBars: function (_symbol, resolution, range, onResult, onError) {
+      var period = PERIODS[resolution] || 60;
+      log('getBars', resolution, range.from, range.to);
+      fetchBars(period, range.from, range.to).then(function (bars) {
         bars.sort(function (a, b) { return a.time - b.time; });
-        if (bars.length && bars[bars.length - 1].time > newestBar) newestBar = bars[bars.length - 1].time;
+        bars.forEach(saw);
+        // The chart refuses a live bar older than the last one history gave it.
+        if (bars.length && bars[bars.length - 1].time > (newest[resolution] || 0)) newest[resolution] = bars[bars.length - 1].time;
+        log('getBars: bars', bars.length);
         onResult(bars, { noData: bars.length === 0 });
-      }).catch(function (e) { onError(String(e)); });
+        tell();
+      }).catch(function (e) { log('getBars: failed', e && e.message); onError(String(e)); });
     },
-    subscribeBars: function (_symbol, _res, onTick, uid) {
+    subscribeBars: function (_symbol, resolution, onTick, uid) {
+      var period = PERIODS[resolution] || 60;
+      log('subscribeBars', resolution, uid);
       var timer = setInterval(function () {
         var now = Math.floor(Date.now() / 1000);
-        fetchBars(now - 3 * PERIOD, now).then(function (bars) {
+        fetchBars(period, now - 3 * period, now).then(function (bars) {
           bars.sort(function (a, b) { return a.time - b.time; });
           for (var i = 0; i < bars.length; i++) {
-            if (bars[i].time >= newestBar) { onTick(bars[i]); newestBar = bars[i].time; }
+            if (bars[i].time >= (newest[resolution] || 0)) { onTick(bars[i]); newest[resolution] = bars[i].time; saw(bars[i]); }
           }
+          tell();
         }).catch(function () {});
       }, 3000);
       subscribers[uid] = timer;
@@ -131,7 +175,7 @@
       'show_chart_property_page', 'header_saveload', 'save_chart_properties_to_local_storage', 'use_localstorage_for_settings',
       'study_templates', 'popup_hints', 'main_series_scale_menu', 'scales_context_menu', 'display_market_status',
     ],
-    enabled_features: ['hide_left_toolbar_by_default', 'seconds_resolution'],
+    enabled_features: ['hide_left_toolbar_by_default'],
     overrides: {
       'paneProperties.background': BG,
       'paneProperties.backgroundType': 'solid',
@@ -139,7 +183,9 @@
       'paneProperties.backgroundGradientEndColor': BG,
       'paneProperties.vertGridProperties.color': GRID,
       'paneProperties.horzGridProperties.color': GRID,
-      'paneProperties.topMargin': 12,
+      // The app draws the price and the timeframes over the top band of the
+      // pane, so the bars start below it.
+      'paneProperties.topMargin': 22,
       'paneProperties.bottomMargin': 8,
       'paneProperties.legendProperties.showLegend': false,
       'scalesProperties.textColor': TEXT,
@@ -152,13 +198,15 @@
       'mainSeriesProperties.candleStyle.borderDownColor': DOWN,
       'mainSeriesProperties.candleStyle.wickUpColor': UP,
       'mainSeriesProperties.candleStyle.wickDownColor': DOWN,
-      'mainSeriesProperties.lineStyle.color': TEXT,
+      'mainSeriesProperties.lineStyle.color': LINE,
+      'mainSeriesProperties.lineStyle.colorType': 'solid',
       'mainSeriesProperties.lineStyle.linewidth': 2,
       'mainSeriesProperties.priceLineColor': TEXT,
       'crosshairProperties.color': TEXT,
     },
     loading_screen: { backgroundColor: BG, foregroundColor: TEXT },
   });
+  window.__tv = widget; // for a debugger in the console; the app never reads it
 
   var ma = null;
   var pendingTrend = null;
@@ -213,12 +261,19 @@
     var color = value === 'up' ? UP : value === 'down' ? DOWN : MA;
     widget.activeChart().getStudyById(ma).applyOverrides({ 'plot.color': color });
   }
+  // The same stretch of bars whatever the resolution, with a little room
+  // ahead of the last one.
+  function frame(chart, resolution) {
+    var period = PERIODS[resolution] || 60, now = Math.floor(Date.now() / 1000);
+    chart.setVisibleRange({ from: now - VISIBLE_BARS * period, to: now + 5 * period }).catch(function () {});
+  }
   widget.onChartReady(function () {
     var chart = widget.activeChart();
-    var now = Math.floor(Date.now() / 1000);
-    chart.setVisibleRange({ from: now - 90 * 60, to: now + 5 * 60 });
+    log('chart ready', chart.resolution());
+    frame(chart, chart.resolution());
     chartReady = true;
     redraw();
+    tell();
     if (STUDY === 'rsi') {
       chart.createStudy('Relative Strength Index', false, false, { length: 14 }, {
         'plot.color': MA, 'plot.linewidth': 2, 'upper band.color': DOWN, 'lower band.color': UP, 'upper band.value': 70, 'lower band.value': 30,
@@ -237,7 +292,15 @@
     if (!msg || !msg.type) return;
     widget.onChartReady(function () {
       var chart = widget.activeChart();
-      if (msg.type === 'chartType') chart.setChartType(msg.value === 'line' ? 2 : 1);
+      if (msg.type === 'chartType') {
+        chart.setChartType(msg.value === 'line' ? 2 : 1);
+        // A style switched to after the first draw comes with the library's
+        // own colours; the line is the skin's ink, as the candles are its up and down.
+        chart.applyOverrides({ 'mainSeriesProperties.lineStyle.color': LINE, 'mainSeriesProperties.lineStyle.colorType': 'solid', 'mainSeriesProperties.lineStyle.linewidth': 2 });
+      }
+      if (msg.type === 'interval' && PERIODS[msg.value] && chart.resolution() !== msg.value) {
+        chart.setResolution(msg.value, function () { frame(chart, msg.value); redraw(); });
+      }
       if (msg.type === 'trend') paintTrend(msg.value);
       if (msg.type === 'box') { drawn.box = msg.value || null; redraw(); }
       if (msg.type === 'trades') { drawn.trades = msg.value || []; redraw(); }

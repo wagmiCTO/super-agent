@@ -53,7 +53,8 @@ export function ContextPanel({ symbol }: { symbol: string }) {
           <View style={{ flex: 1, gap: theme.space.s1, minWidth: 0 }}>
             <Text variant="caps">{`Analysis · Nansen · ${asOf}`}</Text>
             <Text variant="body" numberOfLines={1} style={{ fontSize: theme.type.tSm }} testID="context-lean">
-              {`${lean} · ${card.headline}`}
+              <Text variant="bodyStrong" style={{ fontSize: theme.type.tSm }}>{lean}</Text>
+              {` · ${card.headline}`}
             </Text>
             {flow}
           </View>

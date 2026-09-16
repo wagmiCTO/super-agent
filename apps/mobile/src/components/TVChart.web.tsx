@@ -1,18 +1,18 @@
 /**
  * The TradingView chart on web: the chart page in an iframe on the same
- * origin, driven by postMessage.
+ * origin, driven by postMessage. Fills whatever box it is given.
  */
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { View } from 'react-native';
 
-import { chartPageUrl, type ChartMessage, type TVChartProps } from '@/chart/page';
+import { chartPageUrl, tickFrom, type ChartMessage, type TVChartProps } from '@/chart/page';
 
 /** No subscription: the only transition is server-rendered → hydrated. */
 const neverChanges = () => () => undefined;
 const onClient = () => true;
 const onServer = () => false;
 
-export function TVChart({ symbol, theme, background, chartType, trend, ma, study, box, trades, position, height }: TVChartProps) {
+export function TVChart({ symbol, theme, colours, chartType, interval, trend, ma, study, box, trades, position, onTick }: TVChartProps) {
   const frame = useRef<HTMLIFrameElement | null>(null);
 
   // The page is exported statically, with no window to read an origin from,
@@ -21,7 +21,7 @@ export function TVChart({ symbol, theme, background, chartType, trend, ma, study
   // that address for ever. Mounting the frame after the first paint is what
   // makes its src the browser's answer rather than the build's.
   const mounted = useSyncExternalStore(neverChanges, onClient, onServer);
-  const url = mounted ? chartPageUrl({ symbol, theme, background, ma, study }) : null;
+  const url = mounted ? chartPageUrl({ symbol, theme, colours, ma, study }) : null;
   const boxKey = JSON.stringify(box ?? null);
   const tradesKey = JSON.stringify(trades ?? []);
   const positionKey = JSON.stringify(position ?? null);
@@ -30,6 +30,9 @@ export function TVChart({ symbol, theme, background, chartType, trend, ma, study
   useEffect(() => {
     send({ type: 'chartType', value: chartType });
   }, [chartType, url]);
+  useEffect(() => {
+    send({ type: 'interval', value: interval });
+  }, [interval, url]);
   useEffect(() => {
     send({ type: 'trend', value: trend });
   }, [trend, url]);
@@ -46,16 +49,28 @@ export function TVChart({ symbol, theme, background, chartType, trend, ma, study
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [positionKey, url]);
 
+  // The page's answers. Only this frame's: any window can post to a page.
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      if (e.source !== frame.current?.contentWindow) return;
+      const t = tickFrom(e.data);
+      if (t) onTick?.(t);
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [onTick]);
+
   return (
-    <View style={{ height, borderRadius: 12, overflow: 'hidden' }} testID="signal-chart">
+    <View style={{ flex: 1 }} testID="signal-chart">
       {url === null ? null : (
       <iframe
         ref={frame}
         title="chart"
         src={url}
-        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0, background }}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0, background: colours.background }}
         onLoad={() => {
           send({ type: 'chartType', value: chartType });
+          send({ type: 'interval', value: interval });
           send({ type: 'trend', value: trend });
           send({ type: 'box', value: box ?? null });
           send({ type: 'trades', value: trades ?? [] });

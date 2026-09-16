@@ -9,8 +9,10 @@
  * not jump under a finger that is already reaching for it.
  *
  * Above the fold: the chart, what the strategy says, the keys, and the one
- * line of what a tap opens. Below it: the crowd on-chain, and this strategy's
- * own history. Nothing below the fold is needed to tap.
+ * line of what a tap opens. The chart takes whatever height the fold leaves
+ * after the rest, so the keys sit at the same place on every phone. Below
+ * the fold: the crowd on-chain, and this strategy's own history. Nothing
+ * below the fold is needed to tap.
  *
  * With a position open the screen becomes that position — the same design
  * replaces the entry screen with the one number that matters while it runs.
@@ -18,9 +20,10 @@
 
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, View, useColorScheme, useWindowDimensions } from 'react-native';
+import { Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
 
 import type { Position, State, Trade } from '@/api/client';
+import { INTERVALS, INTERVAL_LABELS, type ChartTick, type Interval } from '@/chart/page';
 import { trim } from '@/components/format';
 import { TVChart } from '@/components/TVChart';
 import { DEFAULT_SYMBOL, STRATEGY_NAMES } from '@/config';
@@ -35,17 +38,20 @@ import { useCountdown } from '@/ui/countdown';
 import { RiskDial } from '@/ui/mark';
 import { Badge, Card, Chip, Screen } from '@/ui/surface';
 import { Text, money } from '@/ui/text';
-import { face, useTheme } from '@/theme';
+import { face, useTheme, useThemeControls } from '@/theme';
+
+/** The design's own numbers for this screen, not tokens: they are the same in every skin. */
+const TOP = 52; // where the header sits, under the status bar
+const PEEK = 44; // how much of what is below the fold shows above it
+const CHART_MIN = 260;
 
 export function StrategyScreen({ id }: { id: StrategyId }) {
   const theme = useTheme();
-  const dark = useColorScheme() === 'dark';
   const { height } = useWindowDimensions();
 
   const t = useTrading(DEFAULT_SYMBOL, id);
   const signal = useSignal(id, DEFAULT_SYMBOL);
   const { settings } = usePositionSettings();
-  const [line, setLine] = useState(false);
 
   const lit = signal?.side ?? null;
   const armed = id === 'direction';
@@ -60,28 +66,25 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
 
   // One screen minus a peek of what is below: the fold is a promise that
   // everything needed to tap is above it, and a hint that more is under it.
-  const fold = height - 44;
+  const fold = height - PEEK;
 
   return (
     <Screen>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: theme.space.s6 }}>
-        <View style={{ minHeight: fold, paddingTop: 52, paddingHorizontal: theme.space.s5, gap: theme.space.s4 }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: theme.space.s5 }}>
+        <View style={{ minHeight: fold, paddingTop: TOP, gap: theme.space.s4 }}>
           <Header id={id} state={t.state} offline={t.offline} locked={t.locked} symbol={t.position ? DEFAULT_SYMBOL : null} />
 
-          <ChartBox
-            id={id}
-            lit={lit !== null}
-            dark={dark}
-            line={line}
-            onLine={() => setLine((v) => !v)}
-            trades={t.trades}
-            position={t.position}
-          />
+          <ChartBox id={id} lit={lit !== null} trades={t.trades} position={t.position} />
+
+          {t.position ? null : <Says id={id} signal={signal} />}
 
           {/* What just happened stays on the screen whether or not it left a
               position: a fill is the answer to the tap that was made. */}
           {t.notice ? (
-            <Card testID="notice" style={t.notice.kind === 'error' ? { backgroundColor: theme.color.dangerSoft } : undefined}>
+            <Card
+              testID="notice"
+              style={{ paddingVertical: theme.space.s3, ...(t.notice.kind === 'error' ? { backgroundColor: theme.color.dangerSoft } : null) }}
+            >
               <Text variant="small" style={t.notice.kind === 'error' ? { color: theme.color.danger } : undefined}>
                 {t.notice.text}
               </Text>
@@ -91,22 +94,31 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
           {t.position ? (
             <OpenPosition position={t.position} busy={t.busy === 'close'} onClose={() => void t.close()} />
           ) : (
-            <>
-              <Says id={id} signal={signal} />
-              <View style={{ gap: theme.space.s3, paddingBottom: theme.space.s3, borderBottomWidth: theme.size.bw, borderBottomColor: theme.color.hair }}>
-                <DirectionKeys
-                  onPress={tap}
-                  recommended={lit === 'long' ? 'up' : lit === 'short' ? 'down' : null}
-                  alwaysArmed={armed}
-                  disabled={t.busy !== null || t.state === null}
-                />
-                <SettingsChip onPress={() => router.push('/settings')} />
-              </View>
-            </>
+            // The keys and what a tap opens, on a rule that runs edge to edge:
+            // the line under them is where the screen's promise ends.
+            <View
+              style={{
+                marginHorizontal: -theme.space.s5,
+                paddingHorizontal: theme.space.s5,
+                paddingTop: theme.space.s3,
+                paddingBottom: 12,
+                gap: theme.space.s3,
+                borderBottomWidth: theme.size.bw,
+                borderBottomColor: theme.color.hair,
+              }}
+            >
+              <DirectionKeys
+                onPress={tap}
+                recommended={lit === 'long' ? 'up' : lit === 'short' ? 'down' : null}
+                alwaysArmed={armed}
+                disabled={t.busy !== null || t.state === null}
+              />
+              <SettingsChip onPress={() => router.push('/settings')} />
+            </View>
           )}
         </View>
 
-        <View style={{ paddingHorizontal: theme.space.s5, paddingTop: theme.space.s4, gap: theme.space.s4 }}>
+        <View style={{ paddingTop: theme.space.s4, gap: theme.space.s4 }}>
           <ContextPanel symbol={DEFAULT_SYMBOL} />
           <HistoryCard id={id} trades={t.trades} />
         </View>
@@ -119,62 +131,67 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
 function Header({ id, state, offline, locked, symbol }: { id: StrategyId; state: State | null; offline: boolean; locked: boolean; symbol: string | null }) {
   const theme = useTheme();
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s2 }}>
-      <Text variant="small" testID="lobby-link" numberOfLines={1} onPress={() => router.replace('/')}>‹ Lobby</Text>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s3 }}>
+      {/* The way back never shrinks; the title gives way instead, as the design has it. */}
+      <Text variant="small" testID="lobby-link" numberOfLines={1} style={{ paddingVertical: theme.space.s2, flexShrink: 0 }} onPress={() => router.replace('/')}>
+        ‹ Lobby
+      </Text>
       <Text variant="bodyStrong" numberOfLines={1} style={{ fontSize: theme.type.tMd, flexShrink: 1 }}>
         {symbol ? `${STRATEGY_NAMES[id] ?? 'Direction'} · ${symbol}` : STRATEGY_NAMES[id] ?? 'Direction'}
       </Text>
-      <View style={{ flex: 1 }} />
       {/* The balance belongs to the lobby: here the header is the way back,
           what you are trading, and what the day has left in it. */}
       <Badge>{offline ? 'OFFLINE' : locked ? 'SIGN IN' : 'TESTNET'}</Badge>
-      <Pressable onPress={() => router.push('/risk')} testID="risk-dial" accessibilityRole="button" accessibilityLabel="Risk and performance">
-        <RiskDial percent={riskPercent(state)} />
-      </Pressable>
-      <Pressable
-        testID="lesson-link"
-        accessibilityRole="button"
-        accessibilityLabel="Read the lesson again"
-        onPress={() => router.push({ pathname: '/lesson', params: { strategy: id } })}
-        style={{
-          width: 24,
-          height: 24,
-          borderRadius: 12,
-          borderWidth: theme.size.bw,
-          borderColor: theme.color.line,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Text variant="small" style={{ fontSize: theme.type.t2xs }}>?</Text>
-      </Pressable>
+      <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: theme.space.s2 }}>
+        <Pressable onPress={() => router.push('/risk')} testID="risk-dial" accessibilityRole="button" accessibilityLabel="Risk and performance">
+          <RiskDial percent={riskPercent(state)} />
+        </Pressable>
+        <Pressable
+          testID="lesson-link"
+          accessibilityRole="button"
+          accessibilityLabel="Read the lesson again"
+          onPress={() => router.push({ pathname: '/lesson', params: { strategy: id } })}
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 14,
+            borderWidth: theme.size.bw,
+            borderColor: theme.color.line,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Text variant="small" style={{ fontSize: theme.type.tSm, lineHeight: theme.type.tSm * 1.2, color: theme.color.text2 }}>?</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
 
 /**
- * The chart, with the price on it and the one control the datafeed can
- * honour. Timeframes are not offered: the platform serves one-minute candles
- * and only one-minute candles, and chips that all draw the same chart would
- * be decoration.
+ * The chart, with the price on it and the two controls the datafeed can
+ * honour: the bar size, and candles or a line. It fills whatever the fold
+ * leaves after the keys and the header, and never less than a readable pane.
  */
-function ChartBox({
-  id, lit, dark, line, onLine, trades, position,
-}: {
-  id: StrategyId;
-  lit: boolean;
-  dark: boolean;
-  line: boolean;
-  onLine: () => void;
-  trades: Trade[];
-  position: Position | null;
-}) {
+function ChartBox({ id, lit, trades, position }: { id: StrategyId; lit: boolean; trades: Trade[]; position: Position | null }) {
   const theme = useTheme();
+  const { name } = useThemeControls();
+  const [line, setLine] = useState(false);
+  const [interval, setInterval] = useState<Interval>('1');
+  const [tick, setTick] = useState<ChartTick | null>(null);
+
+  const glass = {
+    backgroundColor: theme.color.glass,
+    borderWidth: theme.size.bw,
+    borderColor: theme.color.line,
+  } as const;
+
   return (
     <View
       testID="signal-card"
       style={{
-        height: 360,
+        flex: 1,
+        minHeight: CHART_MIN,
         borderRadius: theme.radius.rXl,
         overflow: 'hidden',
         backgroundColor: theme.color.soft,
@@ -184,39 +201,78 @@ function ChartBox({
     >
       <TVChart
         symbol={DEFAULT_SYMBOL}
-        theme={dark ? 'dark' : 'light'}
-        background={theme.color.soft}
+        theme={name === 'terminal' ? 'dark' : 'light'}
+        colours={{
+          background: theme.color.soft,
+          up: theme.color.chartUp,
+          down: theme.color.chartDown,
+          accent: theme.color.accent,
+          text: theme.color.muted,
+          grid: theme.color.chartGrid,
+          line: theme.color.chartLine,
+        }}
         chartType={line ? 'line' : 'candles'}
+        interval={interval}
         trend={position ? (position.side === 'long' ? 'up' : 'down') : 'flat'}
         ma={id === 'ma-cross' ? 21 : 0}
         study={id === 'rsi' ? 'rsi' : undefined}
         trades={trades}
         position={position}
-        height={360}
+        onTick={setTick}
       />
-      {/* Top-left: the library draws its own price scale down the right edge,
-          and a control sitting on it reads as part of the chart's furniture. */}
-      <Pressable
-        testID="chart-mode"
-        accessibilityRole="button"
-        accessibilityLabel={line ? 'Show candles' : 'Show a line'}
-        onPress={onLine}
-        style={{
-          position: 'absolute',
-          top: 10,
-          left: 10,
-          width: 30,
-          height: 30,
-          borderRadius: theme.radius.rMd,
-          backgroundColor: theme.color.glass,
-          borderWidth: theme.size.bw,
-          borderColor: theme.color.line,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Text variant="small" style={{ fontSize: theme.type.tXs, color: theme.color.body }}>{line ? '∿' : '▮'}</Text>
-      </Pressable>
+
+      {/* Top-left: the price, and how the day has treated it. */}
+      <View pointerEvents="none" style={{ position: 'absolute', top: 12, left: 14 }}>
+        <Text
+          variant="num"
+          testID="chart-price"
+          style={{ fontSize: theme.type.t2xl, lineHeight: theme.type.t2xl, fontFamily: face(theme, 'num', 700), letterSpacing: theme.type.t2xl * -0.01 }}
+        >
+          {tick ? trim(tick.price) : ' '}
+        </Text>
+        <Text variant="small" style={{ fontSize: theme.type.tXs }}>
+          {tick?.change === null || tick?.change === undefined ? DEFAULT_SYMBOL : `${DEFAULT_SYMBOL} · ${money(tick.change, 1)}% today`}
+        </Text>
+      </View>
+
+      {/* Top-right: the bar size, and the shape of the series. */}
+      <View style={{ position: 'absolute', top: 10, right: 10, flexDirection: 'row', alignItems: 'center', gap: theme.space.s2 }}>
+        <View style={{ flexDirection: 'row', gap: 2, padding: 3, borderRadius: theme.radius.rMd, ...glass }}>
+          {INTERVALS.map((tf) => {
+            const on = tf === interval;
+            return (
+              <Pressable
+                key={tf}
+                testID={`chart-tf-${INTERVAL_LABELS[tf]}`}
+                accessibilityRole="button"
+                accessibilityState={{ selected: on }}
+                onPress={() => setInterval(tf)}
+                style={{ paddingVertical: 3, paddingHorizontal: 5, borderRadius: theme.radius.rSm, backgroundColor: on ? theme.color.accent : 'transparent' }}
+              >
+                <Text
+                  style={{
+                    fontFamily: face(theme, 'display', 600),
+                    fontSize: theme.type.t2xs,
+                    lineHeight: theme.type.t2xs * 1.3,
+                    color: on ? theme.color.onAccent : theme.color.body,
+                  }}
+                >
+                  {INTERVAL_LABELS[tf]}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <Pressable
+          testID="chart-mode"
+          accessibilityRole="button"
+          accessibilityLabel={line ? 'Show candles' : 'Show a line'}
+          onPress={() => setLine((v) => !v)}
+          style={{ width: 30, height: 30, borderRadius: theme.radius.rMd, alignItems: 'center', justifyContent: 'center', ...glass }}
+        >
+          <Text style={{ fontFamily: face(theme, 'display', 700), fontSize: theme.type.tXs, color: theme.color.body }}>{line ? '∿' : '▮'}</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -229,7 +285,7 @@ function Says({ id, signal }: { id: StrategyId; signal: ReturnType<typeof useSig
 
   if (id === 'direction') {
     return (
-      <Text variant="bodyStrong" style={{ textAlign: 'center', fontSize: theme.type.tMd }} testID="says">
+      <Text variant="bodyStrong" style={{ textAlign: 'center', fontSize: theme.type.tMd, fontFamily: face(theme, 'display', 700) }} testID="says">
         {`Where does ${DEFAULT_SYMBOL} go in the next ${settings.horizonMinutes} minutes?`}
       </Text>
     );
@@ -301,6 +357,7 @@ function OpenPosition({ position, busy, onClose }: { position: Position; busy: b
   const left = useCountdown(position.closes_at ?? null);
   const pnl = Number(position.unrealized_pnl);
   const colour = pnl > 0.005 ? theme.color.up : pnl < -0.005 ? theme.color.down : theme.color.ink;
+  const run = elapsedShare(position);
 
   return (
     <View style={{ gap: theme.space.s3 }}>
@@ -343,7 +400,12 @@ function OpenPosition({ position, busy, onClose }: { position: Position; busy: b
         {left ? (
           <View style={{ alignItems: 'flex-end', gap: theme.space.s1 }}>
             <Text variant="small">Closes in</Text>
-            <Text variant="num" style={{ fontSize: theme.type.t2xl, fontFamily: face(theme, 'num', 700) }}>{left}</Text>
+            <Text variant="num" style={{ fontSize: theme.type.t2xl, lineHeight: theme.type.t2xl, fontFamily: face(theme, 'num', 700) }}>{left}</Text>
+            {run !== null ? (
+              <View style={{ width: 90, height: 6, borderRadius: 999, backgroundColor: theme.color.hair, overflow: 'hidden' }}>
+                <View style={{ height: 6, width: `${Math.round(run * 100)}%`, backgroundColor: theme.color.accent }} />
+              </View>
+            ) : null}
           </View>
         ) : null}
       </View>
@@ -361,6 +423,15 @@ function OpenPosition({ position, busy, onClose }: { position: Position; busy: b
   );
 }
 
+/** How much of the horizon has run, 0..1, or null without one. */
+function elapsedShare(p: Position): number | null {
+  if (!p.closes_at || !p.opened_at) return null;
+  const total = new Date(p.closes_at).getTime() - new Date(p.opened_at).getTime();
+  if (total <= 0) return null;
+  const gone = Date.now() - new Date(p.opened_at).getTime();
+  return Math.min(1, Math.max(0, gone / total));
+}
+
 /** How far the price may go against the position before the stop fires. */
 function stopAgainst(p: Position): number {
   const notional = Number(p.notional);
@@ -374,13 +445,16 @@ function HistoryCard({ id, trades }: { id: StrategyId; trades: Trade[] }) {
   const rows = trades.slice(0, 3);
 
   return (
-    <Card testID="history">
+    <Card testID="history" style={{ gap: theme.space.s2 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s2 }}>
         <Chip label="Positions" on={tab === 'positions'} onPress={() => setTab('positions')} testID="history-positions" />
         <Chip label="Orders" on={tab === 'orders'} onPress={() => setTab('orders')} testID="history-orders" />
+        <Pressable testID="history-all" accessibilityRole="link" onPress={() => router.push('/history')} style={{ marginLeft: 'auto', paddingVertical: theme.space.s1 }}>
+          <Text variant="small">All history ›</Text>
+        </Pressable>
       </View>
       {rows.length === 0 ? (
-        <Text variant="small">{`No trades yet in ${STRATEGY_NAMES[id] ?? 'Direction'}.`}</Text>
+        <Text variant="small" style={{ paddingVertical: 8 }}>{`No trades yet in ${STRATEGY_NAMES[id] ?? 'Direction'}.`}</Text>
       ) : tab === 'positions' ? (
         rows.map((t) => <TradeRow key={t.opened_at} trade={t} />)
       ) : (
@@ -399,7 +473,7 @@ function TradeRow({ trade }: { trade: Trade }) {
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        paddingTop: theme.space.s2,
+        paddingVertical: 8,
         borderTopWidth: theme.size.bw,
         borderTopColor: theme.color.hair,
       }}
@@ -411,7 +485,7 @@ function TradeRow({ trade }: { trade: Trade }) {
         <Text variant="small" style={{ fontSize: theme.type.t2xs }}>{`${hm(trade.opened_at)} – ${hm(trade.closed_at ?? trade.opened_at)} · ${reason(trade)}`}</Text>
       </View>
       <Text variant="num" signOf={pnl} style={{ fontFamily: face(theme, 'num', 700) }}>
-        {trade.pnl === undefined ? '—' : `${pnl >= 0 ? '+' : ''}${trim(trade.pnl)}`}
+        {trade.pnl === undefined ? '—' : money(pnl)}
       </Text>
     </View>
   );
@@ -425,7 +499,7 @@ function OrderRow({ title, sub }: { title: string; sub: string }) {
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        paddingTop: theme.space.s2,
+        paddingVertical: 8,
         borderTopWidth: theme.size.bw,
         borderTopColor: theme.color.hair,
       }}

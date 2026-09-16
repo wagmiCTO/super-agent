@@ -1,18 +1,18 @@
 /**
  * The TradingView chart on iOS and Android: the chart page in a WebView,
  * served by the same host as the web build (Metro in development, the site
- * in production), driven by injected messages.
+ * in production), driven by injected messages. Fills whatever box it is given.
  */
 import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { WebView } from 'react-native-webview';
 
-import { chartPageUrl, type ChartMessage, type TVChartProps } from '@/chart/page';
+import { chartPageUrl, tickFrom, type ChartMessage, type TVChartProps } from '@/chart/page';
 
-export function TVChart({ symbol, theme, background, chartType, trend, ma, study, box, trades, position, height }: TVChartProps) {
+export function TVChart({ symbol, theme, colours, chartType, interval, trend, ma, study, box, trades, position, onTick }: TVChartProps) {
   const web = useRef<WebView>(null);
   const [ready, setReady] = useState(false);
-  const url = chartPageUrl({ symbol, theme, background, ma, study });
+  const url = chartPageUrl({ symbol, theme, colours, ma, study });
   const boxKey = JSON.stringify(box ?? null);
   const tradesKey = JSON.stringify(trades ?? []);
   const positionKey = JSON.stringify(position ?? null);
@@ -22,6 +22,9 @@ export function TVChart({ symbol, theme, background, chartType, trend, ma, study
   useEffect(() => {
     if (ready) send({ type: 'chartType', value: chartType });
   }, [ready, chartType]);
+  useEffect(() => {
+    if (ready) send({ type: 'interval', value: interval });
+  }, [ready, interval]);
   useEffect(() => {
     if (ready) send({ type: 'trend', value: trend });
   }, [ready, trend]);
@@ -39,11 +42,16 @@ export function TVChart({ symbol, theme, background, chartType, trend, ma, study
   }, [ready, positionKey]);
 
   return (
-    <View style={{ height, borderRadius: 12, overflow: 'hidden' }} testID="signal-chart">
+    <View style={{ flex: 1 }} testID="signal-chart">
       <WebView
         ref={web}
         source={{ uri: url }}
         onMessage={(e) => {
+          const t = tickFrom(e.nativeEvent.data);
+          if (t) {
+            onTick?.(t);
+            return;
+          }
           try {
             if (JSON.parse(e.nativeEvent.data).type === 'ready') setReady(true);
           } catch {
@@ -55,7 +63,7 @@ export function TVChart({ symbol, theme, background, chartType, trend, ma, study
         javaScriptEnabled
         domStorageEnabled
         allowsInlineMediaPlayback
-        style={{ backgroundColor: background }}
+        style={{ backgroundColor: colours.background }}
       />
     </View>
   );

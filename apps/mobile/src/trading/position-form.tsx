@@ -284,7 +284,7 @@ export function SettingsChip({ onPress }: { onPress: () => void }) {
         <View style={{ alignItems: 'flex-end', gap: 2 }}>
           <Text variant="caps">At risk</Text>
           <Text variant="num" style={{ fontSize: theme.type.tLg, fontFamily: face(theme, 'num', 700), color: theme.color.down }}>
-            {`−${atRisk(settings).toFixed(2)}`}
+            {`−${atRisk(settings).toFixed(0)}`}
           </Text>
         </View>
         <Text variant="small" style={{ color: theme.color.muted }}>›</Text>
