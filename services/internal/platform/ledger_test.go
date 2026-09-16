@@ -181,24 +181,30 @@ func TestTradesPageAndTradeByIDWithoutAJournal(t *testing.T) {
 }
 
 // The combined board counts a wallet once, however many strategies it
-// played, and pages through the standings in result order.
+// played, and pages through the standings in volume order — the one who
+// traded most is first, whatever they made.
 func TestStandingsPageCountsWalletsOnce(t *testing.T) {
 	l := NewLedger()
 	now := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC) // a Thursday
 	l.now = func() time.Time { return now }
-	opened(l, "0xaaa", "direction", "MON")
-	closed(l, "0xaaa", "direction", "MON", 5)
-	opened(l, "0xaaa", "ma-cross", "MON")
-	closed(l, "0xaaa", "ma-cross", "MON", 2)
-	opened(l, "0xbbb", "direction", "MON")
-	closed(l, "0xbbb", "direction", "MON", 3)
+	fill := func(size int64) store.Fill { return store.Fill{Size: fixed.FromInt(size), Price: fixed.FromInt(1)} }
+	// 0xaaa: two round trips of 10, the better result. 0xbbb: one of 50.
+	l.Opened("0xaaa/direction", "0xaaa", "direction", "MON", "o", fill(10), store.Terms{})
+	l.Closed("0xaaa/direction", "0xaaa", "MON", fixed.FromInt(5), "c", store.Fill{}, "manual", store.Excursion{})
+	l.Opened("0xaaa/ma-cross", "0xaaa", "ma-cross", "MON", "o", fill(10), store.Terms{})
+	l.Closed("0xaaa/ma-cross", "0xaaa", "MON", fixed.FromInt(2), "c", store.Fill{}, "manual", store.Excursion{})
+	l.Opened("0xbbb/direction", "0xbbb", "direction", "MON", "o", fill(50), store.Terms{})
+	l.Closed("0xbbb/direction", "0xbbb", "MON", fixed.FromInt(3), "c", store.Fill{}, "manual", store.Excursion{})
 
 	rows, players, err := l.StandingsPage("week", "", 10, 0)
 	if err != nil || players != 2 {
 		t.Fatalf("players = %d, err %v", players, err)
 	}
-	if len(rows) != 2 || rows[0].Wallet != "0xaaa" || rows[0].PnL != fixed.FromInt(7) || rows[0].Trades != 2 {
+	if len(rows) != 2 || rows[0].Wallet != "0xbbb" || rows[0].Volume != fixed.FromInt(50) {
 		t.Fatalf("standings = %+v", rows)
+	}
+	if rows[1].Wallet != "0xaaa" || rows[1].PnL != fixed.FromInt(7) || rows[1].Trades != 2 || rows[1].Volume != fixed.FromInt(20) {
+		t.Fatalf("second = %+v", rows[1])
 	}
 	// One board of its own, and a page past the end.
 	rows, players, _ = l.StandingsPage("week", "ma-cross", 10, 0)

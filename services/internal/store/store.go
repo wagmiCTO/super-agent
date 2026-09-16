@@ -615,6 +615,9 @@ type Standing struct {
 	Wallet string
 	PnL    fixed.D
 	Trades int
+	// Volume is what the wallet opened, in collateral units: the size of
+	// each round trip at the price it filled at. The board is ordered by it.
+	Volume fixed.D
 }
 
 // BoardRow is a strategy's week as the journal has it.
@@ -696,7 +699,7 @@ func (s *Store) Boards(ctx context.Context, since, until time.Time, topN int) (m
 	return out, active.Err()
 }
 
-// StandingsPage is one page of a board, ordered by result, with how many
+// StandingsPage is one page of a board, ordered by volume, with how many
 // wallets are on it altogether. An empty strategy is every strategy at
 // once, grouped by wallet — the "All" board, where one wallet counts once
 // however many strategies it played.
@@ -707,12 +710,14 @@ func (s *Store) StandingsPage(ctx context.Context, strategy string, since, until
 		where closed_at >= $1 and closed_at < $2 and ($3 = '' or strategy = $3)`, since, until, strategy).Scan(&total); err != nil {
 		return nil, 0, err
 	}
+	// By volume: the board is about who traded, and the prize pool is
+	// funded per trade. The result rides along for the row to show.
 	rows, err := s.pool.Query(ctx, `
-		select wallet, sum(pnl)::text, count(*)
+		select wallet, sum(pnl)::text, count(*), round(sum(size * entry_price), 8)::text
 		from trades
 		where closed_at >= $1 and closed_at < $2 and ($3 = '' or strategy = $3)
 		group by wallet
-		order by sum(pnl) desc, wallet asc
+		order by sum(size * entry_price) desc, wallet asc
 		limit $4 offset $5`, since, until, strategy, limit, offset)
 	if err != nil {
 		return nil, 0, err
@@ -721,14 +726,47 @@ func (s *Store) StandingsPage(ctx context.Context, strategy string, since, until
 	var out []Standing
 	for rows.Next() {
 		var st Standing
-		var pnl string
-		if err := rows.Scan(&st.Wallet, &pnl, &st.Trades); err != nil {
+		var pnl, volume string
+		if err := rows.Scan(&st.Wallet, &pnl, &st.Trades, &volume); err != nil {
 			return nil, 0, err
 		}
 		st.PnL, _ = fixed.Parse(pnl)
+		st.Volume, _ = fixed.Parse(volume)
 		out = append(out, st)
 	}
 	return out, total, rows.Err()
+}
+
+// StandingOf is one wallet's line on a board with where it stands: the
+// count of wallets that traded more, plus one. Zero rank means the wallet
+// is not on this board at all.
+func (s *Store) StandingOf(ctx context.Context, strategy string, since, until time.Time, wallet string) (Standing, int, error) {
+	var st Standing
+	var pnl, volume string
+	err := s.pool.QueryRow(ctx, `
+		select sum(pnl)::text, count(*), round(sum(size * entry_price), 8)::text
+		from trades
+		where wallet = $1 and closed_at >= $2 and closed_at < $3 and ($4 = '' or strategy = $4)`,
+		strings.ToLower(wallet), since, until, strategy).Scan(&pnl, &st.Trades, &volume)
+	if err != nil {
+		return Standing{}, 0, err
+	}
+	if st.Trades == 0 {
+		return Standing{}, 0, nil
+	}
+	st.Wallet = strings.ToLower(wallet)
+	st.PnL, _ = fixed.Parse(pnl)
+	st.Volume, _ = fixed.Parse(volume)
+	var ahead int
+	err = s.pool.QueryRow(ctx, `
+		select count(*) from (
+			select wallet, sum(size * entry_price) as v from trades
+			where closed_at >= $2 and closed_at < $3 and ($4 = '' or strategy = $4)
+			group by wallet
+		) b where b.v > (select coalesce(sum(size * entry_price), 0) from trades
+			where wallet = $1 and closed_at >= $2 and closed_at < $3 and ($4 = '' or strategy = $4))`,
+		strings.ToLower(wallet), since, until, strategy).Scan(&ahead)
+	return st, ahead + 1, err
 }
 
 // Wallets lists every wallet in the journal.
@@ -887,7 +925,7 @@ type ReferralRow struct {
 // entry price — because that is what a fee is charged on.
 func (s *Store) ReferralsOf(ctx context.Context, referrer string) ([]ReferralRow, error) {
 	rows, err := s.pool.Query(ctx, `
-		select r.wallet, r.created_at, count(t.id), coalesce(sum(t.size * t.entry_price), 0)::text
+		select r.wallet, r.created_at, count(t.id), round(coalesce(sum(t.size * t.entry_price), 0), 8)::text
 		from referrals r left join trades t on t.wallet = r.wallet
 		where r.referrer = $1
 		group by r.wallet, r.created_at

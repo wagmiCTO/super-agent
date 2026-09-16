@@ -59,11 +59,9 @@ test('the lobby links open the screens the design names', async ({ page, context
   await page.getByTestId('network-testnet').click();
   await expect(page.getByTestId('network-menu')).toBeHidden();
 
-  // The prize banner leads to the board.
-  await page.getByTestId('prize-banner').click({ force: true });
-  await expect(page.getByTestId('leaderboard-title')).toHaveText('Leaderboard', { timeout: 20_000 });
-  await page.getByTestId('lobby-link').last().click();
-  await expect(lobby).toBeVisible();
+  // No prize banner without a prize: a fresh account has nothing to claim,
+  // and a banner over nothing to claim led to a board with no claim on it.
+  await expect(page.getByTestId('prize-banner')).toHaveCount(0);
 
   // Risk is the one footer link with a screen of its own.
   await page.getByTestId('risk-link').click({ force: true });

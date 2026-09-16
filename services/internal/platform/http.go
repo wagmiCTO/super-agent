@@ -1250,6 +1250,9 @@ type standingDTO struct {
 	Wallet string `json:"wallet"`
 	PnL    string `json:"pnl"`
 	Trades int    `json:"trades"`
+	// Volume is what the wallet opened, in collateral units; the board is
+	// ordered by it. Absent on the lobby's boards, which are by result.
+	Volume string `json:"volume,omitempty"`
 }
 
 type boardDTO struct {
@@ -1441,6 +1444,15 @@ type standingsDTO struct {
 	Players int `json:"players"`
 	// NextOffset is where the next page starts; absent on the last.
 	NextOffset int `json:"next_offset,omitempty"`
+	// You is the asking wallet's own line and rank, whatever page it is on;
+	// absent when the request names no wallet or the wallet never traded
+	// this board.
+	You *youDTO `json:"you,omitempty"`
+}
+
+type youDTO struct {
+	standingDTO
+	Rank int `json:"rank"`
 }
 
 // standings serves one board, one page at a time:
@@ -1489,10 +1501,15 @@ func (h *handler) standings(w http.ResponseWriter, r *http.Request) {
 		out.Strategy = "all"
 	}
 	for _, st := range rows {
-		out.Standings = append(out.Standings, standingDTO{Wallet: st.Wallet, PnL: st.PnL.String(), Trades: st.Trades})
+		out.Standings = append(out.Standings, standingDTO{Wallet: st.Wallet, PnL: st.PnL.String(), Trades: st.Trades, Volume: st.Volume.String()})
 	}
 	if offset+len(rows) < players {
 		out.NextOffset = offset + len(rows)
+	}
+	if wallet := strings.ToLower(strings.TrimSpace(r.Header.Get(AccountHeader))); wallet != "" {
+		if st, rank, err := h.ledger.StandingOf(period, strategyID, wallet); err == nil && rank > 0 {
+			out.You = &youDTO{standingDTO: standingDTO{Wallet: st.Wallet, PnL: st.PnL.String(), Trades: st.Trades, Volume: st.Volume.String()}, Rank: rank}
+		}
 	}
 	writeJSON(w, http.StatusOK, out)
 }

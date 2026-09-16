@@ -66,7 +66,7 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
     <Screen>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: theme.space.s6 }}>
         <View style={{ minHeight: fold, paddingTop: 52, paddingHorizontal: theme.space.s5, gap: theme.space.s4 }}>
-          <Header id={id} state={t.state} offline={t.offline} locked={t.locked} />
+          <Header id={id} state={t.state} offline={t.offline} locked={t.locked} symbol={t.position ? DEFAULT_SYMBOL : null} />
 
           <ChartBox
             id={id}
@@ -109,11 +109,6 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
         <View style={{ paddingHorizontal: theme.space.s5, paddingTop: theme.space.s4, gap: theme.space.s4 }}>
           <ContextPanel symbol={DEFAULT_SYMBOL} />
           <HistoryCard id={id} trades={t.trades} />
-          {t.state ? (
-            <Text variant="small" style={{ textAlign: 'center', fontSize: theme.type.t2xs }}>
-              {`Up to ${t.state.limits.max_notional} per position · ${t.state.limits.max_leverage}x · today's loss ${trim(t.state.risk.daily_loss)} of ${t.state.limits.daily_loss}`}
-            </Text>
-          ) : null}
         </View>
       </ScrollView>
     </Screen>
@@ -121,12 +116,14 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
 }
 
 /** ‹ Lobby · the strategy · where the money is · the day's risk · the lesson. */
-function Header({ id, state, offline, locked }: { id: StrategyId; state: State | null; offline: boolean; locked: boolean }) {
+function Header({ id, state, offline, locked, symbol }: { id: StrategyId; state: State | null; offline: boolean; locked: boolean; symbol: string | null }) {
   const theme = useTheme();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s2 }}>
       <Text variant="small" testID="lobby-link" numberOfLines={1} onPress={() => router.replace('/')}>‹ Lobby</Text>
-      <Text variant="bodyStrong" numberOfLines={1} style={{ fontSize: theme.type.tMd }}>{STRATEGY_NAMES[id] ?? 'Direction'}</Text>
+      <Text variant="bodyStrong" numberOfLines={1} style={{ fontSize: theme.type.tMd, flexShrink: 1 }}>
+        {symbol ? `${STRATEGY_NAMES[id] ?? 'Direction'} · ${symbol}` : STRATEGY_NAMES[id] ?? 'Direction'}
+      </Text>
       <View style={{ flex: 1 }} />
       {/* The balance belongs to the lobby: here the header is the way back,
           what you are trading, and what the day has left in it. */}
@@ -177,7 +174,7 @@ function ChartBox({
     <View
       testID="signal-card"
       style={{
-        height: 320,
+        height: 360,
         borderRadius: theme.radius.rXl,
         overflow: 'hidden',
         backgroundColor: theme.color.soft,
@@ -195,7 +192,7 @@ function ChartBox({
         study={id === 'rsi' ? 'rsi' : undefined}
         trades={trades}
         position={position}
-        height={320}
+        height={360}
       />
       {/* Top-left: the library draws its own price scale down the right edge,
           and a control sitting on it reads as part of the chart's furniture. */}
@@ -351,15 +348,23 @@ function OpenPosition({ position, busy, onClose }: { position: Position; busy: b
         ) : null}
       </View>
 
-      <Text variant="small">
-        {position.stop_pnl !== undefined
-          ? `Stops by itself at ${trim(position.stop_pnl)} AUSD.`
-          : 'No stop: the time limit is the exit.'}
+      <Text variant="small" testID="position-rules">
+        {`${
+          position.stop_pnl !== undefined
+            ? `Stops by itself at ${money(Number(position.stop_pnl))} AUSD (${stopAgainst(position).toFixed(1)}% against you).`
+            : 'No stop: the time limit is the exit.'
+        } Liquidation is ${(100 / Math.max(1, Number(position.leverage))).toFixed(1)}% away.`}
       </Text>
 
       <Button testID="close-position" title="Close now" variant="outline" busy={busy} disabled={busy} onPress={onClose} />
     </View>
   );
+}
+
+/** How far the price may go against the position before the stop fires. */
+function stopAgainst(p: Position): number {
+  const notional = Number(p.notional);
+  return notional > 0 ? (Math.abs(Number(p.stop_pnl ?? 0)) / notional) * 100 : 0;
 }
 
 /** This strategy's own round trips, and the fills behind them. */

@@ -26,7 +26,11 @@ export function RiskGauge({ percent }: { percent: number | null }) {
   const p = useGrow(target);
   const angle = -80 + p * 1.6;
   return (
-    <Svg width={250} height={132} viewBox="0 0 260 140" accessibilityLabel={target === null ? 'Reading your risk' : `Risk ${Math.round(p)} percent`}>
+    <Svg width={260} height={156} viewBox="0 0 260 156" accessibilityLabel={target === null ? 'Reading your risk' : `Risk ${Math.round(p)} percent`}>
+      {/* The two words sit under the ends of the arc, part of the drawing,
+          rather than at the screen's edges where they drifted away from it. */}
+      <SvgText x={20} y={152} fontSize={12} textAnchor="middle" fontFamily={face(theme, 'display', 500)} fill={theme.color.muted}>calm</SvgText>
+      <SvgText x={240} y={152} fontSize={12} textAnchor="middle" fontFamily={face(theme, 'display', 500)} fill={theme.color.muted}>hot</SvgText>
       <Path d="M20 130 A110 110 0 0 1 240 130" fill="none" stroke={theme.color.hair} strokeWidth={18} strokeLinecap="round" />
       {p > NOTHING ? (
         <Path

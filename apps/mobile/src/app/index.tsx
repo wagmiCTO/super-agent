@@ -17,7 +17,6 @@ import { useAccount } from '@/account/useAccount';
 import type { Board } from '@/api/client';
 import { trim } from '@/components/format';
 import { unclaimedTotal, useMyPrizes } from '@/components/prizes';
-import { PLACEHOLDER_PRIZE_AUSD } from '@/config';
 import { useLeaderboard } from '@/trading/useLeaderboard';
 import { useTrading } from '@/trading/useTrading';
 import { nextStep, useOnboarding } from '@/onboarding/useOnboarding';
@@ -114,8 +113,9 @@ function LobbyScreen() {
   const boards = lb?.boards ?? null;
   const open = (id: string) => t.state?.positions.find(() => id === 'direction') ?? null;
   const address = account.state.status === 'unlocked' || account.state.status === 'remembered' ? account.state.stored.address.toLowerCase() : null;
-  // A real prize first; the design's placeholder until there is one.
-  const prize = unclaimedTotal(useMyPrizes(lb?.prize && address ? address : null).mine) ?? PLACEHOLDER_PRIZE_AUSD;
+  // Only a real prize: the banner leads to a claim, and a banner over
+  // nothing to claim is a promise the leaderboard cannot keep.
+  const prize = unclaimedTotal(useMyPrizes(lb?.prize && address ? address : null).mine);
   const [menu, setMenu] = useState(false);
 
   return (

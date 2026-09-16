@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -225,6 +226,8 @@ type Standing struct {
 	Wallet string
 	PnL    fixed.D
 	Trades int
+	// Volume is what the wallet opened, in collateral units.
+	Volume fixed.D
 }
 
 // Board is one strategy's week.
@@ -267,8 +270,8 @@ func (l *Ledger) Leaderboard() Leaderboard { return l.boards(weekStartOf(l.now()
 // weekly, so this board pays nothing — it is the standing of the house.
 func (l *Ledger) AllTime() Leaderboard { return l.boards(epoch, "all") }
 
-// StandingsPage is one board, one page at a time, with how many wallets
-// are on it altogether. `strategy` empty means every strategy at once, and
+// StandingsPage is one board, one page at a time, ordered by volume, with
+// how many wallets are on it altogether. `strategy` empty means every strategy at once, and
 // then a wallet counts once however many it played — which is the honest
 // answer to "how many players", and the reason this does not add up the
 // per-board counts.
@@ -287,13 +290,41 @@ func (l *Ledger) StandingsPage(period, strategy string, limit, offset int) ([]St
 		if err == nil {
 			out := make([]Standing, 0, len(rows))
 			for _, r := range rows {
-				out = append(out, Standing{Wallet: r.Wallet, PnL: r.PnL, Trades: r.Trades})
+				out = append(out, Standing{Wallet: r.Wallet, PnL: r.PnL, Trades: r.Trades, Volume: r.Volume})
 			}
 			return out, total, nil
 		}
 		slog.Warn("ledger: standings not read from the journal, serving memory", "err", err)
 	}
 	return l.standingsFromMemory(since, strategy, limit, offset)
+}
+
+// StandingOf is a wallet's own line on a board, with its rank by volume.
+// Zero rank means it is not on the board.
+func (l *Ledger) StandingOf(period, strategy, wallet string) (Standing, int, error) {
+	weekStart := weekStartOf(l.now())
+	since := weekStart
+	if period == "all" {
+		since = epoch
+	}
+	until := weekStart.AddDate(0, 0, 7)
+	if l.journal != nil {
+		st, rank, err := l.journal.StandingOf(context.Background(), strategy, since, until, wallet)
+		if err == nil {
+			return Standing{Wallet: st.Wallet, PnL: st.PnL, Trades: st.Trades, Volume: st.Volume}, rank, nil
+		}
+		slog.Warn("ledger: standing not read from the journal, serving memory", "err", err)
+	}
+	all, _, err := l.standingsFromMemory(since, strategy, 1<<30, 0)
+	if err != nil {
+		return Standing{}, 0, err
+	}
+	for i, st := range all {
+		if strings.EqualFold(st.Wallet, wallet) {
+			return st, i + 1, nil
+		}
+	}
+	return Standing{}, 0, nil
 }
 
 func (l *Ledger) standingsFromMemory(since time.Time, strategyID string, limit, offset int) ([]Standing, int, error) {
@@ -311,14 +342,16 @@ func (l *Ledger) standingsFromMemory(since time.Time, strategyID string, limit, 
 		}
 		st.PnL = st.PnL.Add(t.PnL)
 		st.Trades++
+		st.Volume = st.Volume.Add(t.Entry.Size.Mul(t.Entry.Price))
 	}
 	all := make([]Standing, 0, len(by))
 	for _, st := range by {
 		all = append(all, *st)
 	}
+	// By volume, as the journal orders it.
 	sort.Slice(all, func(i, j int) bool {
-		if all[i].PnL != all[j].PnL {
-			return all[i].PnL > all[j].PnL
+		if all[i].Volume != all[j].Volume {
+			return all[i].Volume > all[j].Volume
 		}
 		return all[i].Wallet < all[j].Wallet
 	})

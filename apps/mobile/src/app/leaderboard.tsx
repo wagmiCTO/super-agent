@@ -5,10 +5,10 @@
  * time switch, the board itself, and above it the prize to claim when the
  * chain has published one.
  *
- * The board is ranked by **result**, not by traded volume as the first
- * wireframe had it: the prize is settled on the top three by realized result
- * (ADR 0004), and a board that ranks by anything else would be a board that
- * does not decide the money it sits under.
+ * The board is ranked by **volume traded**, as the design has it: the number
+ * people compete on is how much they played, and the result rides along.
+ * The on-chain settlement still picks winners by result (ADR 0004); until
+ * that rule is changed the screen does not project who wins what.
  *
  * Every number here comes from somewhere: the standings and the pools from
  * `/v1/leaderboard`, your own line from `/v1/risk` (which knows your week and
@@ -19,28 +19,25 @@ import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 
 import { useAccount } from '@/account/useAccount';
-import { api, ApiError, describeError, type Leaderboard, type PrizeHistory, type RiskReport, type Standing } from '@/api/client';
+import { api, ApiError, describeError, type Leaderboard, type PrizeHistory, type Standing, type Standings } from '@/api/client';
 import { shortAddress, unclaimedTotal, useMyPrizes } from '@/components/prizes';
 import { STRATEGY_NAMES } from '@/config';
 import { claimPrize } from '@/exchange/prize';
 import { useLeaderboard } from '@/trading/useLeaderboard';
-import { useRiskReport } from '@/trading/useRiskReport';
 import { Bone, FadeIn } from '@/ui/anim';
 import { back } from '@/ui/stub';
 import { Card, Chip, Screen } from '@/ui/surface';
-import { Text, money } from '@/ui/text';
+import { Text, grouped, money } from '@/ui/text';
 import { useTheme } from '@/theme';
 
 type Period = 'week' | 'all';
 type Tab = 'direction' | 'ma-cross' | 'rsi' | 'all';
+type You = NonNullable<Standings['you']>;
 
 const TABS: Tab[] = ['direction', 'ma-cross', 'rsi', 'all'];
 
-/** How the pool is split among the top three — the contract's own shares. */
-const SHARES = [0.5, 0.3, 0.2];
-
 /** One line of the board. */
-type Row = { wallet: string; pnl: number; trades: number; prize: number | null; you: boolean };
+type Row = { wallet: string; volume: number; pnl: number; trades: number; you: boolean };
 
 export default function LeaderboardScreen() {
   const theme = useTheme();
@@ -51,14 +48,14 @@ export default function LeaderboardScreen() {
   const knows = account.state.status !== 'loading';
   const unlocked = account.state.status === 'unlocked' ? account.state : null;
   const address = (unlocked?.stored.address ?? null)?.toLowerCase() ?? null;
-  const mine = useRiskReport(address !== null);
   const prizes = useMyPrizes(lb?.prize && address ? address : null);
   const claimable = unclaimedTotal(prizes.mine);
 
   const board = useStandings(tab, period, knows);
-  const rows = board.rows ? rank(board.rows, lb, tab, period, address, mine) : null;
-  // Your own result, for as long as the page it belongs to is not loaded.
-  const own = address && rows && !rows.some((r) => r.you) ? myPerf(mine, tab, period) : null;
+  const rows = board.rows ? rank(board.rows, address) : null;
+  // Your own line, from the platform with its rank, for as long as the page
+  // it belongs to is not loaded.
+  const own = rows && board.you && !rows.some((r) => r.you) ? board.you : null;
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
@@ -113,7 +110,7 @@ export default function LeaderboardScreen() {
           ) : (
             <Bone width={200} height={10} />
           )}
-          <Text variant="small" style={{ fontSize: theme.type.t2xs }}>by result</Text>
+          <Text variant="small" style={{ fontSize: theme.type.t2xs }}>by volume</Text>
         </View>
 
         {rows === null ? (
@@ -137,9 +134,9 @@ export default function LeaderboardScreen() {
             {board.loading ? (
               <Text variant="small" style={{ fontSize: theme.type.t2xs, textAlign: 'center', paddingTop: theme.space.s2 }} testID="board-more">Loading…</Text>
             ) : null}
-            {own && own.trades > 0 ? (
+            {own ? (
               <View style={{ marginTop: theme.space.s2, borderTopWidth: theme.size.bw, borderTopColor: theme.color.line }}>
-                <BoardRow row={{ wallet: address!, pnl: own.pnl, trades: own.trades, prize: null, you: true }} rank={null} />
+                <BoardRow row={{ wallet: own.wallet, volume: Number(own.volume ?? 0), pnl: Number(own.pnl), trades: own.trades, you: true }} rank={own.rank} />
               </View>
             ) : null}
           </FadeIn>
@@ -147,8 +144,8 @@ export default function LeaderboardScreen() {
 
         <Text variant="small" style={{ fontSize: theme.type.t2xs }} testID="board-note">
           {period === 'week'
-            ? 'Top 3 by result in each strategy share its pool, 50/30/20 · settled on-chain when the week ends · claimed here.'
-            : 'Every trade since launch. The prize is weekly: switch to This week.'}
+            ? 'Ranked by what you traded this week · the pool is settled on-chain when the week ends · claimed here.'
+            : 'Everything traded since launch. The prize is weekly: switch to This week.'}
         </Text>
 
         <OnChain />
@@ -165,7 +162,7 @@ export default function LeaderboardScreen() {
   );
 }
 
-/** One wallet's line: rank, who, what they made, what it pays. */
+/** One wallet's line: rank, who, what they traded, and what it made them. */
 function BoardRow({ row, rank }: { row: Row; rank: number | null }) {
   const theme = useTheme();
   return (
@@ -188,13 +185,10 @@ function BoardRow({ row, rank }: { row: Row; rank: number | null }) {
       >
         {row.you ? 'you' : shortAddress(row.wallet)}
       </Text>
-      <Text variant="num" signOf={row.pnl} style={{ fontSize: theme.type.tSm }}>{`${money(row.pnl)} AUSD`}</Text>
-      <Text
-        variant="num"
-        style={{ width: 58, textAlign: 'right', fontSize: theme.type.tSm, color: row.prize ? theme.color.ink : theme.color.dim }}
-      >
-        {row.prize ? `+${row.prize.toFixed(2)}` : ''}
-      </Text>
+      <View style={{ alignItems: 'flex-end', gap: 1 }}>
+        <Text variant="num" style={{ fontSize: theme.type.tSm }} testID="board-volume">{`${grouped(row.volume)} AUSD`}</Text>
+        <Text variant="num" signOf={row.pnl} style={{ fontSize: theme.type.t2xs }}>{`${money(row.pnl)} · ${row.trades} ${row.trades === 1 ? 'trade' : 'trades'}`}</Text>
+      </View>
     </View>
   );
 }
@@ -334,7 +328,7 @@ function useStandings(tab: Tab, period: Period, ready: boolean) {
   const key = `${tab}:${period}`;
   // Keyed by the board it belongs to, so switching tabs shows nothing
   // rather than the other board's rows for a frame.
-  const [page, setPage] = useState<{ key: string; rows: Standing[]; players: number; next: number | null }>({ key: '', rows: [], players: 0, next: null });
+  const [page, setPage] = useState<{ key: string; rows: Standing[]; players: number; next: number | null; you: You | null }>({ key: '', rows: [], players: 0, next: null, you: null });
   const [loading, setLoading] = useState(false);
   const current = page.key === key;
 
@@ -346,9 +340,9 @@ function useStandings(tab: Tab, period: Period, ready: boolean) {
         .standings(tab, period)
         .then((answer) => {
           if (!alive) return;
-          setPage({ key, rows: answer.standings, players: answer.players, next: answer.next_offset ?? null });
+          setPage({ key, rows: answer.standings, players: answer.players, next: answer.next_offset ?? null, you: answer.you ?? null });
         })
-        .catch(() => alive && setPage({ key, rows: [], players: 0, next: null }));
+        .catch(() => alive && setPage({ key, rows: [], players: 0, next: null, you: null }));
     }, 0);
     return () => {
       alive = false;
@@ -364,7 +358,7 @@ function useStandings(tab: Tab, period: Period, ready: boolean) {
       .then((answer) => {
         setPage((have) =>
           have.key === key
-            ? { key, rows: [...have.rows, ...answer.standings], players: answer.players, next: answer.next_offset ?? null }
+            ? { key, rows: [...have.rows, ...answer.standings], players: answer.players, next: answer.next_offset ?? null, you: answer.you ?? have.you }
             : have,
         );
       })
@@ -372,47 +366,18 @@ function useStandings(tab: Tab, period: Period, ready: boolean) {
       .finally(() => setLoading(false));
   }, [tab, period, page.next, loading, current, key]);
 
-  return { rows: current ? page.rows : null, players: page.players, more, loading };
+  return { rows: current ? page.rows : null, players: page.players, you: current ? page.you : null, more, loading };
 }
 
-/** The page as the screen draws it: ranks, your own line, the prize column. */
-function rank(standings: Standing[], lb: Leaderboard | null, tab: Tab, period: Period, address: string | null, mine: RiskReport | null): Row[] {
-  const rows: Row[] = standings.map((s) => ({
+/** The page as the screen draws it: whose line is yours. */
+function rank(standings: Standing[], address: string | null): Row[] {
+  return standings.map((s) => ({
     wallet: s.wallet.toLowerCase(),
+    volume: Number(s.volume ?? 0),
     pnl: Number(s.pnl),
     trades: s.trades,
-    prize: null,
     you: s.wallet.toLowerCase() === address,
   }));
-
-  // The prize column is the pool split the way the settlement splits it:
-  // top three with a positive result, 50/30/20. A week that has not ended
-  // pays nobody yet, so this is what it would pay if it ended now.
-  const pool = tab === 'all' || period === 'all' || !lb ? 0 : poolOf(lb, tab);
-  if (pool > 0) {
-    let paid = 0;
-    for (const r of rows) {
-      if (paid === SHARES.length || r.pnl <= 0) break;
-      r.prize = pool * SHARES[paid];
-      paid++;
-    }
-  }
-  return rows;
-}
-
-/** What this wallet made on the tab's board over the period. */
-function myPerf(mine: RiskReport | null, tab: Tab, period: Period): { pnl: number; trades: number } | null {
-  if (!mine) return null;
-  const perf =
-    tab === 'all'
-      ? period === 'week'
-        ? mine.totals.week
-        : mine.totals.all
-      : (() => {
-          const s = mine.strategies.find((x) => x.id === tab);
-          return period === 'week' ? s?.week : s?.all;
-        })();
-  return perf ? { pnl: Number(perf.pnl), trades: perf.trades } : null;
 }
 
 function poolOf(lb: Leaderboard, strategy: string): number {

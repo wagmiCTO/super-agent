@@ -1,16 +1,14 @@
 /**
  * One round trip, reported — and the same screen for one of its two orders.
  *
- * As the design has it: what it was and who closed it, what it made and what
- * that is of the money put in, then the report — how far the market moved,
- * what the position was made of, where the stop stood, the worst and the
- * best it was worth, and the fees. No chart: the card is a report, and a
- * drawn line of a move already in the numbers adds nothing.
+ * What it was and who closed it, what it made and what that is of the money
+ * put in, then the report: one fact per line, the set every exchange lists
+ * for a closed position. No chart, and no worst-and-best moments — sampled
+ * numbers next to exact ones read as exact.
  *
- * Rows the platform did not record for this trade say so with a dash. Old
- * round trips have no leverage, no stop and no excursion — they were
- * journaled before the columns existed, and a card that invents them would
- * be a card that lies about money.
+ * Rows the platform did not record for this trade say so with a dash: old
+ * round trips have no leverage and no stop, and a card that invents them
+ * would be a card that lies about money.
  */
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -93,22 +91,31 @@ export default function TradeScreen() {
               </Card>
             ) : (
               <Card style={{ gap: theme.space.s1 }} testID="trade-report">
-                {/* "Moved" rather than "MON moved": the symbol is on the
-                    size row, and the label wrapped to two lines. */}
-                <Row label="Moved" value={moved(trade)} tone={movedBy(trade)} />
-                <Row label="Size" value={size(trade)} />
-                <Row label="Stop" value={trade.stop_pnl ? money(Number(trade.stop_pnl)) : 'off'} />
-                <Row label="Worst moment" value={trade.worst_pnl ? money(Number(trade.worst_pnl)) : '—'} tone={trade.worst_pnl ? Number(trade.worst_pnl) : undefined} />
-                <Row label="Best moment" value={trade.best_pnl ? money(Number(trade.best_pnl)) : '—'} tone={trade.best_pnl ? Number(trade.best_pnl) : undefined} />
-                <Row label="Fees" value={`${Number(trade.entry_fee).toFixed(2)} + ${Number(trade.exit_fee ?? 0).toFixed(2)}`} />
+                {/* One fact per line, the way every exchange lists a closed
+                    position — nothing to decode, nothing to add up. */}
+                <Row label="Strategy" value={STRATEGY_NAMES[trade.strategy] ?? trade.strategy} />
+                <Row label="Side" value={up(trade)} />
+                <Row label="Entry price" value={trim(trade.entry_price)} />
+                <Row label="Exit price" value={trade.exit_price ? trim(trade.exit_price) : '—'} />
+                <Row label="Price change" value={trade.exit_price ? `${movedBy(trade) > 0 ? '+' : ''}${movedBy(trade).toFixed(2)}%` : '—'} tone={movedBy(trade)} />
+                <Row label="Size" value={`${trim(trade.size)} ${trade.symbol}`} />
+                <Row label="Notional" value={`${notionalOf(trade).toFixed(2)} AUSD`} />
+                <Row label="Leverage" value={trade.leverage ? `${trim(trade.leverage)}x` : '—'} />
+                <Row label="Margin" value={trade.collateral ? `${Number(trade.collateral).toFixed(2)} AUSD` : '—'} />
+                <Row label="Stop" value={trade.stop_pnl ? `${money(Number(trade.stop_pnl))} AUSD` : 'off'} />
+                <Row label="Opened" value={when(trade.opened_at)} />
+                <Row label="Closed" value={trade.closed_at ? when(trade.closed_at) : '—'} />
+                <Row label="Duration" value={trade.closed_at ? duration(trade) : '—'} />
+                <Row label="Closed by" value={!trade.closed_at ? '—' : trade.close_reason === 'horizon' ? 'timer' : trade.close_reason === 'stop' ? 'stop' : 'you'} />
+                <Row label="Fees" value={`${(Number(trade.entry_fee) + Number(trade.exit_fee ?? 0)).toFixed(2)} AUSD`} />
+                <Row label="Realized PnL" value={trade.closed_at ? `${money(Number(trade.pnl ?? 0))} AUSD` : '—'} tone={trade.closed_at ? Number(trade.pnl ?? 0) : undefined} />
+                <Row
+                  label="Return on margin"
+                  value={trade.closed_at && trade.collateral && Number(trade.collateral) > 0 ? `${returnOn(trade) > 0 ? '+' : ''}${returnOn(trade).toFixed(1)}%` : '—'}
+                  tone={trade.closed_at ? returnOn(trade) : undefined}
+                />
               </Card>
             )}
-
-            {!asOrder && (trade.worst_pnl === undefined || trade.best_pnl === undefined) ? (
-              <Text variant="small" style={{ fontSize: theme.type.t2xs }} testID="trade-gap">
-                The worst and best moments are read while the position is open; this one closed before the platform watched for them.
-              </Text>
-            ) : null}
 
             <Text variant="small" style={{ fontSize: theme.type.t2xs }} testID="trade-orders">
               {`Order ids ${shortID(trade.open_order_id)}${trade.close_order_id ? `, ${shortID(trade.close_order_id)}` : ''} · filled at the exchange`}
@@ -124,7 +131,7 @@ export default function TradeScreen() {
 function TradeHead({ trade }: { trade: Trade }) {
   const theme = useTheme();
   const pnl = Number(trade.pnl ?? 0);
-  const onCollateral = trade.collateral && Number(trade.collateral) > 0 ? (pnl / Number(trade.collateral)) * 100 : null;
+  const onCollateral = trade.closed_at && trade.collateral && Number(trade.collateral) > 0 ? (pnl / Number(trade.collateral)) * 100 : null;
   return (
     <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: theme.space.s3 }}>
       <View style={{ flexShrink: 1 }}>
@@ -132,7 +139,9 @@ function TradeHead({ trade }: { trade: Trade }) {
           {`${STRATEGY_NAMES[trade.strategy] ?? trade.strategy} · ${up(trade)} · ${reason(trade)}`}
         </Text>
         <Text variant="hero" signOf={pnl} style={{ marginTop: theme.space.s2 }} testID="trade-pnl">{money(pnl)}</Text>
-        <Text variant="small" style={{ fontSize: theme.type.tSm }}>{`AUSD · ${span(trade)}`}</Text>
+        <Text variant="small" style={{ fontSize: theme.type.tSm }}>
+          {trade.closed_at ? `AUSD · ${when(trade.opened_at)} – ${when(trade.closed_at)}` : `AUSD · open since ${when(trade.opened_at)}`}
+        </Text>
       </View>
       {onCollateral !== null ? (
         <View style={{ alignItems: 'flex-end' }}>
@@ -167,29 +176,23 @@ function reason(t: Trade): string {
   return t.close_reason === 'horizon' ? 'by timer' : t.close_reason === 'stop' ? 'stopped' : 'you closed it';
 }
 
-/** How far the market went, in percent and in prices. */
-function moved(t: Trade): string {
-  if (!t.exit_price) return `${trim(t.entry_price)} → open`;
-  const by = movedBy(t);
-  return `${by > 0 ? '+' : ''}${by.toFixed(2)}% · ${trim(t.entry_price)} → ${trim(t.exit_price)}`;
-}
-
 function movedBy(t: Trade): number {
   if (!t.exit_price || Number(t.entry_price) === 0) return 0;
   return (Number(t.exit_price) / Number(t.entry_price) - 1) * 100;
 }
 
-/** What the position was made of, in the design's words. */
-function size(t: Trade): string {
-  const notional = t.notional ? Number(t.notional) : Number(t.size) * Number(t.entry_price);
-  const head = t.collateral && t.leverage ? `${Number(t.collateral).toFixed(2)} × ${trim(t.leverage)}x = ${notional.toFixed(2)}` : `${notional.toFixed(2)} AUSD`;
-  return `${head} · ${trim(t.size)} ${t.symbol}`;
+function notionalOf(t: Trade): number {
+  return t.notional ? Number(t.notional) : Number(t.size) * Number(t.entry_price);
 }
 
-function span(t: Trade): string {
-  if (!t.closed_at) return `open since ${when(t.opened_at)}`;
-  const minutes = Math.max(1, Math.round((new Date(t.closed_at).getTime() - new Date(t.opened_at).getTime()) / 60000));
-  return `${when(t.opened_at)} – ${when(t.closed_at)} · ${minutes} min`;
+function returnOn(t: Trade): number {
+  const margin = Number(t.collateral ?? 0);
+  return margin > 0 ? (Number(t.pnl ?? 0) / margin) * 100 : 0;
+}
+
+function duration(t: Trade): string {
+  const minutes = Math.max(1, Math.round((new Date(t.closed_at!).getTime() - new Date(t.opened_at).getTime()) / 60000));
+  return minutes >= 60 ? `${Math.floor(minutes / 60)} h ${minutes % 60} min` : `${minutes} min`;
 }
 
 function when(iso: string): string {

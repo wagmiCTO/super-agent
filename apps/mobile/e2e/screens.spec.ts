@@ -33,7 +33,6 @@ test('history, account and the invite link, on one account', async ({ page, cont
   await page.getByTestId('history-link').last().click({ force: true });
   await expect(page.getByTestId('history-title').last()).toHaveText('History', { timeout: 20_000 });
   await expect(page.getByTestId('history-empty').last()).toContainText('No trades yet', { timeout: 20_000 });
-  await expect(page.getByTestId('history-totals').last()).toContainText('0 trades');
   await toLobby(page);
 
   // --- One tap, so there is something to show.
@@ -62,7 +61,6 @@ test('history, account and the invite link, on one account', async ({ page, cont
   await page.getByTestId('history-link').last().click({ force: true });
   const position = page.getByTestId('trade-row').last();
   await expect(position).toContainText(/Direction · Up @ [\d.]+ → [\d.]+/, { timeout: 20_000 });
-  await expect(page.getByTestId('history-totals').last()).toContainText(/trade/);
 
   // The same round trip read as orders: both sides, each with its fee.
   await page.getByTestId('tab-orders').last().click();
@@ -75,8 +73,8 @@ test('history, account and the invite link, on one account', async ({ page, cont
   await position.click();
   await expect(page.getByTestId('trade-title').last()).toHaveText('Trade', { timeout: 20_000 });
   await expect(page.getByTestId('trade-what').last()).toContainText(/Direction · Up/);
-  await expect(page.getByTestId('trade-report').last()).toContainText(/Moved/);
-  await expect(page.getByTestId('trade-report').last()).toContainText(/Size/);
+  await expect(page.getByTestId('trade-report').last()).toContainText(/Entry price/);
+  await expect(page.getByTestId('trade-report').last()).toContainText(/Realized PnL/);
   await expect(page.getByTestId('trade-orders').last()).toContainText(/Order ids/);
   await page.getByTestId('history-link').last().click({ force: true });
   await expect(page.getByTestId('history-title').last()).toBeVisible();

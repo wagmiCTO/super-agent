@@ -688,7 +688,7 @@ paths:
       summary: One board, one page at a time
       description: >-
         The board for a strategy, or for every strategy at once, ordered by
-        result. `players` is how many wallets are on the board altogether —
+        volume traded. `players` is how many wallets are on the board altogether —
         on the combined board a wallet counts once, however many strategies
         it played.
       parameters:
@@ -954,6 +954,14 @@ components:
           type: integer
           description: Wallets on this board altogether, not on this page.
         next_offset: { type: integer, description: Where the next page starts; absent on the last. }
+        you:
+          description: The asking wallet's own line and rank, whatever page it is on; absent without a wallet or when it never traded this board.
+          allOf:
+            - $ref: "#/components/schemas/Standing"
+            - type: object
+              required: [rank]
+              properties:
+                rank: { type: integer }
 
     Standing:
       type: object
@@ -962,6 +970,9 @@ components:
         wallet: { type: string }
         pnl: { $ref: "#/components/schemas/Decimal" }
         trades: { type: integer }
+        volume:
+          allOf: [{ $ref: "#/components/schemas/Decimal" }]
+          description: What the wallet opened, in collateral units. The board is ordered by it.
 
     Prize:
       type: object

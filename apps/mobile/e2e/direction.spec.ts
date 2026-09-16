@@ -39,7 +39,9 @@ test.describe('Direction screen', () => {
     // The standard position, on the screen, before anything is pressed.
     await expect(page.getByTestId('settings-chip')).toContainText('AUSD');
     await expect(page.getByTestId('settings-chip')).toContainText(/At risk/i);
-    await expect(page.getByText(/^Up to \d+ per position · /)).toBeVisible();
+    // The limits line is gone from under the history, as the design has it:
+    // the limits are the risk screen's to show.
+    await expect(page.getByText(/^Up to \d+ per position · /)).toHaveCount(0);
   });
 
   test('shows what the crowd on-chain is doing with the asset', async ({ page }) => {

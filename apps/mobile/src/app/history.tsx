@@ -8,19 +8,18 @@
  * changes. Either one opens the card that reports it.
  *
  * Paged: the list only grows, so it arrives a screen at a time and the next
- * page is asked for as the bottom comes into view. The two totals above it
- * come from the risk report rather than from the rows on screen — a total
- * of the first page is not a total.
+ * page is asked for as the bottom comes into view. No totals above it: the
+ * risk screen has the week and the all-time figures, and a total of the
+ * first page is not a total.
  */
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 
 import { useAccount } from '@/account/useAccount';
-import { api, ApiError, type Perf, type Trade } from '@/api/client';
+import { api, ApiError, type Trade } from '@/api/client';
 import { trim } from '@/components/format';
 import { STRATEGY_NAMES } from '@/config';
-import { useRiskReport } from '@/trading/useRiskReport';
 import { Bone, FadeIn } from '@/ui/anim';
 import { back } from '@/ui/stub';
 import { Card, Chip, Screen } from '@/ui/surface';
@@ -44,7 +43,6 @@ export default function HistoryScreen() {
   const [tab, setTab] = useState<Tab>('positions');
   const [filter, setFilter] = useState('all');
   const { trades, problem, more, loading } = useHistory(knows, filter);
-  const report = useRiskReport(knows);
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
@@ -80,11 +78,6 @@ export default function HistoryScreen() {
           <Loading problem={problem} />
         ) : (
           <FadeIn style={{ gap: theme.space.s4 }}>
-            <Card style={{ gap: theme.space.s2 }} testID="history-totals">
-              <Totals label="This week" perf={report?.totals.week} withFees={false} />
-              <Totals label="All time" perf={report?.totals.all} withFees />
-            </Card>
-
             {trades.length === 0 ? (
               <Card testID="history-empty">
                 <Text variant="bodyStrong">No trades yet</Text>
@@ -114,20 +107,6 @@ export default function HistoryScreen() {
         )}
       </ScrollView>
     </Screen>
-  );
-}
-
-/** What the wallet did over a stretch, in one line. */
-function Totals({ label, perf, withFees }: { label: string; perf?: Perf; withFees: boolean }) {
-  const theme = useTheme();
-  const value = perf
-    ? `${perf.trades} ${perf.trades === 1 ? 'trade' : 'trades'} · ${money(Number(perf.pnl))} · ${withFees ? `fees ${Number(perf.fees).toFixed(2)}` : `${perf.wins} won`}`
-    : '…';
-  return (
-    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: theme.space.s3 }}>
-      <Text variant="small" numberOfLines={1} style={{ color: theme.color.body }}>{label}</Text>
-      <Text variant="num" numberOfLines={1} style={{ flexShrink: 1, fontSize: theme.type.tXs }}>{value}</Text>
-    </View>
   );
 }
 

@@ -137,16 +137,25 @@ function Dial({ report }: { report: RiskReport | null }) {
 
   return (
     <>
-      {/* The prototype's box: a little taller than the drawing, with the two
-          words at the screen's edges rather than on the arc's ends. */}
-      <View style={{ height: 138, alignItems: 'center', justifyContent: 'flex-end' }} testID="risk-gauge">
+      {/* The drawing carries its own words now; the box is just centred. */}
+      <View style={{ alignItems: 'center' }} testID="risk-gauge">
         <RiskGauge percent={reading?.percent ?? null} />
-        <Text variant="small" style={{ position: 'absolute', bottom: 0, left: 0, fontSize: theme.type.t2xs }}>calm</Text>
-        <Text variant="small" style={{ position: 'absolute', bottom: 0, right: 0, fontSize: theme.type.t2xs }}>hot</Text>
       </View>
       {reading ? (
-        <FadeIn style={{ alignItems: 'center', gap: 2 }}>
-          <Text variant="h1" testID="risk-level">{riskLevel(reading.percent)}</Text>
+        <FadeIn style={{ alignItems: 'center', gap: theme.space.s1, marginTop: -theme.space.s2 }}>
+          {/* The word is the reading. Larger than a screen title, coloured
+              like the dial in the lobby, so it is read before anything else. */}
+          <Text
+            variant="h1"
+            testID="risk-level"
+            style={{
+              fontSize: theme.type.t3xl,
+              lineHeight: theme.type.t3xl * 1.1,
+              color: reading.percent < 34 ? theme.color.riskCalm : reading.percent < 67 ? theme.color.riskWarm : theme.color.riskHot,
+            }}
+          >
+            {riskLevel(reading.percent)}
+          </Text>
           <Text variant="body" style={{ fontSize: theme.type.tSm, color: theme.color.body, textAlign: 'center' }} testID="risk-sub">{reading.sub}</Text>
         </FadeIn>
       ) : (
@@ -239,6 +248,9 @@ function Body({ report, trades, leverage, refresh }: { report: RiskReport; trade
         />
         <Text variant="small" style={{ fontSize: theme.type.t2xs }}>
           {`${lost.toFixed(2)} lost · ${Math.min(atStake, left).toFixed(2)} at stake now · ${left.toFixed(2)} left. At ${budget.toFixed(0)} the day closes itself.`}
+        </Text>
+        <Text variant="small" style={{ fontSize: theme.type.t2xs }} testID="risk-resets">
+          {`The budget starts over at ${localClock(report.limits.day_resets_at)} your time.`}
         </Text>
       </View>
 
@@ -379,6 +391,12 @@ function HourBars({ hours, hour }: { hours: number[]; hour: number }) {
       })}
     </View>
   );
+}
+
+/** A moment, as a clock where the reader is: the platform's day ends at midnight UTC, which is not midnight here. */
+function localClock(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? 'midnight UTC' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 /** One open position: the strategy and side, what it is, what it is at. */

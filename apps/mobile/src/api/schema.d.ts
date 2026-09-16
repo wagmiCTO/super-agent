@@ -1444,7 +1444,7 @@ export interface paths {
         };
         /**
          * One board, one page at a time
-         * @description The board for a strategy, or for every strategy at once, ordered by result. `players` is how many wallets are on the board altogether — on the combined board a wallet counts once, however many strategies it played.
+         * @description The board for a strategy, or for every strategy at once, ordered by volume traded. `players` is how many wallets are on the board altogether — on the combined board a wallet counts once, however many strategies it played.
          */
         get: {
             parameters: {
@@ -1721,11 +1721,17 @@ export interface components {
             players: number;
             /** @description Where the next page starts; absent on the last. */
             next_offset?: number;
+            /** @description The asking wallet's own line and rank, whatever page it is on; absent without a wallet or when it never traded this board. */
+            you?: components["schemas"]["Standing"] & {
+                rank: number;
+            };
         };
         Standing: {
             wallet: string;
             pnl: components["schemas"]["Decimal"];
             trades: number;
+            /** @description What the wallet opened, in collateral units. The board is ordered by it. */
+            volume?: components["schemas"]["Decimal"];
         };
         /** @description The on-chain weekly prize pool (StrategyPrizePool), when configured. */
         Prize: {
