@@ -34,6 +34,7 @@ export type PrizeHistory = components['schemas']['PrizeHistory'];
 export type RiskReport = components['schemas']['RiskReport'];
 export type LimitsBlock = components['schemas']['LimitsBlock'];
 export type LimitTier = components['schemas']['LimitTier'];
+export type Referral = components['schemas']['Referral'];
 
 /** Stable machine codes the server returns. Policy reasons come first. */
 export type ErrorCode =
@@ -58,6 +59,8 @@ export type ErrorCode =
   | 'context_unavailable'
   | 'deposit_unavailable'
   | 'history_unavailable'
+  | 'referrals_unavailable'
+  | 'no_such_code'
   | 'own_account_disabled'
   | 'partner_error'
   | 'internal'
@@ -198,6 +201,11 @@ export const api = {
     request<DepositQuote>('/v1/deposit/quote', { method: 'POST', body: JSON.stringify(body) }),
   prizeHistory: () => request<PrizeHistory>('/v1/prizes/history?limit=12'),
   risk: () => request<RiskReport>('/v1/risk'),
+  /** This wallet's invite: its code, its friends and what they earned it. */
+  referral: () => request<Referral>('/v1/referral'),
+  /** Attributes this wallet to whoever owns the code. Once, for good. */
+  claimReferral: (code: string) =>
+    request<{ attributed: boolean; referred_by?: string }>('/v1/referral/claim', { method: 'POST', body: JSON.stringify({ code }) }),
   limits: () => request<LimitsBlock>('/v1/limits'),
   setLimits: (tier: LimitTier) => request<LimitsBlock>('/v1/limits', { method: 'PUT', body: JSON.stringify(tier) }),
   closeAll: () =>

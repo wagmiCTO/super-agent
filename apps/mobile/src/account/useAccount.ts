@@ -14,8 +14,9 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { setAccountAddress, setRequestSigner } from '@/api/client';
+import { api, ApiError, setAccountAddress, setRequestSigner } from '@/api/client';
 import { registerAuthKey } from '@/exchange/enroll';
+import { clearPendingInvite, pendingInvite } from '@/invite/pending';
 import { KeyFamily, prfOutputToSeed, type Wallet } from './derive';
 import { toHex } from './hex';
 import { createPasskey, signInWithPasskey } from './passkey';
@@ -45,7 +46,9 @@ export function useAccount() {
     setAccountAddress(family.wallet.address);
     // Registration is silent and idempotent; a failure only means requests
     // stay routed by address, which the platform still serves.
-    registerAuthKey(family).catch((e) => console.warn('request-signing key not registered', e));
+    registerAuthKey(family)
+      .then(claimPendingInvite)
+      .catch((e) => console.warn('request-signing key not registered', e));
   }, []);
 
   const drop = useCallback(() => {
@@ -132,4 +135,26 @@ function describePasskeyError(e: unknown): string {
   if (/NotAllowedError|cancel|abort/i.test(msg)) return 'Passkey prompt was cancelled';
   if (/PRF|prf/.test(msg)) return 'This passkey provider does not support PRF. On desktop Chrome, save passkeys to Google Password Manager or use iCloud Keychain / 1Password.';
   return msg;
+}
+
+/**
+ * The invite this device arrived on, claimed now that there is a wallet.
+ *
+ * After the registration, because the claim names the wallet and the
+ * platform answers a wallet only on a signed request. Silent either way:
+ * an invite that cannot be claimed is not worth a screen, and the code is
+ * kept until one is — a friend who signs in before the platform is up
+ * still gets attributed on the next visit.
+ */
+async function claimPendingInvite(): Promise<void> {
+  const code = await pendingInvite();
+  if (!code) return;
+  try {
+    await api.claimReferral(code);
+    await clearPendingInvite();
+  } catch (e) {
+    // A code nobody owns is never going to be claimed: drop it rather than
+    // asking the platform about it on every unlock.
+    if (e instanceof ApiError && e.code === 'no_such_code') await clearPendingInvite();
+  }
 }

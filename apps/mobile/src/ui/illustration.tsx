@@ -10,12 +10,12 @@ import { View } from 'react-native';
 import Svg, { Circle, G, Line, Path, Rect, Text as SvgText } from 'react-native-svg';
 
 import { BARS, scale, type Bar } from '@/ui/series';
-import { useTheme, type Theme } from '@/theme';
+import { face, useTheme, type Theme } from '@/theme';
 
 const W = 320;
 const H = 200;
 
-function Frame({ children, height = 250 }: { children: React.ReactNode; height?: number }) {
+function Frame({ children, height = 250, viewBox, fit }: { children: React.ReactNode; height?: number; viewBox?: string; fit?: boolean }) {
   const theme = useTheme();
   return (
     <View
@@ -28,7 +28,7 @@ function Frame({ children, height = 250 }: { children: React.ReactNode; height?:
         overflow: 'hidden',
       }}
     >
-      <Svg width="100%" height="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+      <Svg width="100%" height="100%" viewBox={viewBox ?? `0 0 ${W} ${H}`} preserveAspectRatio={fit ? 'xMidYMid meet' : 'none'}>
         {children}
       </Svg>
     </View>
@@ -169,6 +169,39 @@ export function DisciplineScene() {
       <Rect x={10} y={172} width={300} height={20} fill={theme.color.down} opacity={0.1} />
       <SvgText x={16} y={186} fontSize={11} fill={theme.color.down}>
         stop · the floor you set
+      </SvgText>
+    </Frame>
+  );
+}
+
+/**
+ * The invite, drawn: you, your friend, the link between you and what comes
+ * back along it. The share is written on the arrow because it is the whole
+ * offer — a referral screen that makes you read for it is a referral screen
+ * nobody shares.
+ */
+export function ReferralScene({ sharePct }: { sharePct: number }) {
+  const theme = useTheme();
+  return (
+    <Frame height={150} viewBox="16 40 292 116" fit>
+      <Rect x={26} y={52} width={92} height={76} rx={16} fill={theme.color.accent} />
+      <Circle cx={72} cy={80} r={13} fill={theme.color.onAccent} />
+      <Rect x={52} y={100} width={40} height={7} rx={3.5} fill={theme.color.onAccent} opacity={0.8} />
+      <SvgText x={72} y={142} fontSize={12} textAnchor="middle" fontFamily={face(theme, 'num', 400)} fill={theme.color.muted}>you</SvgText>
+
+      <Rect x={202} y={52} width={92} height={76} rx={16} fill={theme.color.soft} stroke={theme.color.hair} strokeWidth={2} />
+      <Circle cx={248} cy={80} r={13} fill={theme.color.dim} opacity={0.55} />
+      <Rect x={228} y={100} width={40} height={7} rx={3.5} fill={theme.color.dim} opacity={0.4} />
+      <SvgText x={248} y={142} fontSize={12} textAnchor="middle" fontFamily={face(theme, 'num', 400)} fill={theme.color.muted}>your friend</SvgText>
+
+      <Path d="M124 74h64" fill="none" stroke={theme.color.ink} strokeWidth={2.5} strokeLinecap="round" />
+      <Path d="M182 68l8 6-8 6" fill="none" stroke={theme.color.ink} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+      <SvgText x={156} y={62} fontSize={11} textAnchor="middle" fontFamily={face(theme, 'num', 400)} fill={theme.color.muted}>your link</SvgText>
+
+      <Path d="M188 104h-64" fill="none" stroke={theme.color.up} strokeWidth={3} strokeLinecap="round" />
+      <Path d="M130 98l-8 6 8 6" fill="none" stroke={theme.color.up} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+      <SvgText x={156} y={124} fontSize={12} textAnchor="middle" fontFamily={face(theme, 'num', 700)} fill={theme.color.up}>
+        {`${sharePct}% of fees`}
       </SvgText>
     </Frame>
   );
