@@ -11,14 +11,14 @@ field_selection:
 disable_default_cross_chain: true
 chains:
 - id: 10143
-  start_block: 61410716
+  start_block: 63267538
   rpc:
     - url: https://testnet-rpc.monad.xyz
       for: sync
   contracts:
   - name: StrategyPrizePool
     address:
-    - "0x19952068Ce2D25C672d71cD48775A9f43438f4E6"
+    - "0x1cC7f88b21E0158e70323aad98Dea4dC20b380aC"
     events:
       # Only what the leaderboard and dashboard read; ownership and settler
       # changes are admin events and not indexed.

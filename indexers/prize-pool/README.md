@@ -1,7 +1,7 @@
 # prize-pool — Envio HyperIndex for TradeAgent's weekly prizes
 
 Indexes `StrategyPrizePool` on Monad testnet (chain 10143, contract
-`0x19952068Ce2D25C672d71cD48775A9f43438f4E6`, from block 61410716) into
+`0x1cC7f88b21E0158e70323aad98Dea4dC20b380aC`, from block 63267538) into
 what a leaderboard or a dashboard reads:
 
 - `Pool` — one row per (week, strategy): funded total, number of fundings,
