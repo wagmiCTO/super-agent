@@ -15,6 +15,7 @@ import { ScrollView, Share, View } from 'react-native';
 
 import { useAccount } from '@/account/useAccount';
 import { api, ApiError, type Referral } from '@/api/client';
+import { WEB_URL } from '@/config';
 import { shortAddress } from '@/components/prizes';
 import { Bone, FadeIn } from '@/ui/anim';
 import { Button } from '@/ui/button';
@@ -34,18 +35,24 @@ export default function InviteScreen() {
   const { invite, problem } = useInvite(knows);
   const [notice, setNotice] = useState<string | null>(null);
   const share = Math.round(invite?.share_pct ?? 30);
+  // The link is this build's own address with the platform's code on it: the
+  // platform names one site, and a link from a preview or a laptop that sent
+  // people to the production one would attribute them to nothing they could
+  // see. The platform's own link stays the fallback, for clients with no
+  // origin of their own.
+  const link = invite ? (WEB_URL ? `${WEB_URL}/i/${invite.code}` : invite.link) : '';
   const earns = Number(invite?.fee_bps ?? 0) > 0;
 
   const take = async () => {
     if (!invite) return;
-    const what = await copy(invite.link);
+    const what = await copy(link);
     setNotice(what === 'failed' ? 'Could not copy' : what === 'copied' ? 'Link copied' : 'Shared');
   };
 
   const sheet = async () => {
     if (!invite) return;
     try {
-      await Share.share({ message: `Trade with me on TradeAgent: ${invite.link}` });
+      await Share.share({ message: `Trade with me on TradeAgent: ${link}` });
     } catch {
       await take();
     }
@@ -84,7 +91,7 @@ export default function InviteScreen() {
             <Card style={{ gap: theme.space.s2 }} testID="invite-link-card">
               <Text variant="small" style={{ fontSize: theme.type.t2xs }}>Your link</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.s3 }}>
-                <Text variant="num" numberOfLines={1} style={{ flexShrink: 1 }} testID="invite-link">{plain(invite.link)}</Text>
+                <Text variant="num" numberOfLines={1} style={{ flexShrink: 1 }} testID="invite-link">{plain(link)}</Text>
                 <Chip label={notice ?? 'Copy'} small onPress={() => void take()} testID="invite-copy" />
               </View>
             </Card>

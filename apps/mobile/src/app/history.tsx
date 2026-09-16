@@ -134,7 +134,7 @@ function PositionRow({ t }: { t: Trade }) {
   const pnl = Number(t.pnl ?? 0);
   return (
     <View
-      testID="history-position"
+      testID="trade-row"
       style={{
         flexDirection: 'row',
         alignItems: 'center',
@@ -175,7 +175,7 @@ function OrderRow({ title, note }: { title: string; note: string }) {
   const theme = useTheme();
   return (
     <View
-      testID="history-order"
+      testID="order-row"
       style={{
         flexDirection: 'row',
         alignItems: 'center',
