@@ -24,11 +24,14 @@ import { Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
 
 import { api, type Position, type State, type Trade } from '@/api/client';
 import { INTERVALS, INTERVAL_LABELS, type ChartPosition, type ChartTick, type Interval } from '@/chart/page';
+import { Pager, slice } from '@/ui/pager';
+import { ConfirmSheet } from '@/ui/sheet';
+import { useRiskReport } from '@/trading/useRiskReport';
 import { trim } from '@/components/format';
 import { TVChart } from '@/components/TVChart';
 import { STRATEGY_NAMES, SYMBOLS } from '@/config';
 import { ContextPanel } from '@/strategy/context';
-import { riskPercent } from '@/strategy/risk';
+import { riskPercent, riskPercentOf } from '@/strategy/risk';
 import { useSignal, type StrategyId } from '@/strategy/useSignal';
 import { SettingsChip } from '@/trading/position-form';
 import { shareTrade } from '@/trading/share';
@@ -52,6 +55,9 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
   const { height } = useWindowDimensions();
 
   const [symbol, chooseSymbol] = useSymbol(id);
+  // The screen this tap was made on keeps its market while the position
+  // runs, whatever the trades list says in the meantime.
+  const [tappedHere, setTappedHere] = useState(false);
   const t = useTrading(symbol, id);
   const signal = useSignal(id, symbol);
   const { settings } = usePositionSettings();
@@ -60,14 +66,22 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
   // strategy's position is not on offer here. This strategy's own position
   // is the one whose opening trade is in its own list.
   const allowed = t.state?.limits.allowed_symbols ?? null;
-  const offered = SYMBOLS.filter((s) => !allowed || allowed.includes(s));
+  // The majors first, in the order the design names them, then whatever
+  // else the venue lists, so a new market shows up without a release.
+  const offered = allowed ? [...SYMBOLS.filter((s) => allowed.includes(s)), ...allowed.filter((s) => !(SYMBOLS as readonly string[]).includes(s)).sort()] : [...SYMBOLS];
   const held = new Set((t.state?.positions ?? []).map((p) => p.symbol));
-  const ownsHere = t.trades.some((tr) => !tr.closed_at && tr.symbol === symbol);
+  // A market's position is this strategy's when its opening trade is in
+  // this strategy's list, or when it was opened from this screen just now
+  // and the list has not caught up.
+  const ownsHere = tappedHere || t.trades.some((tr) => !tr.closed_at && tr.symbol === symbol);
   const busy = (s: string) => held.has(s) && !(s === symbol && ownsHere);
   // Landed on a market another strategy is in: move to the first free one
-  // rather than show its position as this strategy's.
+  // rather than show its position as this strategy's. Only once the trades
+  // list has answered, and never for a position younger than the list.
   useEffect(() => {
-    if (!t.state || !busy(symbol)) return;
+    if (!t.state || !t.position || ownsHere) return;
+    const age = t.position.opened_at ? Date.now() - new Date(t.position.opened_at).getTime() : Infinity;
+    if (age < 60_000) return;
     const free = offered.find((s) => !busy(s));
     if (free && free !== symbol) chooseSymbol(free);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -79,7 +93,8 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
   // number for every market, and the venue refuses a leverage it does not offer.
   const marketMax = t.market ? Number(t.market.max_leverage) : 0;
   const leverage = marketMax > 0 ? Math.min(settings.leverage, marketMax) : settings.leverage;
-  const tap = (side: 'up' | 'down') =>
+  const open = (side: 'up' | 'down') => {
+    setTappedHere(true);
     void t.open(
       side === 'up' ? 'long' : 'short',
       String(settings.size),
@@ -88,6 +103,13 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
       String(leverage),
       takeProfitFraction(settings),
     );
+  };
+  // A signal strategy with nothing lit does not refuse the tap; it asks.
+  const [asking, setAsking] = useState<'up' | 'down' | null>(null);
+  const tap = (side: 'up' | 'down') => {
+    if (!armed && lit === null) setAsking(side);
+    else open(side);
+  };
 
   // When the position ends — by the tap below, or by the timer, the stop or
   // the target while this screen is up — the screen becomes the result. The
@@ -136,16 +158,15 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
         <View style={{ minHeight: fold, paddingTop: TOP, gap: theme.space.s4 }}>
           <Header id={id} state={t.state} offline={t.offline} locked={t.locked} symbol={t.position ? symbol : null} />
 
-          {/* Which market. Hidden while a position runs: the screen is that position. */}
-          {t.position ? null : (
-            <View style={{ flexDirection: 'row', gap: theme.space.s1 }} testID="symbol-picker">
-              {offered.map((s) => (
-                <Chip key={s} label={s} small on={s === symbol} disabled={busy(s)} onPress={() => chooseSymbol(s)} testID={`symbol-${s}`} />
-              ))}
-            </View>
-          )}
-
-          <ChartBox id={id} symbol={symbol} lit={lit !== null} trades={t.trades} position={t.position} signal={signal} />
+          <ChartBox
+            id={id}
+            symbol={symbol}
+            markets={t.position ? null : { offered, busy, choose: chooseSymbol }}
+            lit={lit !== null}
+            trades={t.trades}
+            position={t.position}
+            signal={signal}
+          />
 
           {t.position ? null : <Says id={id} symbol={symbol} signal={signal} />}
 
@@ -187,6 +208,21 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
               <SettingsChip onPress={() => router.push('/settings')} maxLeverage={marketMax} />
             </View>
           )}
+
+          <ConfirmSheet
+            open={asking !== null}
+            title="No signal right now"
+            body={`${STRATEGY_NAMES[id] ?? 'The strategy'} has not named a side. You can still open ${asking === 'up' ? 'Up' : 'Down'} on ${symbol} — it is your call, not the signal's.`}
+            confirm={`Open ${asking === 'up' ? 'Up' : 'Down'} anyway`}
+            cancel="Wait for the signal"
+            onConfirm={() => {
+              const side = asking;
+              setAsking(null);
+              if (side) open(side);
+            }}
+            onCancel={() => setAsking(null)}
+            testID="no-signal"
+          />
         </View>
 
         <View style={{ paddingTop: theme.space.s4, gap: theme.space.s4 }}>
@@ -201,6 +237,10 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
 /** ‹ Lobby · the strategy · where the money is · the day's risk · the lesson. */
 function Header({ id, state, offline, locked, symbol }: { id: StrategyId; state: State | null; offline: boolean; locked: boolean; symbol: string | null }) {
   const theme = useTheme();
+  // The dial is the wallet's, not this strategy's: a strategy the wallet
+  // has no key for has no state, and its dial must not read calm for it.
+  const report = useRiskReport(true);
+  const percent = riskPercentOf(report) ?? riskPercent(state);
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s3 }}>
       {/* The way back never shrinks; the title gives way instead, as the design has it. */}
@@ -215,7 +255,7 @@ function Header({ id, state, offline, locked, symbol }: { id: StrategyId; state:
       <Badge>{offline ? 'OFFLINE' : locked ? 'SIGN IN' : 'TESTNET'}</Badge>
       <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: theme.space.s2 }}>
         <Pressable onPress={() => router.push('/risk')} testID="risk-dial" accessibilityRole="button" accessibilityLabel="Risk and performance">
-          <RiskDial percent={riskPercent(state)} />
+          <RiskDial percent={percent} />
         </Pressable>
         <Pressable
           testID="lesson-link"
@@ -244,8 +284,11 @@ function Header({ id, state, offline, locked, symbol }: { id: StrategyId; state:
  * honour: the bar size, and candles or a line. It fills whatever the fold
  * leaves after the keys and the header, and never less than a readable pane.
  */
-function ChartBox({ id, symbol, lit, trades, position, signal }: { id: StrategyId; symbol: string; lit: boolean; trades: Trade[]; position: Position | null; signal: ReturnType<typeof useSignal> }) {
+type Markets = { offered: string[]; busy: (s: string) => boolean; choose: (s: string) => void };
+
+function ChartBox({ id, symbol, markets, lit, trades, position, signal }: { id: StrategyId; symbol: string; markets: Markets | null; lit: boolean; trades: Trade[]; position: Position | null; signal: ReturnType<typeof useSignal> }) {
   const theme = useTheme();
+  const [picking, setPicking] = useState(false);
   const averages = id === 'ma-cross' ? signal?.averages ?? { fast: 5, slow: 20, trend: 'flat' as const, lastCross: null } : null;
   const { name } = useThemeControls();
   const [line, setLine] = useState(false);
@@ -294,8 +337,10 @@ function ChartBox({ id, symbol, lit, trades, position, signal }: { id: StrategyI
         onTick={setTick}
       />
 
-      {/* Top-left: the price, and how the day has treated it. */}
-      <View pointerEvents="none" style={{ position: 'absolute', top: 12, left: 14 }}>
+      {/* Top-left: the price, and how the day has treated it. The market's
+          name is the way to the others: it opens the list on the pane, where
+          the timeframes are, rather than taking a row of its own. */}
+      <View style={{ position: 'absolute', top: 12, left: 14 }}>
         <Text
           variant="num"
           testID="chart-price"
@@ -303,10 +348,61 @@ function ChartBox({ id, symbol, lit, trades, position, signal }: { id: StrategyI
         >
           {tick ? trim(tick.price) : ' '}
         </Text>
-        <Text variant="small" style={{ fontSize: theme.type.tXs }}>
-          {tick?.change === null || tick?.change === undefined ? symbol : `${symbol} · ${money(tick.change, 1)}% today`}
-        </Text>
+        <Pressable
+          testID="symbol-picker"
+          accessibilityRole="button"
+          accessibilityLabel="Choose the market"
+          disabled={!markets}
+          onPress={() => setPicking((v) => !v)}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+        >
+          <Text variant="small" style={{ fontSize: theme.type.tXs, color: markets ? theme.color.ink : theme.color.muted }}>
+            {`${symbol}${markets ? ' ▾' : ''}`}
+          </Text>
+          <Text variant="small" style={{ fontSize: theme.type.tXs }}>
+            {tick?.change === null || tick?.change === undefined ? '' : `· ${money(tick.change, 1)}% today`}
+          </Text>
+        </Pressable>
+        {markets && picking ? (
+          <View
+            testID="symbol-menu"
+            style={{ marginTop: 6, padding: 4, borderRadius: theme.radius.rMd, gap: 2, minWidth: 96, ...glass, ...(theme.shadow.lift ? { boxShadow: theme.shadow.lift } : null) }}
+          >
+            {markets.offered.map((s) => {
+              const off = markets.busy(s);
+              return (
+                <Pressable
+                  key={s}
+                  testID={`symbol-${s}`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: s === symbol, disabled: off }}
+                  disabled={off}
+                  onPress={() => {
+                    markets.choose(s);
+                    setPicking(false);
+                  }}
+                  style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: theme.radius.rSm, backgroundColor: s === symbol ? theme.color.accent : 'transparent', opacity: off ? 0.4 : 1 }}
+                >
+                  <Text style={{ fontFamily: face(theme, 'display', 600), fontSize: theme.type.tSm, color: s === symbol ? theme.color.onAccent : theme.color.body }}>
+                    {off ? `${s} · in play` : s}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
       </View>
+
+      {/* Bottom-left, RSI only: what the lower pane is. */}
+      {id === 'rsi' ? (
+        <View
+          pointerEvents="none"
+          testID="chart-legend"
+          style={{ position: 'absolute', bottom: 36, left: 10, paddingVertical: 3, paddingHorizontal: 8, borderRadius: theme.radius.rSm, ...glass }}
+        >
+          <Text variant="small" style={{ fontSize: theme.type.tXs, lineHeight: theme.type.tXs * 1.3 }}>{`RSI 14 · 1m${signal?.last ? ` · ${signal.last}` : ''}`}</Text>
+        </View>
+      ) : null}
 
       {/* Bottom-left, MA Cross only: which lines these are, and what they say. */}
       {averages ? (
@@ -572,27 +668,46 @@ function stopAgainst(p: Position): number {
 }
 
 /** This strategy's own round trips, and the fills behind them. */
+const CARD_ROWS = 5;
+
 function HistoryCard({ id, trades }: { id: StrategyId; trades: Trade[] }) {
   const theme = useTheme();
   const [tab, setTab] = useState<'positions' | 'orders'>('positions');
-  const rows = trades.slice(0, 3);
+  const [page, setPage] = useState(1);
+  // Five rows of whichever tab, and the way to the next five. The orders
+  // tab has two rows per closed round trip, so it is cut after flattening.
+  const positions = trades;
+  const orders = trades.flatMap((t) => orderRows(t));
+  const pages = Math.max(1, Math.ceil((tab === 'positions' ? positions.length : orders.length) / CARD_ROWS));
+  const at = Math.min(page, pages);
+  const rows = slice(positions, at, CARD_ROWS);
+  const orderPage = slice(orders, at, CARD_ROWS);
+  const pick = (next: typeof tab) => {
+    setTab(next);
+    setPage(1);
+  };
 
   return (
     <Card testID="history" style={{ gap: theme.space.s2 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s2 }}>
-        <Chip label="Positions" on={tab === 'positions'} onPress={() => setTab('positions')} testID="history-positions" />
-        <Chip label="Orders" on={tab === 'orders'} onPress={() => setTab('orders')} testID="history-orders" />
+        <Chip label="Positions" on={tab === 'positions'} onPress={() => pick('positions')} testID="history-positions" />
+        <Chip label="Orders" on={tab === 'orders'} onPress={() => pick('orders')} testID="history-orders" />
         <Pressable testID="history-all" accessibilityRole="link" onPress={() => router.push('/history')} style={{ marginLeft: 'auto', paddingVertical: theme.space.s1 }}>
           <Text variant="small">All history ›</Text>
         </Pressable>
       </View>
-      {rows.length === 0 ? (
+      {trades.length === 0 ? (
         <Text variant="small" style={{ paddingVertical: 8 }}>{`No trades yet in ${STRATEGY_NAMES[id] ?? 'Direction'}.`}</Text>
       ) : tab === 'positions' ? (
         rows.map((t) => <TradeRow key={t.opened_at} trade={t} strategy={id} />)
       ) : (
-        rows.flatMap((t) => orderRows(t)).map((o) => <OrderRow key={o.key} title={o.title} sub={o.sub} to={o.to} />)
+        orderPage.map((o) => <OrderRow key={o.key} title={o.title} sub={o.sub} to={o.to} />)
       )}
+      {pages > 1 ? (
+        <View style={{ paddingTop: theme.space.s2 }}>
+          <Pager page={at} pages={pages} hasNext={at < pages} onPrev={() => setPage(at - 1)} onNext={() => setPage(at + 1)} testID="card-pager" />
+        </View>
+      ) : null}
     </Card>
   );
 }

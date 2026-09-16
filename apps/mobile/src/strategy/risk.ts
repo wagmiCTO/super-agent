@@ -10,7 +10,7 @@
  * of its own.
  */
 
-import type { State } from '@/api/client';
+import type { RiskReport, State } from '@/api/client';
 
 export function riskPercent(state: State | null): number {
   if (!state) return 0;
@@ -25,6 +25,21 @@ export function riskPercent(state: State | null): number {
   }, 0);
 
   const spent = Math.abs(Number(state.risk.daily_loss)) || 0;
+  return Math.min(100, Math.round(((atStake + spent) / budget) * 100));
+}
+
+/**
+ * The same number from the wallet-wide report, for screens whose own state
+ * is not the whole wallet's — a strategy the wallet has no key for has no
+ * state at all, and a dial that reads 0 there while it reads 60 in the
+ * lobby is two dials. Null while the report has not arrived.
+ */
+export function riskPercentOf(report: RiskReport | null): number | null {
+  if (!report) return null;
+  const budget = report.strategies.map((s) => Number(s.limits?.daily_loss ?? 0)).find((b) => Number.isFinite(b) && b > 0);
+  if (!budget) return 0;
+  const atStake = Number(report.totals.at_risk) || 0;
+  const spent = Math.abs(Number(report.totals.daily_loss)) || 0;
   return Math.min(100, Math.round(((atStake + spent) / budget) * 100));
 }
 

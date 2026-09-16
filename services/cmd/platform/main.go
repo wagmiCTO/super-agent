@@ -84,6 +84,15 @@ func run(log *slog.Logger) error {
 	}
 	defer adapter.Close()
 
+	// The markets follow the venue's list (ADR 0003's open question, settled):
+	// every market it publishes unless PLATFORM_ALLOWED_SYMBOLS narrows it.
+	markets := platform.NewMarketSync(adapter, nil, nil, limits.AllowedSymbols, log)
+	markets.Sync(ctx)
+	limits.AllowedSymbols = markets.Allowed()
+	if err := limits.Validate(); err != nil {
+		return fmt.Errorf("after reading the venue's markets: %w", err)
+	}
+
 	ownKey := adapter.WalletAddress()
 	if ownKey == "" {
 		ownKey = "platform"
@@ -160,11 +169,14 @@ func run(log *slog.Logger) error {
 	// The platform's own account trades under the same tiers as a wallet.
 	own := svc
 	svc.UseLimits(func(ctx context.Context, balance, lossToday fixed.D) policy.Limits {
-		return platform.ComputeLimits(limits, platform.SafeTier, balance, lossToday, ownMaxLeverage(ctx, own, limits))
+		l := limits
+		l.AllowedSymbols = markets.Allowed()
+		return platform.ComputeLimits(l, platform.SafeTier, balance, lossToday, ownMaxLeverage(ctx, own, l))
 	})
 
 	// Enrollment of user wallets needs our builder code; without one the
 	// endpoints answer 503 and the platform trades with its own key only.
+	var registry *platform.Registry
 	if cfg.BuilderID > 0 {
 		// PLATFORM_KEYS_FILE keeps enrolled keys across restarts. Plain JSON
 		// with 0600 permissions: fine for a testnet development box, not for
@@ -183,7 +195,7 @@ func run(log *slog.Logger) error {
 		if err != nil {
 			return err
 		}
-		registry := platform.NewRegistry(store, platform.PerplFactory(cfg, log), limits, ledger, eng, log)
+		registry = platform.NewRegistry(store, platform.PerplFactory(cfg, log), limits, ledger, eng, log)
 		registry.UsePrefs(prefs)
 		if db != nil {
 			registry.OnConnect = func(s *platform.Service) error { return s.Restore(ctx, db) }
@@ -199,6 +211,8 @@ func run(log *slog.Logger) error {
 	// connection, one per allowed market, shared by every wallet.
 	signals := platform.NewSignals(adapter, log)
 	go signals.Run(ctx, limits.AllowedSymbols)
+	markets.Attach(registry, signals)
+	go markets.Run(ctx)
 	handlerOpts = append(handlerOpts, platform.WithSignals(signals), platform.WithLedger(ledger))
 
 	// The market context card (Nansen) and any-chain deposits (Aurora)
@@ -323,7 +337,7 @@ func run(log *slog.Logger) error {
 // limitsFromEnv reads the policy limits. The defaults are deliberately small
 // testnet numbers; a deployment sets its own.
 //
-//	PLATFORM_ALLOWED_SYMBOLS   comma-separated, default MON
+//	PLATFORM_ALLOWED_SYMBOLS   comma-separated; default * — every market the venue lists
 //	PLATFORM_MIN_NOTIONAL      default 5
 //	PLATFORM_MAX_NOTIONAL      default 50
 //	PLATFORM_MAX_LEVERAGE      default 3
@@ -335,8 +349,10 @@ func limitsFromEnv() (policy.Limits, error) {
 	var l policy.Limits
 	var err error
 
-	for _, sym := range splitList(envOr("PLATFORM_ALLOWED_SYMBOLS", "MON")) {
-		l.AllowedSymbols = append(l.AllowedSymbols, strings.ToUpper(sym))
+	for _, sym := range splitList(envOr("PLATFORM_ALLOWED_SYMBOLS", "*")) {
+		if sym = strings.ToUpper(strings.TrimSpace(sym)); sym != "" && sym != "*" {
+			l.AllowedSymbols = append(l.AllowedSymbols, sym)
+		}
 	}
 	if l.MinNotional, err = decimalEnv("PLATFORM_MIN_NOTIONAL", "5"); err != nil {
 		return l, err
@@ -363,6 +379,11 @@ func limitsFromEnv() (policy.Limits, error) {
 		return l, fmt.Errorf("PLATFORM_COOLDOWN_SECONDS: %w", err)
 	}
 	l.Cooldown = time.Duration(cooldown * float64(time.Second))
+	// Validated once the venue's markets are in (see MarketSync in main):
+	// with no list configured there is nothing to allow until then.
+	if len(l.AllowedSymbols) == 0 {
+		return l, nil
+	}
 	return l, l.Validate()
 }
 

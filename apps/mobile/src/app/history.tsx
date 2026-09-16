@@ -18,7 +18,7 @@ import { Pressable, ScrollView, View } from 'react-native';
 import { useAccount } from '@/account/useAccount';
 import { api, ApiError, type Trade } from '@/api/client';
 import { trim } from '@/components/format';
-import { STRATEGY_NAMES } from '@/config';
+import { PAGE_SIZE, STRATEGY_NAMES } from '@/config';
 import { Bone, FadeIn } from '@/ui/anim';
 import { Pager } from '@/ui/pager';
 import { back } from '@/ui/stub';
@@ -42,7 +42,7 @@ export default function HistoryScreen() {
   const knows = useAccount().state.status !== 'loading';
   const [tab, setTab] = useState<Tab>('positions');
   const [filter, setFilter] = useState('all');
-  const { trades, problem, page, hasNext, next, prev, loading } = useHistory(knows, filter);
+  const { trades, problem, page, hasNext, next, prev, loading, orderOffset } = useHistory(knows, filter, tab);
 
   return (
     <Screen testID="history">
@@ -78,17 +78,22 @@ export default function HistoryScreen() {
                   Your first tap lands here: the price you got, what it cost, and what it made.
                 </Text>
               </Card>
-            ) : (
+            ) : tab === 'positions' ? (
               byDay(trades).map(([day, list]) => (
                 <View key={day} style={{ gap: theme.space.s1 }}>
                   <Text variant="small" style={{ fontSize: theme.type.t2xs }}>{day}</Text>
-                  {list.map((t, i) =>
-                    tab === 'positions' ? (
-                      <PositionRow key={t.id ?? `${t.opened_at}-${i}`} t={t} />
-                    ) : (
-                      <OrderRows key={t.id ?? `${t.opened_at}-${i}`} t={t} />
-                    ),
-                  )}
+                  {list.map((t, i) => (
+                    <PositionRow key={t.id ?? `${t.opened_at}-${i}`} t={t} />
+                  ))}
+                </View>
+              ))
+            ) : (
+              byDayOrders(ordersOf(trades).slice(orderOffset, orderOffset + PAGE_SIZE)).map(([day, list]) => (
+                <View key={day} style={{ gap: theme.space.s1 }}>
+                  <Text variant="small" style={{ fontSize: theme.type.t2xs }}>{day}</Text>
+                  {list.map((o) => (
+                    <OrderRow key={o.key} title={o.title} note={o.note} onPress={o.onPress} />
+                  ))}
                 </View>
               ))
             )}
@@ -159,23 +164,38 @@ function PositionRow({ t }: { t: Trade }) {
   );
 }
 
-/** The same round trip as the exchange saw it: the close, then the open. */
-function OrderRows({ t }: { t: Trade }) {
-  const side = t.side === 'long' ? 'Up' : 'Down';
-  const open = (which: 'open' | 'close') =>
-    t.id ? () => router.push({ pathname: '/trade/[id]', params: { id: t.id!, strategy: t.strategy, order: which } }) : undefined;
-  return (
-    <>
-      {t.closed_at ? (
-        <OrderRow
-          title={`Close ${side} · @ ${trim(t.exit_price ?? '0')}`}
-          note={`${hm(t.closed_at)} · fee ${Number(t.exit_fee ?? 0).toFixed(2)}`}
-          onPress={open('close')}
-        />
-      ) : null}
-      <OrderRow title={`Open ${side} · @ ${trim(t.entry_price)}`} note={`${hm(t.opened_at)} · fee ${Number(t.entry_fee).toFixed(2)}`} onPress={open('open')} />
-    </>
-  );
+/** One order as the list shows it, with the fill it belongs to. */
+type OrderLine = { key: string; title: string; note: string; at: string; onPress?: () => void };
+
+/**
+ * The same round trips as the exchange saw them: two orders each, the
+ * close first because it is the news. A page is seven of these, whatever
+ * that makes in round trips.
+ */
+function ordersOf(trades: Trade[]): OrderLine[] {
+  const out: OrderLine[] = [];
+  for (const t of trades) {
+    const side = t.side === 'long' ? 'Up' : 'Down';
+    const open = (which: 'open' | 'close') =>
+      t.id ? () => router.push({ pathname: '/trade/[id]', params: { id: t.id!, strategy: t.strategy, order: which } }) : undefined;
+    const id = t.id ?? t.opened_at;
+    if (t.closed_at) {
+      out.push({ key: `${id}-close`, title: `Close ${side} · @ ${trim(t.exit_price ?? '0')}`, note: `${hm(t.closed_at)} · fee ${Number(t.exit_fee ?? 0).toFixed(2)}`, at: t.closed_at, onPress: open('close') });
+    }
+    out.push({ key: `${id}-open`, title: `Open ${side} · @ ${trim(t.entry_price)}`, note: `${hm(t.opened_at)} · fee ${Number(t.entry_fee).toFixed(2)}`, at: t.opened_at, onPress: open('open') });
+  }
+  return out;
+}
+
+function byDayOrders(orders: OrderLine[]): [string, OrderLine[]][] {
+  const groups = new Map<string, OrderLine[]>();
+  for (const o of orders) {
+    const day = dayName(new Date(o.at).getTime());
+    const list = groups.get(day);
+    if (list) list.push(o);
+    else groups.set(day, [o]);
+  }
+  return [...groups.entries()];
 }
 
 function OrderRow({ title, note, onPress }: { title: string; note: string; onPress?: () => void }) {
@@ -221,14 +241,21 @@ function Loading({ problem }: { problem: 'locked' | 'offline' | null }) {
  * every account that ever traded has that one. Pages already read are kept,
  * so going back is free; going forward past them asks for the next.
  */
-function useHistory(ready: boolean, filter: string) {
+function useHistory(ready: boolean, filter: string, tab: Tab) {
   // One state, keyed by the filter it belongs to: switching filters must
   // show nothing rather than the last one's rows, and resetting state from
   // inside the effect that reloads it is a render the screen does not need.
-  const [book, setBook] = useState<{ key: string; pages: Trade[][]; cursor: string | null; at: number }>({ key: '', pages: [], cursor: null, at: 0 });
+  // Everything read so far is kept in one list; the page is cut from it
+  // seven rows at a time — round trips on one tab, orders on the other —
+  // and the platform is asked for more only when the cut runs short.
+  const [book, setBook] = useState<{ key: string; trades: Trade[]; cursor: string | null; at: number }>({ key: '', trades: [], cursor: null, at: 0 });
   const [loading, setLoading] = useState(false);
   const [problem, setProblem] = useState<'locked' | 'offline' | null>(null);
   const current = book.key === filter;
+  // Orders are two per closed round trip: a page of seven orders needs
+  // fewer round trips than a page of seven positions.
+  const rowsOf = (trades: Trade[]) => (tab === 'orders' ? trades.reduce((n, t) => n + (t.closed_at ? 2 : 1), 0) : trades.length);
+  const PAGE = PAGE_SIZE;
 
   const read = useCallback(
     async (after?: string) => {
@@ -253,7 +280,7 @@ function useHistory(ready: boolean, filter: string) {
       setProblem(null);
       const answer = await read();
       if (!alive || !answer) return;
-      setBook({ key: filter, pages: [answer.trades], cursor: answer.next_cursor ?? null, at: 0 });
+      setBook({ key: filter, trades: answer.trades, cursor: answer.next_cursor ?? null, at: 0 });
     }, 0);
     return () => {
       alive = false;
@@ -261,10 +288,30 @@ function useHistory(ready: boolean, filter: string) {
     };
   }, [ready, filter, read]);
 
+  // The round trips whose rows fall on this page, in row terms.
+  const slice = (trades: Trade[], at: number): Trade[] => {
+    const from = at * PAGE;
+    const to = from + PAGE;
+    const out: Trade[] = [];
+    let row = 0;
+    for (const t of trades) {
+      const n = tab === 'orders' ? (t.closed_at ? 2 : 1) : 1;
+      if (row + n > from && row < to) out.push(t);
+      row += n;
+      if (row >= to) break;
+    }
+    return out;
+  };
+  const total = rowsOf(book.trades);
+  const pageTrades = current ? slice(book.trades, book.at) : [];
+  const covers = (at: number) => total >= (at + 1) * PAGE;
+
   const next = useCallback(() => {
     if (!current || loading) return;
-    if (book.at + 1 < book.pages.length) {
-      setBook((have) => ({ ...have, at: have.at + 1 }));
+    const target = book.at + 1;
+    // Enough rows read already for the next page, or none left to ask for.
+    if (total > target * PAGE && (covers(target) || !book.cursor)) {
+      setBook((have) => ({ ...have, at: target }));
       return;
     }
     if (!book.cursor) return;
@@ -272,23 +319,32 @@ function useHistory(ready: boolean, filter: string) {
     void read(book.cursor)
       .then((answer) => {
         if (!answer) return;
-        setBook((have) =>
-          have.key === filter ? { key: filter, pages: [...have.pages, answer.trades], cursor: answer.next_cursor ?? null, at: have.pages.length } : have,
-        );
+        setBook((have) => (have.key === filter ? { key: filter, trades: [...have.trades, ...answer.trades], cursor: answer.next_cursor ?? null, at: target } : have));
       })
       .finally(() => setLoading(false));
-  }, [current, book.at, book.pages.length, book.cursor, loading, read, filter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, book.at, book.cursor, loading, read, filter, total]);
 
   const prev = useCallback(() => {
     if (!current || book.at === 0) return;
     setBook((have) => ({ ...have, at: Math.max(0, have.at - 1) }));
   }, [current, book.at]);
 
+  // Where this page's first order sits inside the round trips handed back:
+  // a page boundary can fall between a close and its open.
+  let before = 0;
+  if (current) {
+    for (const t of book.trades) {
+      if (pageTrades.includes(t)) break;
+      before += tab === 'orders' ? (t.closed_at ? 2 : 1) : 1;
+    }
+  }
   return {
-    trades: current ? (book.pages[book.at] ?? []) : null,
+    trades: current ? pageTrades : null,
+    orderOffset: Math.max(0, book.at * PAGE - before),
     problem,
     page: book.at + 1,
-    hasNext: current && (book.at + 1 < book.pages.length || book.cursor !== null),
+    hasNext: current && (total > (book.at + 1) * PAGE || book.cursor !== null),
     next,
     prev,
     loading,

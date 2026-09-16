@@ -312,8 +312,12 @@
     redraw();
     tell();
     if (STUDY === 'rsi') {
+      // The crowd thermometer under the price, as the design draws it: the
+      // index in ink, the overbought edge in the down colour, the oversold
+      // edge in the up colour, and only a whisper of fill between them.
       chart.createStudy('Relative Strength Index', false, false, { length: 14 }, {
-        'plot.color': MA, 'plot.linewidth': 2, 'upper band.color': DOWN, 'lower band.color': UP, 'upper band.value': 70, 'lower band.value': 30,
+        'plot.color': LINE, 'plot.linewidth': 2, 'upper band.color': DOWN, 'lower band.color': UP, 'upper band.value': 70, 'lower band.value': 30,
+        'upper band.linestyle': 2, 'lower band.linestyle': 2, 'hlines background.color': GRID, 'hlines background.transparency': 70,
       }).catch(function (e) { console.warn('tv: rsi study', e && e.message); });
     }
     if (!FAST || !SLOW) { post({ type: 'ready' }); return; }

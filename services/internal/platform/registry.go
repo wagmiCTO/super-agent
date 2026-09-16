@@ -128,6 +128,23 @@ func (r *Registry) Get(ctx context.Context, address, strategyID string) (*Servic
 	}
 }
 
+// baseLimits is the platform's limits as they stand now.
+func (r *Registry) baseLimits() policy.Limits {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	l := r.limits
+	l.AllowedSymbols = append([]string(nil), r.limits.AllowedSymbols...)
+	return l
+}
+
+// SetAllowedSymbols replaces the markets every key may trade. Keys already
+// connected see it on their next limits refresh, which precedes every order.
+func (r *Registry) SetAllowedSymbols(symbols []string) {
+	r.mu.Lock()
+	r.limits.AllowedSymbols = append([]string(nil), symbols...)
+	r.mu.Unlock()
+}
+
 // PolicyAccount names the policy engine's account for a key: the wallet
 // for a wallet-wide key, "<wallet>/<strategy>" for a strategy's own key.
 func PolicyAccount(k keys.Key) string {
@@ -204,14 +221,20 @@ func (r *Registry) connect(k keys.Key) (*Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("platform: connect venue for %s: %w", addr, err)
 	}
-	limits := r.limits
-	if k.Strategy != "" {
-		limits = LimitsFor(r.limits, k.Strategy)
+	// The base limits are read again on every refresh, not captured once:
+	// the markets the platform allows follow the venue's list (MarketSync),
+	// and a key connected before a listing must see it too.
+	forKey := func() policy.Limits {
+		limits := r.baseLimits()
+		if k.Strategy != "" {
+			limits = LimitsFor(limits, k.Strategy)
+		}
+		// One person, one day: every strategy the wallet trades shares its
+		// budget, its cooldown and its count of open positions.
+		limits.Group = strings.ToLower(addr)
+		return limits
 	}
-	// One person, one day: every strategy the wallet trades shares its
-	// budget, its cooldown and its count of open positions.
-	limits.Group = strings.ToLower(addr)
-	svc, err := New(r.ctx, v, r.policy, PolicyAccount(k), limits, r.log.With("wallet", addr, "strategy", k.Strategy))
+	svc, err := New(r.ctx, v, r.policy, PolicyAccount(k), forKey(), r.log.With("wallet", addr, "strategy", k.Strategy))
 	if err != nil {
 		_ = v.Close()
 		return nil, err
@@ -220,7 +243,7 @@ func (r *Registry) connect(k keys.Key) (*Service, error) {
 	prefs := r.prefs
 	r.mu.Unlock()
 	svc.UseLimits(func(ctx context.Context, balance, lossToday fixed.D) policy.Limits {
-		return ComputeLimits(limits, tierFor(ctx, prefs, addr), balance, lossToday, r.venueMaxLeverage(ctx, svc))
+		return ComputeLimits(forKey(), tierFor(ctx, prefs, addr), balance, lossToday, r.venueMaxLeverage(ctx, svc))
 	})
 	if r.ledger != nil {
 		svc.UseLedger(r.ledger)

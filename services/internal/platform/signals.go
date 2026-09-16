@@ -24,6 +24,8 @@ type Signals struct {
 	mu      sync.Mutex
 	macross map[string]*strategy.MACross
 	rsis    map[string]*strategy.RSI
+	// stop ends a symbol's feed; one per symbol that is running.
+	stop map[string]context.CancelFunc
 }
 
 // NewSignals wires the signals on a market-data adapter; Run starts them.
@@ -31,15 +33,43 @@ func NewSignals(v venue.Adapter, log *slog.Logger) *Signals {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Signals{venue: v, log: log, now: time.Now, macross: make(map[string]*strategy.MACross), rsis: make(map[string]*strategy.RSI)}
+	return &Signals{venue: v, log: log, now: time.Now, macross: make(map[string]*strategy.MACross), rsis: make(map[string]*strategy.RSI), stop: make(map[string]context.CancelFunc)}
 }
 
-// Run feeds the MA Cross signal for each symbol until ctx ends. It blocks.
+// Run feeds the signals for each symbol until ctx ends. It blocks. The
+// list may change afterwards through Ensure.
 func (s *Signals) Run(ctx context.Context, symbols []string) {
-	var wg sync.WaitGroup
+	s.Ensure(ctx, symbols)
+	<-ctx.Done()
+}
+
+// Ensure makes the running feeds match the list: a market that is new
+// gets its signals seeded and fed, one that is gone has its feed stopped
+// and its state dropped, so a screen asking for it is told there is none.
+func (s *Signals) Ensure(ctx context.Context, symbols []string) {
+	want := map[string]bool{}
 	for _, sym := range symbols {
 		sym = strings.ToUpper(strings.TrimSpace(sym))
-		if sym == "" {
+		if sym != "" {
+			want[sym] = true
+		}
+	}
+	s.mu.Lock()
+	for sym, cancel := range s.stop {
+		if !want[sym] {
+			cancel()
+			delete(s.stop, sym)
+			delete(s.macross, sym)
+			delete(s.rsis, sym)
+			s.log.Info("signal stopped: market gone", "symbol", sym)
+		}
+	}
+	s.mu.Unlock()
+	for sym := range want {
+		s.mu.Lock()
+		_, running := s.stop[sym]
+		s.mu.Unlock()
+		if running {
 			continue
 		}
 		sig, err := strategy.NewMACross(strategy.DefaultMACross(sym))
@@ -52,17 +82,14 @@ func (s *Signals) Run(ctx context.Context, symbols []string) {
 			s.log.Error("signal not started", "symbol", sym, "err", err)
 			continue
 		}
+		feedCtx, cancel := context.WithCancel(ctx)
 		s.mu.Lock()
 		s.macross[sym] = sig
 		s.rsis[sym] = rsi
+		s.stop[sym] = cancel
 		s.mu.Unlock()
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			s.feed(ctx, sym, sig, rsi)
-		}()
+		go s.feed(feedCtx, sym, sig, rsi)
 	}
-	wg.Wait()
 }
 
 // RSI returns the RSI signal's state for a symbol.

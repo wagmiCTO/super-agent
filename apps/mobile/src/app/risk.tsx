@@ -481,7 +481,7 @@ function DangerZone({ limits, refresh }: { limits: RiskReport['limits']; refresh
   const tone = (hot: boolean) => (hot ? theme.color.down : theme.color.ink);
 
   return (
-    <Card style={{ gap: theme.space.s3, borderWidth: theme.size.bw, borderColor: danger(tier) ? theme.color.down : theme.color.cardLine }} testID="danger-zone">
+    <Card style={{ gap: theme.space.s3, borderWidth: theme.size.bw, borderColor: danger(tier) ? theme.color.down : theme.color.hair }} testID="danger-zone">
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text variant="caps" style={{ color: theme.color.down }}>Danger zone</Text>
         <Text variant="small">{`safe: ${safe.daily_loss_pct}% · ${safe.max_open_positions} open · ${safe.cooldown_seconds} s`}</Text>

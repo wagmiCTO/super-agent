@@ -18,6 +18,7 @@ import type { Board } from '@/api/client';
 import { APP_NAME } from '@/config';
 import { unclaimedTotal, useMyPrizes } from '@/components/prizes';
 import { equity } from '@/trading/equity';
+import { useRiskReport } from '@/trading/useRiskReport';
 import { useLeaderboard } from '@/trading/useLeaderboard';
 import { useTrading } from '@/trading/useTrading';
 import { nextStep, useOnboarding } from '@/onboarding/useOnboarding';
@@ -25,7 +26,7 @@ import { Mark, RiskDial } from '@/ui/mark';
 import { StrategyTile, type GlyphId } from '@/ui/glyph';
 import { Splash } from '@/ui/splash';
 import { Badge, Screen } from '@/ui/surface';
-import { riskPercent } from '@/strategy/risk';
+import { riskPercent, riskPercentOf } from '@/strategy/risk';
 import { Text, money } from '@/ui/text';
 import { face, useTheme } from '@/theme';
 
@@ -118,6 +119,9 @@ function LobbyScreen() {
   // nothing to claim is a promise the leaderboard cannot keep.
   const prize = unclaimedTotal(useMyPrizes(lb?.prize && address ? address : null).mine);
   const [menu, setMenu] = useState(false);
+  // The same dial as every strategy screen: the wallet's report first.
+  const report = useRiskReport(Boolean(address));
+  const risk = riskPercentOf(report) ?? riskPercent(t.state);
 
   return (
     <Screen>
@@ -137,7 +141,7 @@ function LobbyScreen() {
               {t.state ? `${equity(t.state).toFixed(2)} AUSD` : t.offline ? 'offline' : '…'}
             </Text>
             <Pressable onPress={() => router.push('/risk')} testID="risk-dial" accessibilityRole="button" accessibilityLabel="Risk and performance">
-              <RiskDial percent={riskPercent(t.state)} />
+              <RiskDial percent={risk} />
             </Pressable>
           </View>
         </View>
