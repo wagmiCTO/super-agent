@@ -88,7 +88,7 @@ export class ApiError extends Error {
     this.retryAfterSeconds = body.retry_after_seconds;
   }
 
-  /** True for refusals the player can act on by waiting or changing the request. */
+  /** True for refusals the trader can act on by waiting or changing the request. */
   get isPolicyDenial(): boolean {
     return this.status === 403;
   }

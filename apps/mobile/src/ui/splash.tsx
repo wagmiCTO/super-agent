@@ -11,6 +11,7 @@
 import { useEffect, useState } from 'react';
 import { Animated, Easing, Platform, View } from 'react-native';
 
+import { APP_NAME } from '@/config';
 import { Mark } from '@/ui/mark';
 import { Text } from '@/ui/text';
 import { useTheme } from '@/theme';
@@ -26,7 +27,7 @@ export function Splash({ note }: { note?: string }) {
       style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: theme.space.s5, backgroundColor: theme.color.ground }}
     >
       <Mark size={84} />
-      <Text variant="h1" style={{ fontSize: theme.type.tXl }}>TradeAgent</Text>
+      <Text variant="h1" style={{ fontSize: theme.type.tXl }}>{APP_NAME}</Text>
       <Bar />
       {note ? <Text variant="small">{note}</Text> : null}
     </View>

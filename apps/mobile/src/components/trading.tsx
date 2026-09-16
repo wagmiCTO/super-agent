@@ -10,6 +10,7 @@ import { ThemedText } from '@/components/themed-text';
 import { DEFAULT_LEVERAGE } from '@/config';
 import { Spacing } from '@/constants/legacy-theme';
 import { useTheme } from '@/hooks/use-theme';
+import { equity } from '@/trading/equity';
 import type { Notice } from '@/trading/useTrading';
 import { clock, multiply, trim } from './format';
 import { useCountdown } from '@/ui/countdown';
@@ -24,7 +25,7 @@ export function ScreenHeader({ title, state, offline, locked = false }: { title:
         {title}
       </ThemedText>
       <ThemedText type="small" themeColor="textSecondary">
-        {state ? `Balance ${trim(state.account.balance)}` : offline ? 'Server unreachable' : locked ? 'Sign in to trade' : 'Loading…'}
+        {state ? `Balance ${equity(state).toFixed(2)}` : offline ? 'Server unreachable' : locked ? 'Sign in to trade' : 'Loading…'}
       </ThemedText>
     </View>
   );

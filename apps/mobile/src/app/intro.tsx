@@ -14,6 +14,7 @@ import { useOnboarding } from '@/onboarding/useOnboarding';
 import { Button } from '@/ui/button';
 import { CopilotScene, CrowdScene, DisciplineScene } from '@/ui/illustration';
 import { Mark } from '@/ui/mark';
+import { APP_NAME } from '@/config';
 import { Badge, Dots, Screen } from '@/ui/surface';
 import { Text } from '@/ui/text';
 import { useTheme } from '@/theme';
@@ -52,7 +53,7 @@ export default function IntroScreen() {
       <View style={{ flex: 1, paddingTop: 52, paddingBottom: theme.space.s6, gap: theme.space.s5 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s3 }}>
           <Mark size={24} />
-          <Text variant="bodyStrong" style={{ fontSize: theme.type.tSm }}>TradeAgent</Text>
+          <Text variant="bodyStrong" style={{ fontSize: theme.type.tSm }}>{APP_NAME}</Text>
           <Badge>testnet</Badge>
           <View style={{ flex: 1 }} />
           <Text variant="small" testID="intro-skip" onPress={leave}>Skip</Text>

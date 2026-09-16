@@ -10,7 +10,7 @@ import { createPasskeyWithPrfOutput, getPasskeyPrfOutput } from '@category-labs/
 
 import type { StoredCredential } from './storage';
 
-export const APP_NAME = 'TradeAgent';
+export const APP_NAME = 'Tap Trader';
 
 export function relyingPartyId(): string {
   return globalThis.location?.hostname ?? 'localhost';

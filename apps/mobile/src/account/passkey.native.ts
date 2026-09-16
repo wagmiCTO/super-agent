@@ -10,7 +10,7 @@ import { createPasskeyWithPrfOutput, getPasskeyPrfOutput, type WebAuthnClient } 
 
 import type { StoredCredential } from './storage';
 
-export const APP_NAME = 'TradeAgent';
+export const APP_NAME = 'Tap Trader';
 
 export function relyingPartyId(): string {
   const rp = process.env.EXPO_PUBLIC_RP_ID;

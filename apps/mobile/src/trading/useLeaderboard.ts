@@ -1,5 +1,5 @@
 /**
- * The boards, polled: what each strategy made for its players, who is up,
+ * The boards, polled: what each strategy made for its traders, who is up,
  * and the on-chain prize pool when one is configured. `period` is this week
  * or every trade on record; the prize block is this week's either way.
  */

@@ -1,11 +1,12 @@
 /**
- * The TradeAgent mark and the risk dial.
+ * The Tap Trader mark and the risk dial.
  *
  * Both are drawn from `design/brand/mark.mjs` and the prototype, in SVG rather
  * than as images, so they take the theme's colours instead of shipping one
  * bitmap per skin.
  */
 
+import { APP_NAME } from '@/config';
 import Svg, { Circle, G, Path } from 'react-native-svg';
 
 import { useTheme } from '@/theme';
@@ -16,7 +17,7 @@ export function Mark({ size = 28, ink, accent }: { size?: number; ink?: string; 
   const c = ink ?? theme.color.ink;
   const a = accent ?? theme.color.accent;
   return (
-    <Svg width={size} height={size} viewBox="0 0 64 64" accessibilityLabel="TradeAgent">
+    <Svg width={size} height={size} viewBox="0 0 64 64" accessibilityLabel={APP_NAME}>
       <Circle cx="32" cy="32" r="26.5" fill="none" stroke={a} strokeWidth="3" />
       <Path d="M32 5.5v4.4M58.5 32h-4.4M32 58.5v-4.4M5.5 32h4.4" fill="none" stroke={a} strokeWidth="2.1" strokeLinecap="round" />
       <G transform="translate(11.5 10.5) scale(0.64)">

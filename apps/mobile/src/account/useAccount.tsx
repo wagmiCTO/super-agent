@@ -142,11 +142,11 @@ function useAccountState(): Account {
     [adopt],
   );
 
-  const create = useCallback((label = 'TradeAgent account') => unlock(() => createPasskey(label), label), [unlock]);
+  const create = useCallback((label = 'Tap Trader account') => unlock(() => createPasskey(label), label), [unlock]);
 
   const signIn = useCallback(() => {
     const known = state.status === 'remembered' || state.status === 'unlocked' ? state.stored : undefined;
-    return unlock(() => signInWithPasskey(known?.credential), known?.label ?? 'TradeAgent account');
+    return unlock(() => signInWithPasskey(known?.credential), known?.label ?? 'Tap Trader account');
   }, [state, unlock]);
 
   const signOut = useCallback(async () => {

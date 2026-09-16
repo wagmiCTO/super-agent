@@ -1,7 +1,7 @@
 /**
  * The lobby: the list of strategies, each with this week's board — what it
  * made for everyone, who is up, how many are in right now. The number people
- * argue about is the strategy's total, not any one player's.
+ * argue about is the strategy's total, not any one trader's.
  *
  * Laid out as the design has it: the mark, the network, the balance and the
  * day's risk in one row; a prize to claim when there is one; the strategies;
@@ -15,8 +15,10 @@ import { Pressable, ScrollView, View } from 'react-native';
 
 import { useAccount } from '@/account/useAccount';
 import type { Board } from '@/api/client';
+import { APP_NAME } from '@/config';
 import { trim } from '@/components/format';
 import { unclaimedTotal, useMyPrizes } from '@/components/prizes';
+import { equity } from '@/trading/equity';
 import { useLeaderboard } from '@/trading/useLeaderboard';
 import { useTrading } from '@/trading/useTrading';
 import { nextStep, useOnboarding } from '@/onboarding/useOnboarding';
@@ -30,7 +32,7 @@ import { face, useTheme } from '@/theme';
 
 const ROUTES: Record<string, Href> = { direction: '/direction', 'ma-cross': '/ma-cross', rsi: '/rsi' };
 
-/** The week's argument: which strategy made the most for its players. */
+/** The week's argument: which strategy made the most for its traders. */
 function factionLine(boards: Board[]): string | null {
   const played = boards.filter((b) => b.trades > 0);
   if (played.length === 0) return null;
@@ -125,13 +127,15 @@ function LobbyScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingTop: HEADER_TOP, paddingBottom: theme.space.s4, gap: theme.space.s4 }}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s3 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s2 }}>
           <Mark size={28} />
+          {/* The name never truncates: on a narrow phone the balance is what gives way. */}
+          <Text variant="bodyStrong" numberOfLines={1} style={{ fontSize: theme.type.tSm, flexShrink: 0 }} testID="app-name">{APP_NAME}</Text>
           <NetworkBadge onPress={() => setMenu((m) => !m)} />
           <View style={{ flex: 1 }} />
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s2 }}>
-            <Text variant="num" style={{ fontSize: theme.type.tXs, color: theme.color.muted }} testID="balance">
-              {t.state ? `${Number(t.state.account.balance).toFixed(2)} AUSD` : t.offline ? 'offline' : '…'}
+            <Text variant="num" numberOfLines={1} style={{ fontSize: theme.type.tXs, color: theme.color.muted, flexShrink: 1 }} testID="balance">
+              {t.state ? `${equity(t.state).toFixed(2)} AUSD` : t.offline ? 'offline' : '…'}
             </Text>
             <Pressable onPress={() => router.push('/risk')} testID="risk-dial" accessibilityRole="button" accessibilityLabel="Risk and performance">
               <RiskDial percent={riskPercent(t.state)} />
@@ -360,14 +364,14 @@ function rankOf(board: Board, address: string | null): number | null {
  * One strategy: its sign, its name, what the week has in it, and one line of
  * what the strategy actually asks of you.
  *
- * The first card a new player sees carries START HERE; a card with a position
+ * The first card a new trader sees carries START HERE; a card with a position
  * open says so instead — that is the one thing more urgent than starting.
  */
 function StrategyCard({ board, href, pool, lead, openPnl, rank }: { board: Board; href: Href; pool: string | null; lead: boolean; openPnl: string | null; rank: number | null }) {
   const theme = useTheme();
   const sub = [
     pool !== null ? `Pool ${trim(pool)} AUSD` : 'No pool yet',
-    `${board.players} ${board.players === 1 ? 'player' : 'players'}`,
+    `${board.players} ${board.players === 1 ? 'trader' : 'traders'}`,
     rank !== null ? `you #${rank}` : null,
     board.active_now > 0 ? `${board.active_now} in now` : null,
   ]

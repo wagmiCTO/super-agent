@@ -12,7 +12,7 @@ const rpId = process.env.EXPO_PUBLIC_RP_ID;
 const applicationId = 'app.tradeagent.mobile';
 
 const config: ExpoConfig = {
-  name: 'TradeAgent',
+  name: 'Tap Trader',
   slug: 'tradeagent',
   version: '1.0.0',
   orientation: 'portrait',
@@ -42,7 +42,7 @@ const config: ExpoConfig = {
   plugins: [
     'expo-router',
     ['expo-splash-screen', { backgroundColor: '#208AEF', image: './assets/images/splash-icon.png', imageWidth: 76 }],
-    ['expo-secure-store', { faceIDPermission: 'Allow TradeAgent to unlock the account this device already signed in to.' }],
+    ['expo-secure-store', { faceIDPermission: 'Allow Tap Trader to unlock the account this device already signed in to.' }],
   ],
   experiments: { typedRoutes: true, reactCompiler: true },
   extra: { rpId },

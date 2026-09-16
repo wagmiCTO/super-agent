@@ -36,6 +36,9 @@ export const WEB_URL = (
   (typeof window !== 'undefined' && window.location?.origin ? window.location.origin : API_URL.replace(/:\d+$/, ':8081'))
 ).replace(/\/$/, '');
 
+/** What the product is called wherever the app says its own name. */
+export const APP_NAME = 'Tap Trader';
+
 /** How often the screen re-reads account state, in milliseconds. */
 export const STATE_POLL_MS = 2000;
 
@@ -51,12 +54,12 @@ export const CONTEXT_POLL_MS = 5 * 60_000;
  * Small on purpose: the first screen arrives at once, and the next page is
  * already on its way by the time the reader gets to the bottom of it.
  */
-export const PAGE_SIZE = 10;
+export const PAGE_SIZE = 7;
 
 /** How often the lobby re-reads the leaderboard, in milliseconds. */
 export const LEADERBOARD_POLL_MS = 10_000;
 
-/** Notional presets the player can pick, in collateral units. */
+/** Notional presets the trader can pick, in collateral units. */
 export const NOTIONAL_PRESETS = ['5', '10', '20', '50'] as const;
 
 /** Leverage the Direction strategy trades at. MON allows at most 3x. */

@@ -21,6 +21,7 @@ import { Pressable, ScrollView, View } from 'react-native';
 import { useAccount } from '@/account/useAccount';
 import { shortAddress } from '@/components/prizes';
 import { useOnboarding } from '@/onboarding/useOnboarding';
+import { equity } from '@/trading/equity';
 import { useTrading } from '@/trading/useTrading';
 import { Button } from '@/ui/button';
 import { copy } from '@/ui/clipboard';
@@ -82,7 +83,7 @@ export default function AccountScreen() {
                   : `Exchange account #${t.state.account.id} · ${t.state.account.can_trade ? 'open' : t.state.account.frozen ? 'frozen' : 'not trading yet'}`}
             </Text>
           </View>
-          <Row label="Balance" value={t.state ? `${Number(t.state.account.balance).toFixed(2)} AUSD` : t.offline ? 'offline' : '…'} />
+          <Row label="Balance" value={t.state ? `${equity(t.state).toFixed(2)} AUSD` : t.offline ? 'offline' : '…'} />
           <Row label="In open trades" value={`${inTrades.toFixed(2)} AUSD`} />
           {testnet ? (
             <Text variant="small" style={{ fontSize: theme.type.t2xs }} testID="testnet-funding">

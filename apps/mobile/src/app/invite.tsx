@@ -15,7 +15,7 @@ import { ScrollView, Share, View } from 'react-native';
 
 import { useAccount } from '@/account/useAccount';
 import { api, ApiError, type Referral } from '@/api/client';
-import { LEADERBOARD_POLL_MS, WEB_URL } from '@/config';
+import { APP_NAME, LEADERBOARD_POLL_MS, WEB_URL } from '@/config';
 import { shortAddress } from '@/components/prizes';
 import { Bone, FadeIn } from '@/ui/anim';
 import { Button } from '@/ui/button';
@@ -52,7 +52,7 @@ export default function InviteScreen() {
   const sheet = async () => {
     if (!invite) return;
     try {
-      await Share.share({ message: `Trade with me on TradeAgent: ${link}` });
+      await Share.share({ message: `Trade with me on ${APP_NAME}: ${link}` });
     } catch {
       await take();
     }
