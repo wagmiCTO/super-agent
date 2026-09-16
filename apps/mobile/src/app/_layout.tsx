@@ -6,6 +6,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
+import { AccountProvider } from '@/account/useAccount';
 import { FONT_FACES } from '@/constants/theme';
 import { OnboardingProvider } from '@/onboarding/useOnboarding';
 import { PositionSettingsProvider } from '@/trading/useSettings';
@@ -29,11 +30,13 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider>
-      <OnboardingProvider>
-        <PositionSettingsProvider>
-          <Shell />
-        </PositionSettingsProvider>
-      </OnboardingProvider>
+      <AccountProvider>
+        <OnboardingProvider>
+          <PositionSettingsProvider>
+            <Shell />
+          </PositionSettingsProvider>
+        </OnboardingProvider>
+      </AccountProvider>
     </ThemeProvider>
   );
 }

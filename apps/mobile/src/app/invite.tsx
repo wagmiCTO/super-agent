@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react';
 import { ScrollView, Share, View } from 'react-native';
 
+import { useAccount } from '@/account/useAccount';
 import { api, ApiError, type Referral } from '@/api/client';
 import { shortAddress } from '@/components/prizes';
 import { Bone, FadeIn } from '@/ui/anim';
@@ -26,7 +27,11 @@ import { useTheme } from '@/theme';
 
 export default function InviteScreen() {
   const theme = useTheme();
-  const { invite, problem } = useInvite();
+  // Not before the account layer has read the device: a request that leaves
+  // without the wallet on it is answered "sign in", and this screen would
+  // then say so to someone who is signed in.
+  const knows = useAccount().state.status !== 'loading';
+  const { invite, problem } = useInvite(knows);
   const [notice, setNotice] = useState<string | null>(null);
   const share = Math.round(invite?.share_pct ?? 30);
   const earns = Number(invite?.fee_bps ?? 0) > 0;
@@ -189,10 +194,11 @@ function round(v: string): string {
   return n >= 100 ? Math.round(n).toLocaleString('en-US').replace(/,/g, ' ') : n.toFixed(2);
 }
 
-function useInvite(): { invite: Referral | null; problem: 'locked' | 'offline' | null } {
+function useInvite(ready: boolean): { invite: Referral | null; problem: 'locked' | 'offline' | null } {
   const [invite, setInvite] = useState<Referral | null>(null);
   const [problem, setProblem] = useState<'locked' | 'offline' | null>(null);
   useEffect(() => {
+    if (!ready) return;
     let alive = true;
     const read = () =>
       api
@@ -211,6 +217,6 @@ function useInvite(): { invite: Referral | null; problem: 'locked' | 'offline' |
       alive = false;
       clearTimeout(first);
     };
-  }, []);
+  }, [ready]);
   return { invite, problem };
 }

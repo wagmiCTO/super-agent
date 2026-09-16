@@ -16,6 +16,7 @@ import { router, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
+import { useAccount } from '@/account/useAccount';
 import { api, ApiError, describeError, type LimitTier, type RiskReport, type Trade } from '@/api/client';
 import { trim } from '@/components/format';
 import { DEFAULT_SYMBOL, STATE_POLL_MS, STRATEGY_NAMES } from '@/config';
@@ -38,7 +39,7 @@ const ROUTES: Record<string, Href> = { direction: '/direction', 'ma-cross': '/ma
 const STRATEGIES = ['direction', 'ma-cross', 'rsi'] as const;
 
 /** The report, polled; null until the first answer. */
-function useRisk() {
+function useRisk(ready: boolean) {
   const [report, setReport] = useState<RiskReport | null>(null);
   const [problem, setProblem] = useState<'locked' | 'offline' | null>(null);
   const refresh = useCallback(async () => {
@@ -51,6 +52,9 @@ function useRisk() {
     }
   }, []);
   useEffect(() => {
+    // Not before the account layer has read the device: a request that
+    // leaves without the wallet on it is answered "sign in".
+    if (!ready) return;
     // Deferred rather than called in the effect body: the first read is a
     // poll like every other, not a render-time state change.
     const first = setTimeout(refresh, 0);
@@ -59,7 +63,7 @@ function useRisk() {
       clearTimeout(first);
       clearInterval(id);
     };
-  }, [refresh]);
+  }, [refresh, ready]);
   return { report, problem, refresh };
 }
 
@@ -87,7 +91,8 @@ function useTodayTrades(): Trade[] {
 
 export default function RiskScreen() {
   const theme = useTheme();
-  const { report, problem, refresh } = useRisk();
+  const knows = useAccount().state.status !== 'loading';
+  const { report, problem, refresh } = useRisk(knows);
   const trades = useTodayTrades();
   const { settings } = usePositionSettings();
   // Something in the way is worth a sentence; simply waiting is not. A word

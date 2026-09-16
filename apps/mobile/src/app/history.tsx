@@ -16,6 +16,7 @@
 import { useEffect, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 
+import { useAccount } from '@/account/useAccount';
 import { api, ApiError, type Trade } from '@/api/client';
 import { trim } from '@/components/format';
 import { DEFAULT_SYMBOL, STRATEGY_NAMES } from '@/config';
@@ -37,7 +38,9 @@ type Tab = 'positions' | 'orders';
 
 export default function HistoryScreen() {
   const theme = useTheme();
-  const { trades, problem } = useHistory();
+  // Not before the account layer has read the device: see useInvite.
+  const knows = useAccount().state.status !== 'loading';
+  const { trades, problem } = useHistory(knows);
   const [tab, setTab] = useState<Tab>('positions');
   const [filter, setFilter] = useState('all');
   // Read once, when the screen opens: a week that moves between two renders
@@ -220,10 +223,11 @@ function Loading({ problem }: { problem: 'locked' | 'offline' | null }) {
  * strategy's own key, and a wallet that never enabled one gets nothing for
  * it rather than an error for all three.
  */
-function useHistory(): { trades: Trade[] | null; problem: 'locked' | 'offline' | null } {
+function useHistory(ready: boolean): { trades: Trade[] | null; problem: 'locked' | 'offline' | null } {
   const [trades, setTrades] = useState<Trade[] | null>(null);
   const [problem, setProblem] = useState<'locked' | 'offline' | null>(null);
   useEffect(() => {
+    if (!ready) return;
     let alive = true;
     const read = async () => {
       const lists = await Promise.all(
@@ -251,7 +255,7 @@ function useHistory(): { trades: Trade[] | null; problem: 'locked' | 'offline' |
       alive = false;
       clearTimeout(first);
     };
-  }, []);
+  }, [ready]);
   return { trades, problem };
 }
 

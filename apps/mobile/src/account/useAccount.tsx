@@ -1,6 +1,13 @@
 /**
  * The account layer as the screens see it.
  *
+ * One instance for the whole app, in a provider at the root. It was a hook
+ * per screen, and that is wrong twice over: a screen opened cold — a deep
+ * link, a reload on /invite — had no account layer mounted at all, so its
+ * first requests went out with no wallet on them and the platform answered
+ * "sign in"; and when a screen that did mount one was left, its cleanup
+ * cleared the signing key for every screen still open.
+ *
  * `create` and `signIn` run a passkey ceremony and derive the key family —
  * the wallet, the request-signing key, and a strategy key per strategy on
  * demand — holding it in memory. The seed is also kept in the device's
@@ -12,7 +19,7 @@
  * signed by the request-signing key; the key is registered with the
  * platform on each unlock (idempotent, silent — the wallet signs it).
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { api, ApiError, setAccountAddress, setRequestSigner } from '@/api/client';
 import { registerAuthKey } from '@/exchange/enroll';
@@ -29,7 +36,29 @@ export type AccountState =
   | { status: 'remembered'; stored: StoredAccount }
   | { status: 'unlocked'; stored: StoredAccount; wallet: Wallet; keys: KeyFamily };
 
-export function useAccount() {
+export type Account = {
+  state: AccountState;
+  busy: boolean;
+  error: string | null;
+  create: (label?: string) => Promise<void>;
+  signIn: () => Promise<void>;
+  signOut: () => Promise<void>;
+};
+
+const AccountContext = createContext<Account | null>(null);
+
+export function AccountProvider({ children }: { children: ReactNode }) {
+  return <AccountContext.Provider value={useAccountState()}>{children}</AccountContext.Provider>;
+}
+
+/** The account, from the provider at the root. */
+export function useAccount(): Account {
+  const ctx = useContext(AccountContext);
+  if (!ctx) throw new Error('useAccount outside AccountProvider');
+  return ctx;
+}
+
+function useAccountState(): Account {
   const [state, setState] = useState<AccountState>({ status: 'loading' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
