@@ -200,7 +200,10 @@ export function ReferralScene({ sharePct }: { sharePct: number }) {
 
       <Path d="M188 104h-64" fill="none" stroke={theme.color.up} strokeWidth={3} strokeLinecap="round" />
       <Path d="M130 98l-8 6 8 6" fill="none" stroke={theme.color.up} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
-      <SvgText x={156} y={124} fontSize={12} textAnchor="middle" fontFamily={face(theme, 'num', 700)} fill={theme.color.up}>
+      {/* A size down from the prototype's: our figure face is wider than
+          the monospace it was drawn against, and at 12 the label touched
+          the card behind it. */}
+      <SvgText x={156} y={124} fontSize={11} textAnchor="middle" fontFamily={face(theme, 'num', 700)} fill={theme.color.up}>
         {`${sharePct}% of fees`}
       </SvgText>
     </Frame>
