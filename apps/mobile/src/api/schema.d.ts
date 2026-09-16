@@ -2029,6 +2029,8 @@ export interface components {
             tp_pnl?: components["schemas"]["Decimal"];
             /** @description Where the venue would liquidate, estimated from the entry, the leverage and the market's maintenance margin. Absent when the venue does not publish the latter. */
             liquidation_price?: components["schemas"]["Decimal"];
+            /** @description The strategy whose tap opened the position, when the platform knows it. One account holds one position per market whatever the strategy, so this is what tells a strategy screen which position is its own and which markets the others hold. Absent for a position opened outside the platform. */
+            strategy?: string;
         };
         Limits: {
             allowed_symbols: string[];

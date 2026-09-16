@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
@@ -50,7 +51,11 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	if referrals == nil {
 		referrals = NewMemReferrals()
 	}
-	h := &handler{svc: s, log: log, enroll: o.enrollment, registry: o.registry, signals: o.signals, ledger: o.ledger, prize: o.prize, auth: newAuthenticator(authKeys), context: o.context, deposits: o.deposits, history: o.history, ownAccount: o.ownAccount, limits: limitsStore, referrals: referrals, adminToken: o.adminToken}
+	h := &handler{
+		svc: s, log: log, enroll: o.enrollment, registry: o.registry, signals: o.signals, ledger: o.ledger, prize: o.prize, auth: newAuthenticator(authKeys),
+		context: o.context, deposits: o.deposits, history: o.history, ownAccount: o.ownAccount, limits: limitsStore, referrals: referrals, adminToken: o.adminToken,
+		riskMemo: newMemo[riskReportDTO](riskReportTTL), marketMemo: newMemo[riskMarketDTO](marketRiskTTL), candleMemo: newMemo[[]candleDTO](candlesTTL),
+	}
 	if o.ledger != nil {
 		s.UseLedger(o.ledger)
 	}
@@ -242,6 +247,14 @@ type handler struct {
 	limits     LimitsStore
 	referrals  Referrals
 	adminToken string
+
+	// What the screens poll, answered once per moment however many ask:
+	// the risk report by wallet, a market's own risk row, and a range of
+	// candles. The venue in front rate-limits the platform; the phones
+	// behind it do not rate-limit themselves.
+	riskMemo   *memo[riskReportDTO]
+	marketMemo *memo[riskMarketDTO]
+	candleMemo *memo[[]candleDTO]
 }
 
 // AccountHeader names the wallet a request acts for. On its own it is
@@ -377,6 +390,9 @@ type positionDTO struct {
 	// the entry, the leverage and the market's maintenance margin; absent
 	// when the venue does not publish the latter.
 	LiquidationPrice string `json:"liquidation_price,omitempty"`
+	// Strategy is the one whose tap opened the position, when the ledger
+	// knows; absent for a position opened outside the platform.
+	Strategy string `json:"strategy,omitempty"`
 }
 
 type limitsDTO struct {
@@ -515,7 +531,18 @@ func (h *handler) state(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	writeJSON(w, http.StatusOK, toStateDTO(st, markets))
+	out := toStateDTO(st, markets)
+	// Whose position each one is: the strategy whose tap opened it, as
+	// the ledger remembers, so a strategy screen shows its own and greys
+	// out the markets the others hold.
+	if h.ledger != nil {
+		for i := range out.Positions {
+			if id, ok := h.ledger.Holder(r.Context(), svc.wallet, out.Positions[i].Symbol); ok {
+				out.Positions[i].Strategy = id
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (h *handler) open(w http.ResponseWriter, r *http.Request) {
@@ -538,6 +565,7 @@ func (h *handler) open(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, err)
 		return
 	}
+	h.forgetRisk(r)
 	writeJSON(w, http.StatusOK, toOrderDTO(order))
 }
 
@@ -556,6 +584,7 @@ func (h *handler) close(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, err)
 		return
 	}
+	h.forgetRisk(r)
 	writeJSON(w, http.StatusOK, toOrderDTO(order))
 }
 
@@ -1097,17 +1126,34 @@ func (h *handler) candles(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errorDTO{Error: "invalid", Message: "from and to must be unix seconds"})
 		return
 	}
-	bars, err := h.svc.Candles(r.Context(), q.Get("symbol"), time.Duration(period)*time.Second, time.Unix(from, 0), time.Unix(to, 0))
+	symbol := strings.ToUpper(strings.TrimSpace(q.Get("symbol")))
+	// Every chart open on the same market asks for the same range at the
+	// same moment (the page aligns its polls); the venue hears it once.
+	key := fmt.Sprintf("%s|%d|%d|%d", symbol, period, from, to)
+	out, err := h.candleMemo.Get(key, func() ([]candleDTO, error) {
+		bg, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 20*time.Second)
+		defer cancel()
+		bars, err := h.svc.Candles(bg, symbol, time.Duration(period)*time.Second, time.Unix(from, 0), time.Unix(to, 0))
+		if err != nil {
+			return nil, err
+		}
+		out := make([]candleDTO, 0, len(bars))
+		for _, b := range bars {
+			out = append(out, candleDTO{Time: b.Open.Unix(), Open: b.O.String(), High: b.H.String(), Low: b.L.String(), Close: b.C.String(), Volume: b.Volume.String()})
+		}
+		return out, nil
+	})
 	if err != nil {
 		h.fail(w, err)
 		return
 	}
-	out := make([]candleDTO, 0, len(bars))
-	for _, b := range bars {
-		out = append(out, candleDTO{Time: b.Open.Unix(), Open: b.O.String(), High: b.H.String(), Low: b.L.String(), Close: b.C.String(), Volume: b.Volume.String()})
-	}
 	writeJSON(w, http.StatusOK, out)
 }
+
+// candlesTTL is how long a range of candles is served as it was. The
+// chart polls every three seconds, so this is one poll: the forming bar
+// is at most that stale, and the closed ones never are.
+const candlesTTL = 3 * time.Second
 
 // --- trades ---
 

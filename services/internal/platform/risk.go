@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -182,13 +183,47 @@ func (h *handler) riskServices(ctx context.Context, w http.ResponseWriter, r *ht
 	return out, addr, true
 }
 
-// risk assembles the report.
+// forgetRisk drops the wallet's cached report after something changed it:
+// the next poll must show the tap, not the moment before it.
+func (h *handler) forgetRisk(r *http.Request) {
+	addr := strings.ToLower(strings.TrimSpace(r.Header.Get(AccountHeader)))
+	if addr == "" {
+		addr = h.svc.account
+	}
+	h.riskMemo.Forget(addr)
+}
+
+// riskReportTTL is how long one wallet's report is served as it was: the
+// screens poll it every few seconds from every screen that is open, and
+// a report that is a second old is the same report.
+const riskReportTTL = 2 * time.Second
+
+// marketRiskTTL is how long a market's own risk row stands. It is read
+// from an hour of minute bars, so a minute is how often it can change.
+const marketRiskTTL = time.Minute
+
+// risk assembles the report, or serves the one just assembled.
 func (h *handler) risk(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	services, wallet, ok := h.riskServices(ctx, w, r)
 	if !ok {
 		return
 	}
+	// One computation per wallet at a time, kept for a moment, and not
+	// abandoned when the first asker hangs up: the others are still waiting.
+	out, err := h.riskMemo.Get(wallet, func() (riskReportDTO, error) {
+		bg, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
+		defer cancel()
+		return h.buildRisk(bg, services, wallet)
+	})
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (h *handler) buildRisk(ctx context.Context, services map[string]*Service, wallet string) (riskReportDTO, error) {
 	now := time.Now()
 	out := riskReportDTO{Wallet: wallet, Strategies: []riskStrategyDTO{}, Open: []riskPositionDTO{}, Market: []riskMarketDTO{}, UpdatedAt: timeOrEmpty(now)}
 
@@ -215,8 +250,7 @@ func (h *handler) risk(w http.ResponseWriter, r *http.Request) {
 		if !seen {
 			var err error
 			if st, err = svc.State(ctx); err != nil {
-				h.fail(w, err)
-				return
+				return riskReportDTO{}, err
 			}
 			states[svc] = st
 		}
@@ -271,33 +305,77 @@ func (h *handler) risk(w http.ResponseWriter, r *http.Request) {
 	out.Totals.Today, out.Totals.Week, out.Totals.All = toPerfDTO(allToday), toPerfDTO(allWeek), toPerfDTO(allAll)
 	out.Limits = limitsBlockFrom(tierFor(ctx, h.limits, wallet), states, now)
 
-	// The market's own risk, for every market the platform allows.
+	// The market's own risk, for every market the platform allows, in the
+	// order the venue lists them.
 	allowed := map[string]bool{}
 	if lim, ok := h.svc.policy.Limits(h.svc.account); ok {
 		for _, sym := range lim.AllowedSymbols {
 			allowed[sym] = true
 		}
 	}
-	for _, m := range markets {
-		if len(allowed) > 0 && !allowed[m.Symbol] {
-			continue
+	symbols := make([]string, 0, len(markets))
+	for sym := range markets {
+		if len(allowed) == 0 || allowed[sym] {
+			symbols = append(symbols, sym)
 		}
+	}
+	sort.Strings(symbols)
+	for _, sym := range symbols {
+		if row, err := h.marketRisk(ctx, markets[sym], now); err == nil {
+			out.Market = append(out.Market, row)
+		}
+	}
+	return out, nil
+}
+
+// marketRisk is one market's row: an hour of minute bars read as
+// volatility against the round trip's cost. The bars come from the signal
+// feed when one runs for the market — it already holds them, live, for
+// every market the platform allows — and from the venue only when none
+// does. Either way the row stands for a minute, however often it is asked.
+func (h *handler) marketRisk(ctx context.Context, m venue.Market, now time.Time) (riskMarketDTO, error) {
+	return h.marketMemo.Get(m.Symbol, func() (riskMarketDTO, error) {
 		to := now.Truncate(time.Minute)
-		candles, err := h.svc.Candles(ctx, m.Symbol, time.Minute, to.Add(-61*time.Minute), to)
-		if err != nil {
-			continue
-		}
+		from := to.Add(-61 * time.Minute)
 		var closed []venue.Candle
-		for _, c := range candles {
-			if c.Closed(now) {
-				closed = append(closed, c)
+		if bars, ok := h.signalBars(m.Symbol); ok {
+			for _, c := range bars {
+				if !c.Open.Before(from) && c.Closed(now) {
+					closed = append(closed, c)
+				}
+			}
+		} else {
+			candles, err := h.svc.Candles(ctx, m.Symbol, time.Minute, from, to)
+			if err != nil {
+				return riskMarketDTO{}, err
+			}
+			for _, c := range candles {
+				if c.Closed(now) {
+					closed = append(closed, c)
+				}
 			}
 		}
 		rt := m.Fees.RoundTripRate(false, false).Float64() * 1e4
 		v := Volatility(m.Symbol, closed, rt)
-		out.Market = append(out.Market, riskMarketDTO{Symbol: v.Symbol, Vol1mBps: v.Vol1mBps, Range1mBps: v.Range1mBps, RoundTripBps: v.RoundTripBps, Edge: v.Edge, Bars: v.Bars})
+		return riskMarketDTO{Symbol: v.Symbol, Vol1mBps: v.Vol1mBps, Range1mBps: v.Range1mBps, RoundTripBps: v.RoundTripBps, Edge: v.Edge, Bars: v.Bars}, nil
+	})
+}
+
+// signalBars is the minute bars the signal feed holds for a market, as
+// candles; false when no feed runs for it or it has nothing yet.
+func (h *handler) signalBars(symbol string) ([]venue.Candle, bool) {
+	if h.signals == nil {
+		return nil, false
 	}
-	writeJSON(w, http.StatusOK, out)
+	st, ok := h.signals.MACross(symbol)
+	if !ok || len(st.Points) == 0 {
+		return nil, false
+	}
+	out := make([]venue.Candle, 0, len(st.Points))
+	for _, p := range st.Points {
+		out = append(out, venue.Candle{Open: p.At, Period: st.Period, O: p.Open, H: p.High, L: p.Low, C: p.Close})
+	}
+	return out, true
 }
 
 // mergeStats adds b into a; the streak and averages are per run and are
@@ -344,10 +422,11 @@ type closeAllResultDTO struct {
 // the rest, and every outcome is reported.
 func (h *handler) closeAll(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	services, _, ok := h.riskServices(ctx, w, r)
+	services, wallet, ok := h.riskServices(ctx, w, r)
 	if !ok {
 		return
 	}
+	defer h.riskMemo.Forget(wallet)
 	out := []closeAllResultDTO{}
 	done := map[*Service]bool{}
 	for _, s := range strategy.Catalog {

@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -210,5 +211,73 @@ func TestCandlesEndpoint(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/candles?symbol=mon&period_seconds=0&from=1&to=2", nil))
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("bad period: %d", rec.Code)
+	}
+}
+
+func TestStateNamesTheStrategyHoldingAPosition(t *testing.T) {
+	fv := &fakeVenue{}
+	svc, _ := newService(t, fv)
+	h := Handler(svc, nil, WithOwnAccount(true), WithLedger(NewLedger()))
+
+	body := `{"symbol":"MON","side":"long","notional":"10","leverage":"2","strategy":"ma-cross"}`
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/orders/open", strings.NewReader(body)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("open: %d %s", rec.Code, rec.Body)
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/state", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("state: %d %s", rec.Code, rec.Body)
+	}
+	var st stateDTO
+	if err := json.Unmarshal(rec.Body.Bytes(), &st); err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Positions) != 1 || st.Positions[0].Strategy != "ma-cross" {
+		t.Fatalf("positions = %+v, want one held by ma-cross", st.Positions)
+	}
+}
+
+func TestRiskReportReadsMarketBarsFromTheSignalFeed(t *testing.T) {
+	t0 := time.Now().Add(-40 * time.Minute).Truncate(time.Minute)
+	var candles []venue.Candle
+	p := 0.025
+	for i := 0; i < 35; i++ {
+		if i%2 == 0 {
+			p *= 1.002
+		} else {
+			p /= 1.002
+		}
+		c := fixed.MustParse(trimFloat(p))
+		candles = append(candles, venue.Candle{Open: t0.Add(time.Duration(i) * time.Minute), Period: time.Minute, O: c, H: c, L: c, C: c})
+	}
+	fv := &fakeVenue{candles: candles, candleStream: make(chan venue.Candle)}
+	svc, _ := newService(t, fv)
+	signals := NewSignals(fv, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go signals.Run(ctx, []string{"MON"})
+	for i := 0; i < 100; i++ {
+		if st, ok := signals.MACross("MON"); ok && len(st.Points) > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	h := Handler(svc, nil, WithOwnAccount(true), WithLedger(NewLedger()), WithSignals(signals))
+
+	// The feed holds the bars; the venue is not asked for them again.
+	fv.candles = nil
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/risk", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("risk: %d %s", rec.Code, rec.Body)
+	}
+	var out riskReportDTO
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Market) != 1 || out.Market[0].Symbol != "MON" || out.Market[0].Bars < 30 {
+		t.Fatalf("market rows = %+v, want MON read from the feed", out.Market)
 	}
 }

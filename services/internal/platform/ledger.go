@@ -221,6 +221,31 @@ func (l *Ledger) StrategyOf(account, symbol string) (string, bool) {
 	return o.Strategy, ok
 }
 
+// Holder reports which strategy holds a wallet's open position in a
+// symbol: what this process saw opened, or, for a position from before it
+// started, what the journal has. False for a position the platform never
+// opened.
+func (l *Ledger) Holder(ctx context.Context, wallet, symbol string) (string, bool) {
+	l.mu.Lock()
+	for _, o := range l.open {
+		if o.Wallet == wallet && o.Symbol == symbol {
+			l.mu.Unlock()
+			return o.Strategy, true
+		}
+	}
+	journal := l.journal
+	l.mu.Unlock()
+	if journal == nil {
+		return "", false
+	}
+	id, ok, err := journal.OpenStrategy(ctx, wallet, symbol)
+	if err != nil {
+		slog.Warn("ledger: open strategy not read", "wallet", wallet, "symbol", symbol, "err", err)
+		return "", false
+	}
+	return id, ok
+}
+
 // Standing is one wallet's line on a strategy's board.
 type Standing struct {
 	Wallet string
