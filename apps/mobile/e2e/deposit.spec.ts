@@ -17,9 +17,11 @@ test('the deposit screen lists origins and relays Aurora’s answer', async ({ p
   // Arriving brings the virtual authenticator with it; Chrome allows one.
   await asReturningUser(page, context);
   // Add funds lives on the account screen, as the design has it.
-  await page.getByTestId('account-link').last().click({ force: true });
-  // Add funds is a button on the account card since the screen was redrawn.
-  await page.getByTestId('add-funds').last().click();
+  // The account screen hides adding and withdrawing on testnet: the route
+  // bridges real USDC to Monad mainnet, which a practice balance cannot use.
+  // The screen itself still answers, and that is what this is about.
+  await expect(page.getByTestId('account-link').last()).toBeVisible({ timeout: 30_000 });
+  await page.goto('/deposit');
   await expect(page.getByTestId('deposit')).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText(/Arrives as USDC on Monad/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Chain base', exact: true })).toBeVisible();

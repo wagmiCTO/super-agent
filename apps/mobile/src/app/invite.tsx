@@ -15,7 +15,7 @@ import { ScrollView, Share, View } from 'react-native';
 
 import { useAccount } from '@/account/useAccount';
 import { api, ApiError, type Referral } from '@/api/client';
-import { WEB_URL } from '@/config';
+import { LEADERBOARD_POLL_MS, WEB_URL } from '@/config';
 import { shortAddress } from '@/components/prizes';
 import { Bone, FadeIn } from '@/ui/anim';
 import { Button } from '@/ui/button';
@@ -201,6 +201,15 @@ function round(v: string): string {
   return n >= 100 ? Math.round(n).toLocaleString('en-US').replace(/,/g, ' ') : n.toFixed(2);
 }
 
+/**
+ * The invite, polled.
+ *
+ * Read once was not enough twice over. A friend who has just signed in asks
+ * for this screen in the same breath as the app claims their code, and read
+ * once they are told nobody brought them; and a screen left open while a
+ * friend joins should say so — which, on the day this ships, is exactly what
+ * it will be asked to do.
+ */
 function useInvite(ready: boolean): { invite: Referral | null; problem: 'locked' | 'offline' | null } {
   const [invite, setInvite] = useState<Referral | null>(null);
   const [problem, setProblem] = useState<'locked' | 'offline' | null>(null);
@@ -220,9 +229,11 @@ function useInvite(ready: boolean): { invite: Referral | null; problem: 'locked'
           setProblem(e instanceof ApiError && e.code === 'network' ? 'offline' : 'locked');
         });
     const first = setTimeout(read, 0);
+    const id = setInterval(read, LEADERBOARD_POLL_MS);
     return () => {
       alive = false;
       clearTimeout(first);
+      clearInterval(id);
     };
   }, [ready]);
   return { invite, problem };

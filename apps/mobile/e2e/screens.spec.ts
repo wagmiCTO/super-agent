@@ -67,6 +67,11 @@ test('history, account and the invite link, on one account', async ({ page, cont
   await expect(page.getByTestId('wallet-card').last()).toContainText(/Balance\s*[\d.]+ AUSD/);
   await expect(page.getByTestId('wallet-card').last()).toContainText(/In open trades\s*[\d.]+ AUSD/);
   await expect(page.getByTestId('exchange-account').last()).toHaveText(/^Exchange account #\d+ · open$/, { timeout: 20_000 });
+  // Adding and withdrawing are not offered while the money is practice
+  // money; what the screen says instead is where the balance came from.
+  await expect(page.getByTestId('add-funds')).toHaveCount(0);
+  await expect(page.getByTestId('withdraw')).toHaveCount(0);
+  await expect(page.getByTestId('testnet-funding').last()).toContainText('Practice money');
   // Mainnet is drawn but not open; the practice network is the one in force.
   await page.getByTestId('network-mainnet').last().click({ force: true });
   await expect(page.getByTestId('stub-title')).toHaveText('Mainnet', { timeout: 20_000 });
