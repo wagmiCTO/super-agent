@@ -14,11 +14,12 @@
  */
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Share, View } from 'react-native';
+import { View } from 'react-native';
 
 import { useAccount } from '@/account/useAccount';
 import { api, ApiError, type Standings, type Trade } from '@/api/client';
-import { APP_NAME, STRATEGY_NAMES } from '@/config';
+import { STRATEGY_NAMES } from '@/config';
+import { shareTrade } from '@/trading/share';
 import { useRiskReport } from '@/trading/useRiskReport';
 import { Bone } from '@/ui/anim';
 import { Button } from '@/ui/button';
@@ -44,6 +45,26 @@ export default function ResultScreen() {
   // The week's streak counts this trade once the journal has it; a run of
   // wins is worth saying, a run of losses is not.
   const streak = won && week && week.streak >= 2 ? week.streak : 0;
+  const [shared, setShared] = useState<string | null>(null);
+  const share = async () => {
+    if (!trade || trade === 'missing') return;
+    const out = await shareTrade(
+      {
+        kind: 'closed',
+        strategy: trade.strategy,
+        symbol: trade.symbol,
+        side: trade.side,
+        notional: trade.notional ? Number(trade.notional) : Number(trade.size) * Number(trade.entry_price),
+        leverage: trade.leverage ? String(Number(trade.leverage)) : '1',
+        pnl,
+        movePct: movedBy(trade),
+        reason: kicker(trade).toLowerCase(),
+        rank: standing?.you ? { place: standing.you.rank, of: standing.players } : null,
+      },
+      theme,
+    );
+    setShared(out === 'copied' ? 'Copied — paste it anywhere' : out === 'shared' ? 'Shared' : null);
+  };
 
   return (
     <Screen testID="result">
@@ -109,17 +130,8 @@ export default function ResultScreen() {
         <View style={{ gap: theme.space.s3 }}>
           <Button testID="result-lobby" title="Back to lobby" onPress={() => router.replace('/')} />
           <View style={{ flexDirection: 'row', justifyContent: 'center', gap: theme.space.s6 }}>
-            <Text
-              variant="body"
-              testID="result-share"
-              style={{ paddingVertical: theme.space.s2 }}
-              onPress={() => {
-                if (trade && trade !== 'missing') {
-                  void Share.share({ message: `${trade.side === 'long' ? 'Up' : 'Down'} on ${trade.symbol} · ${money(pnl)} AUSD · ${APP_NAME}` }).catch(() => undefined);
-                }
-              }}
-            >
-              Share
+            <Text variant="body" testID="result-share" style={{ paddingVertical: theme.space.s2 }} onPress={() => void share()}>
+              {shared ?? 'Share'}
             </Text>
             <Text variant="body" testID="result-again" style={{ paddingVertical: theme.space.s2 }} onPress={() => router.replace(ROUTES[strategy as keyof typeof ROUTES] ?? '/direction')}>
               Tap again

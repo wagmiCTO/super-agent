@@ -31,6 +31,7 @@ import { ContextPanel } from '@/strategy/context';
 import { riskPercent } from '@/strategy/risk';
 import { useSignal, type StrategyId } from '@/strategy/useSignal';
 import { SettingsChip } from '@/trading/position-form';
+import { shareTrade } from '@/trading/share';
 import { maxLossFraction, takeProfitFraction, usePositionSettings } from '@/trading/useSettings';
 import { useTrading } from '@/trading/useTrading';
 import { Button, DirectionKeys } from '@/ui/button';
@@ -130,7 +131,7 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
           ) : null}
 
           {t.position ? (
-            <OpenPosition position={t.position} busy={t.busy === 'close'} onClose={() => void closeNow()} />
+            <OpenPosition position={t.position} busy={t.busy === 'close'} onClose={() => void closeNow()} strategy={id} />
           ) : (
             // The keys and what a tap opens, on a rule that runs edge to edge:
             // the line under them is where the screen's promise ends.
@@ -431,12 +432,30 @@ function Says({ id, signal }: { id: StrategyId; signal: ReturnType<typeof useSig
  * The design replaces the entry screen with this: the one number, what it is
  * doing, when it ends by itself, and the only button that matters.
  */
-function OpenPosition({ position, busy, onClose }: { position: Position; busy: boolean; onClose: () => void }) {
+function OpenPosition({ position, busy, onClose, strategy }: { position: Position; busy: boolean; onClose: () => void; strategy: string }) {
   const theme = useTheme();
   const left = useCountdown(position.closes_at ?? null);
   const pnl = Number(position.unrealized_pnl);
   const colour = pnl > 0.005 ? theme.color.up : pnl < -0.005 ? theme.color.down : theme.color.ink;
   const run = elapsedShare(position);
+  const [shared, setShared] = useState<string | null>(null);
+  const share = async () => {
+    const out = await shareTrade(
+      {
+        kind: 'live',
+        strategy,
+        symbol: position.symbol,
+        side: position.side,
+        notional: Number(position.notional),
+        leverage: String(Number(position.leverage)),
+        pnl,
+        closesIn: left,
+      },
+      theme,
+    );
+    setShared(out === 'copied' ? 'Copied' : out === 'shared' ? 'Shared' : null);
+    setTimeout(() => setShared(null), 2000);
+  };
 
   return (
     <View style={{ gap: theme.space.s3 }}>
@@ -498,6 +517,9 @@ function OpenPosition({ position, busy, onClose }: { position: Position; busy: b
       </Text>
 
       <Button testID="close-position" title="Close now" variant="outline" busy={busy} disabled={busy} onPress={onClose} />
+      <Text variant="body" testID="share-position" style={{ textAlign: 'center', paddingVertical: theme.space.s1 }} onPress={() => void share()}>
+        {shared ?? 'Share this trade'}
+      </Text>
     </View>
   );
 }
