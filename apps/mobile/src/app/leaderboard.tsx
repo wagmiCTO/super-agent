@@ -142,7 +142,7 @@ export default function LeaderboardScreen() {
 
         <Text variant="small" style={{ fontSize: theme.type.t2xs }} testID="board-note">
           {period === 'week'
-            ? 'Ranked by what you traded this week · the pool is settled on-chain when the week ends · claimed here.'
+            ? 'Ranked by what you traded this week · the pool is half the fees the week paid, funded and settled on-chain once they arrive · claimed here.'
             : 'Everything traded since launch. The prize is weekly: switch to This week.'}
         </Text>
 
@@ -427,8 +427,11 @@ function rank(standings: Standing[], address: string | null): Row[] {
   }));
 }
 
-function poolOf(lb: Leaderboard, strategy: string): number {
-  return Number(lb.prize?.pools.find((p) => p.strategy === strategy)?.pool ?? 0);
+/** On the contract, or, until the week's fees are in, what the fees have earned so far. */
+function poolOf(lb: Leaderboard, strategy: string): { amount: number; soFar: boolean } {
+  const p = lb.prize?.pools.find((x) => x.strategy === strategy);
+  if (!p) return { amount: 0, soFar: false };
+  return Number(p.pool) > 0 ? { amount: Number(p.pool), soFar: false } : { amount: Number(p.accrued ?? 0), soFar: true };
 }
 
 /** What the board is playing for, in one line. */
@@ -436,10 +439,12 @@ function poolLine(lb: Leaderboard | null, tab: Tab, period: Period, players: num
   const who = `${players} ${players === 1 ? 'trader' : 'traders'}`;
   if (period === 'all') return `Since launch · ${who}`;
   if (!lb) return who;
-  const pool = tab === 'all' ? lb.boards.reduce((sum, b) => sum + poolOf(lb, b.id), 0) : poolOf(lb, tab);
+  const parts = tab === 'all' ? lb.boards.map((b) => poolOf(lb, b.id)) : [poolOf(lb, tab)];
+  const pool = parts.reduce((sum, p) => sum + p.amount, 0);
+  const soFar = parts.some((p) => p.soFar && p.amount > 0);
   const ends = `ends ${endOfWeek(lb.week_start)}`;
   if (pool <= 0) return `No pool yet · ${who} · ${ends}`;
-  return `${tab === 'all' ? 'Pools' : 'Pool'} ${pool.toFixed(2)} AUSD · ${who} · ${ends}`;
+  return `${tab === 'all' ? 'Pools' : 'Pool'} ${pool.toFixed(2)} AUSD${soFar ? ' so far' : ''} · ${who} · ${ends}`;
 }
 
 /** The day the week closes on, from its Monday. */

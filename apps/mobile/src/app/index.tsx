@@ -16,7 +16,6 @@ import { Pressable, ScrollView, View } from 'react-native';
 import { useAccount } from '@/account/useAccount';
 import type { Board } from '@/api/client';
 import { APP_NAME } from '@/config';
-import { trim } from '@/components/format';
 import { unclaimedTotal, useMyPrizes } from '@/components/prizes';
 import { equity } from '@/trading/equity';
 import { useLeaderboard } from '@/trading/useLeaderboard';
@@ -184,7 +183,7 @@ function LobbyScreen() {
               lead={i === 0 && !taught(b.id)}
               openPnl={open(b.id)?.unrealized_pnl ?? null}
               href={taught(b.id) ? (ROUTES[b.id] ?? '/') : { pathname: '/lesson', params: { strategy: b.id } }}
-              pool={lb?.prize?.pools.find((p) => p.strategy === b.id)?.pool ?? null}
+              pool={poolOf(lb?.prize?.pools.find((p) => p.strategy === b.id))}
               rank={rankOf(b, address)}
             />
           ))
@@ -367,10 +366,21 @@ function rankOf(board: Board, address: string | null): number | null {
  * The first card a new trader sees carries START HERE; a card with a position
  * open says so instead — that is the one thing more urgent than starting.
  */
-function StrategyCard({ board, href, pool, lead, openPnl, rank }: { board: Board; href: Href; pool: string | null; lead: boolean; openPnl: string | null; rank: number | null }) {
+/**
+ * The pool as the card names it: what is on the contract once the week's
+ * fees are in, or, during the week, what the fees have earned "so far".
+ */
+function poolOf(p: { pool: string; accrued: string } | undefined): { amount: string; soFar: boolean } | null {
+  if (!p) return null;
+  if (Number(p.pool) > 0) return { amount: p.pool, soFar: false };
+  if (Number(p.accrued) > 0) return { amount: p.accrued, soFar: true };
+  return null;
+}
+
+function StrategyCard({ board, href, pool, lead, openPnl, rank }: { board: Board; href: Href; pool: { amount: string; soFar: boolean } | null; lead: boolean; openPnl: string | null; rank: number | null }) {
   const theme = useTheme();
   const sub = [
-    pool !== null ? `Pool ${trim(pool)} AUSD` : 'No pool yet',
+    pool !== null ? `Pool ${Number(pool.amount).toFixed(2)} AUSD${pool.soFar ? ' so far' : ''}` : 'No pool yet',
     `${board.players} ${board.players === 1 ? 'trader' : 'traders'}`,
     rank !== null ? `you #${rank}` : null,
     board.active_now > 0 ? `${board.active_now} in now` : null,
