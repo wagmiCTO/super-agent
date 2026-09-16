@@ -17,6 +17,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { api } from '@/api/client';
+import { DEFAULT_SYMBOL } from '@/config';
 import { loadSettings, saveSettings, type PositionSettings } from '@/trading/settings-store';
 
 export type { PositionSettings };
@@ -46,11 +47,20 @@ export type PositionBounds = {
   /** Free collateral in the exchange account: what a position can be backed with. */
   balance: number;
   maxLeverage: number;
+  /** The fee the venue takes off the collateral when a position opens, as a fraction of its value. */
+  openFee: number;
   /** True once the platform has said what it actually allows. */
   known: boolean;
 };
 
-const FALLBACK_BOUNDS: PositionBounds = { minSize: 5, maxNotional: 50, balance: 0, maxLeverage: 3, known: false };
+const FALLBACK_BOUNDS: PositionBounds = { minSize: 5, maxNotional: 50, balance: 0, maxLeverage: 3, openFee: 0, known: false };
+
+/**
+ * The room left for the fill to land a little worse than the quote, and for
+ * the lot to round: a position sized to the last cent of the wallet is one
+ * the venue refuses at the first tick against it.
+ */
+const FILL_ROOM = 0.01;
 
 /**
  * The largest position that can actually be opened at this leverage.
@@ -65,7 +75,10 @@ const FALLBACK_BOUNDS: PositionBounds = { minSize: 5, maxNotional: 50, balance: 
  * all there is to say.
  */
 export function maxSizeFor(bounds: PositionBounds, leverage: number): number {
-  const backed = bounds.balance * Math.max(1, leverage);
+  const lev = Math.max(1, leverage);
+  // The wallet pays the margin and the opening fee out of the same balance:
+  // N / L + f · N ≤ B, so N ≤ B · L / (1 + f · L), and a little less than that.
+  const backed = (bounds.balance * (1 - FILL_ROOM) * lev) / (1 + bounds.openFee * lev);
   const cap = backed > 0 ? Math.min(bounds.maxNotional, backed) : bounds.maxNotional;
   return Math.max(bounds.minSize, Math.floor(cap));
 }
@@ -112,17 +125,21 @@ export function PositionSettingsProvider({ children }: { children: ReactNode }) 
   // read with is not: it moves with every round trip and every deposit. So
   // this is asked on mount and again whenever a screen opens the form.
   const refresh = useCallback(() => {
-    api
-      .state('direction')
-      .then((s) =>
+    Promise.all([api.state('direction'), api.markets().catch(() => [])])
+      .then(([s, markets]) => {
+        const fees = markets.find((m) => m.symbol === DEFAULT_SYMBOL)?.fees;
+        // On a venue that charges the whole round trip at the open, the
+        // open is what the balance has to cover.
+        const openFee = fees ? Number(fees.charged_on === 'open-only' ? fees.round_trip_taker : fees.taker_rate) + Number(fees.builder_rate) : 0;
         setBounds({
           minSize: Number(s.limits.min_notional),
           maxNotional: Number(s.limits.max_notional),
           balance: Number(s.account.balance),
           maxLeverage: Number(s.limits.max_leverage),
+          openFee: Number.isFinite(openFee) ? openFee : 0,
           known: true,
-        }),
-      )
+        });
+      })
       .catch(() => undefined);
   }, []);
 
@@ -203,4 +220,9 @@ export function possibleWin(s: PositionSettings): number | null {
 /** The stop as the platform wants it: a fraction of the position's collateral. */
 export function maxLossFraction(s: PositionSettings): string {
   return s.stopOn ? (s.stopPercent / 100).toFixed(4) : '0';
+}
+
+/** The target the same way: the share of the collateral that banks the win. */
+export function takeProfitFraction(s: PositionSettings): string {
+  return s.takeProfitOn ? (s.takeProfitPercent / 100).toFixed(4) : '0';
 }

@@ -58,11 +58,9 @@ test.describe('Direction screen', () => {
     await ensureFlat(page);
     await page.getByTestId('key-up').click();
 
-    // A fill is reported with size and price; the venue's fee is shown too.
-    await expect(page.getByTestId('notice')).toHaveText(/^Filled \d+ @ [\d.]+, fee [\d.]+$/, { timeout: 40_000 });
-
-    // The screen becomes the position: one signed number and its caption.
-    await expect(page.getByTestId('open-position')).toContainText(/^Up/, { timeout: 30_000 });
+    // No fill notice: the screen becomes the position, which is the answer
+    // to the tap — one signed number and its caption.
+    await expect(page.getByTestId('open-position')).toContainText(/^Up/, { timeout: 40_000 });
     // A typographic minus, not a hyphen: the design's money() says so.
     await expect(page.getByTestId('big-number')).toHaveText(/^[+\u2212]?[\d.]+$/);
     await expect(page.getByTestId('position-footer')).toHaveText(/^AUSD · in at [\d.]+ · fees [\d.]+$/);
@@ -70,7 +68,11 @@ test.describe('Direction screen', () => {
     // The keys are gone while a position is open: the only call left is Close.
     await expect(page.getByTestId('key-up')).toHaveCount(0);
     await page.getByTestId('close-position').click();
-    await expect(page.getByTestId('notice')).toHaveText(/^Closed \d+ @ [\d.]+, fee [\d.]+$/, { timeout: 40_000 });
+    // Closing leads to the result: who closed it, and what it made.
+    await expect(page.getByTestId('result')).toBeVisible({ timeout: 40_000 });
+    await expect(page.getByTestId('result-kicker')).toHaveText('YOU CLOSED IT', { timeout: 30_000 });
+    await expect(page.getByTestId('result-pnl')).toHaveText(/^[+−]?[\d.]+$/);
+    await page.getByTestId('result-again').click();
     await expect(page.getByTestId('key-up')).toBeVisible({ timeout: 30_000 });
   });
 
@@ -90,6 +92,8 @@ test.describe('Direction screen', () => {
     await page.getByTestId('key-down').click();
     await expect(page.getByTestId('open-position')).toContainText(/^Down/, { timeout: 40_000 });
     await page.getByTestId('close-position').click();
+    await expect(page.getByTestId('result')).toBeVisible({ timeout: 40_000 });
+    await page.getByTestId('result-again').click();
     await expect(page.getByTestId('key-up')).toBeVisible({ timeout: 30_000 });
 
     // The open above started the cooldown again; a second open inside it is
@@ -125,12 +129,20 @@ test.describe('Direction screen', () => {
     }
     expect(status).toBe(200);
     await expect(page.getByTestId('open-position')).toContainText(/Closes in/, { timeout: 15_000 });
-    await expect(page.getByTestId('notice')).toHaveText(/^Closed by timer @ [\d.]+, [+-]?[\d.]+$/, { timeout: 40_000 });
+    // The timer's close is explained on the result screen, like a tap's.
+    await expect(page.getByTestId('result')).toBeVisible({ timeout: 40_000 });
+    await expect(page.getByTestId('result-kicker')).toHaveText('TIME IS UP', { timeout: 30_000 });
+    await expect(page.getByTestId('result-line')).toHaveText(/^AUSD · MON (up|down) [\d.]+% in .* · fees [\d.]+$/);
+    await page.getByTestId('result-again').click();
     await expect(page.getByTestId('key-up')).toBeVisible({ timeout: 30_000 });
 
-    // The round trip is in this strategy's history, on both tabs.
+    // The round trip is in this strategy's history, on both tabs, and each
+    // row opens the card that reports it.
     await expect(page.getByTestId('history-position').first()).toContainText(/Up · [\d.]+ → [\d.]+/);
     await page.getByTestId('history-orders').click();
     await expect(page.getByTestId('history-order').first()).toContainText(/Close Up · @ [\d.]+/);
+    await page.getByTestId('history-order').first().click();
+    await expect(page.getByTestId('order-card')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId('order-what')).toContainText(/^Close · Up/);
   });
 });

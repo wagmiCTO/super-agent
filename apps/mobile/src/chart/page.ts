@@ -22,8 +22,19 @@ export type Box = { top: string; bottom: string };
 /** A round trip to mark on the chart; an open one has no exit. */
 export type ChartTrade = { side: 'long' | 'short'; size: string; entry_price: string; exit_price?: string; pnl?: string; opened_at: string; closed_at?: string };
 
-/** The open position: one line at the entry with the live result. */
-export type ChartPosition = { side: 'long' | 'short'; size: string; entry_price: string; unrealized_pnl: string };
+/**
+ * The open position: its entry, and the levels that end it. Prices are
+ * strings with the market's own decimals, ready to be written on the pane.
+ */
+export type ChartPosition = {
+  side: 'long' | 'short';
+  size: string;
+  entry_price: string;
+  unrealized_pnl: string;
+  stop_price?: string;
+  tp_price?: string;
+  liquidation_price?: string;
+};
 
 /** What the page says back: the last close, and its move since the day opened, in percent. */
 export type ChartTick = { price: string; change: number | null };

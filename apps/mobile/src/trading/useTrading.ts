@@ -10,9 +10,8 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { api, ApiError, currentAccountAddress, describeError, type Market, type Position, type State, type Trade } from '@/api/client';
+import { api, ApiError, currentAccountAddress, describeError, type Market, type Order, type Position, type State, type Trade } from '@/api/client';
 import { DEFAULT_LEVERAGE, STATE_POLL_MS } from '@/config';
-import { trim } from '@/components/format';
 
 export type Notice = { text: string; kind: 'error' | 'info' };
 export type Busy = 'up' | 'down' | 'close' | null;
@@ -27,9 +26,6 @@ export function useTrading(symbol: string, strategy: string) {
   // True when the platform serves enrolled wallets only and none is signed in.
   const [locked, setLocked] = useState(false);
   const mounted = useRef(true);
-  // The last close the screen has already explained, so a horizon close is
-  // announced once and not on every poll.
-  const explainedClose = useRef<string | null>(null);
 
   // Which wallet the last answer was about, or null when the request carried
   // no wallet and the platform answered for its own account.
@@ -50,16 +46,6 @@ export function useTrading(symbol: string, strategy: string) {
         .trades(symbol, strategy)
         .then((list) => mounted.current && setTrades(list))
         .catch(() => undefined);
-      // A position closed by its horizon while the user was away is news.
-      const last = s.last_close;
-      if (last && last.reason === 'horizon' && explainedClose.current !== last.at) {
-        if (explainedClose.current !== null) {
-          setNotice({ text: `Closed by timer @ ${trim(last.price)}, ${Number(last.pnl) >= 0 ? '+' : ''}${trim(last.pnl)}`, kind: 'info' });
-        }
-        explainedClose.current = last.at;
-      } else if (explainedClose.current === null) {
-        explainedClose.current = last?.at ?? '';
-      }
     } catch (e) {
       if (!mounted.current) return;
       if (e instanceof ApiError && e.code === 'network') setOffline(true);
@@ -86,8 +72,10 @@ export function useTrading(symbol: string, strategy: string) {
 
   const position: Position | null = state?.positions.find((p) => p.symbol === symbol) ?? null;
 
+  // A fill is not announced in words: the screen becomes the position, which
+  // is the answer to the tap. Only a refusal needs saying.
   const open = useCallback(
-    async (side: 'long' | 'short', notional: string, horizonSeconds: number, maxLoss = '0', leverage = DEFAULT_LEVERAGE) => {
+    async (side: 'long' | 'short', notional: string, horizonSeconds: number, maxLoss = '0', leverage = DEFAULT_LEVERAGE, takeProfit = '0') => {
       setBusy(side === 'long' ? 'up' : 'down');
       setNotice(null);
       try {
@@ -99,11 +87,10 @@ export function useTrading(symbol: string, strategy: string) {
           horizon_seconds: horizonSeconds,
           strategy,
           ...(maxLoss !== '0' ? { max_loss: maxLoss } : {}),
+          ...(takeProfit !== '0' ? { take_profit: takeProfit } : {}),
         });
         if (order.status === 'failed') {
           setNotice({ text: `The exchange refused: ${order.rejection?.code ?? 'unknown'}`, kind: 'error' });
-        } else {
-          setNotice({ text: `Filled ${order.filled_size} @ ${order.avg_price}, fee ${order.fee}`, kind: 'info' });
         }
         await refresh();
       } catch (e) {
@@ -115,15 +102,17 @@ export function useTrading(symbol: string, strategy: string) {
     [refresh, symbol, strategy],
   );
 
-  const close = useCallback(async () => {
+  /** Closes at market; the order, so the screen can find the round trip it ended. */
+  const close = useCallback(async (): Promise<Order | null> => {
     setBusy('close');
     setNotice(null);
     try {
       const order = await api.close({ symbol, strategy });
-      setNotice({ text: `Closed ${order.filled_size} @ ${order.avg_price}, fee ${order.fee}`, kind: 'info' });
       await refresh();
+      return order;
     } catch (e) {
       setNotice({ text: describeError(e), kind: 'error' });
+      return null;
     } finally {
       setBusy(null);
     }

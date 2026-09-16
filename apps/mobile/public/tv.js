@@ -11,7 +11,7 @@
  * The app talks to the page with postMessage: chartType (candles | line),
  * interval ('1' | '5' | '15' | '30' | '60' minutes), trend (up | down | flat),
  * box ({top, bottom} | null), trades (the round trips to mark) and position
- * (the open one, or null). The page answers { type: 'ready' } once the chart
+ * (the open one with the levels that end it, or null). The page answers { type: 'ready' } once the chart
  * is drawn and { type: 'price', price, change } with the last close and its
  * move since the day opened, on every bar it receives.
  */
@@ -211,22 +211,28 @@
   var ma = null;
   var pendingTrend = null;
   var chartReady = false;
-  // Drawn things: the box (two lines), the trades (arrows at entry and exit,
-  // like any exchange), and the open position (a line at the entry with the
-  // live result). Every redraw clears and draws from one state, so a burst
-  // of messages never stacks duplicates.
+  // Drawn things: the box (two lines), the trades (a small mark at each
+  // fill), and the open position (its entry, and the levels that end it:
+  // the stop, the target and the liquidation). Every redraw clears and
+  // draws from one state, so a burst of messages never stacks duplicates.
   var drawn = { box: null, trades: [], position: null };
-  function line(chart, time, price, color, style, text) {
-    var over = { linecolor: color, linewidth: text ? 2 : 1, linestyle: style, showPrice: false, showLabel: !!text };
-    if (text) { over.text = text; over.textcolor = color; over.horzLabelsAlign = 'left'; over.vertLabelsAlign = 'top'; over.fontsize = 12; over.bold = true; }
+  // A level across the pane, with its name and price at the right edge.
+  // Dashed and thin: it is a line the position is measured against, not a
+  // thing on the chart.
+  function level(chart, time, price, color, text, width, solid) {
+    var over = { linecolor: color, linewidth: width || 1, linestyle: solid ? 0 : 2, showPrice: false, showLabel: !!text };
+    if (text) { over.text = text; over.textcolor = color; over.horzLabelsAlign = 'right'; over.vertLabelsAlign = 'top'; over.fontsize = 10; over.bold = true; }
     chart.createShape({ time: time, price: price }, {
       shape: 'horizontal_line', lock: true, disableSelection: true, disableSave: true, disableUndo: true, text: text || undefined, overrides: over,
     });
   }
-  function arrow(chart, time, price, up, color, text) {
+  // One fill: a small triangle, up for a buy and down for a sell, in the
+  // colour of what it did. Small on purpose — a chart of arrows is a chart
+  // of arrows, and the bars are what the trader is here to read.
+  function mark(chart, time, price, up, color) {
     chart.createShape({ time: time, price: price }, {
-      shape: up ? 'arrow_up' : 'arrow_down', lock: true, disableSelection: true, disableSave: true, disableUndo: true, text: text,
-      overrides: { color: color, textcolor: color, fontsize: 10, bold: true },
+      shape: 'text', lock: true, disableSelection: true, disableSave: true, disableUndo: true, text: up ? '▲' : '▼',
+      overrides: { color: color, fontsize: 9, bold: true, fillBackground: false, drawBorder: false, wordWrapWidth: 0 },
     });
   }
   function redraw() {
@@ -234,26 +240,30 @@
     var chart = widget.activeChart();
     chart.getAllShapes().forEach(function (sh) { try { chart.removeEntity(sh.id); } catch (e) {} });
     var now = Math.floor(Date.now() / 1000);
-    if (drawn.box) { line(chart, now, Number(drawn.box.top), MA, 0); line(chart, now, Number(drawn.box.bottom), MA, 0); }
-    // The last twenty round trips: an arrow at the entry, an arrow with the
-    // result at the exit. Older ones would only pile up on the same bars.
+    if (drawn.box) { level(chart, now, Number(drawn.box.top), MA, '', 1, true); level(chart, now, Number(drawn.box.bottom), MA, '', 1, true); }
+    // The last twenty round trips. Older ones would only pile up on the same bars.
     drawn.trades.slice(0, 20).forEach(function (t) {
       // Rows journaled before prices were kept have nothing to draw.
       if (!Number(t.entry_price)) return;
       var long = t.side === 'long';
       try {
-        arrow(chart, Math.floor(Date.parse(t.opened_at) / 1000), Number(t.entry_price), long, long ? UP : DOWN, '');
+        mark(chart, Math.floor(Date.parse(t.opened_at) / 1000), Number(t.entry_price), long, long ? UP : DOWN);
         if (t.closed_at && Number(t.exit_price)) {
-          var pnl = Number(t.pnl || 0), won = pnl >= 0;
-          arrow(chart, Math.floor(Date.parse(t.closed_at) / 1000), Number(t.exit_price), !long, won ? UP : DOWN, (won ? '+' : '') + pnl.toFixed(3));
+          var won = Number(t.pnl || 0) >= 0;
+          mark(chart, Math.floor(Date.parse(t.closed_at) / 1000), Number(t.exit_price), !long, won ? UP : DOWN);
         }
       } catch (e) { console.warn('tv: trade mark', e && e.message); }
     });
     if (drawn.position) {
-      var p = drawn.position, pnl = Number(p.unrealized_pnl);
+      var p = drawn.position;
       try {
-        line(chart, now, Number(p.entry_price), pnl >= 0 ? UP : DOWN, 0, (p.side === 'long' ? 'Up ' : 'Down ') + p.size + ' · ' + (pnl >= 0 ? '+' : '') + pnl.toFixed(4));
-      } catch (e) { console.warn('tv: position line', e && e.message); }
+        // The entry is the one line that matters: everything else is
+        // measured from it. The levels that end the position are quieter.
+        level(chart, now, Number(p.entry_price), LINE, 'IN ' + p.entry_price, 1.5, false);
+        if (Number(p.stop_price)) level(chart, now, Number(p.stop_price), TEXT, 'STOP ' + p.stop_price, 1, false);
+        if (Number(p.tp_price)) level(chart, now, Number(p.tp_price), TEXT, 'TP ' + p.tp_price, 1, false);
+        if (Number(p.liquidation_price)) level(chart, now, Number(p.liquidation_price), DOWN, 'LIQ ' + p.liquidation_price, 1, false);
+      } catch (e) { console.warn('tv: position levels', e && e.message); }
     }
   }
   function paintTrend(value) {

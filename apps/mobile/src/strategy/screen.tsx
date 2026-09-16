@@ -19,11 +19,11 @@
  */
 
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
 
-import type { Position, State, Trade } from '@/api/client';
-import { INTERVALS, INTERVAL_LABELS, type ChartTick, type Interval } from '@/chart/page';
+import { api, type Position, type State, type Trade } from '@/api/client';
+import { INTERVALS, INTERVAL_LABELS, type ChartPosition, type ChartTick, type Interval } from '@/chart/page';
 import { trim } from '@/components/format';
 import { TVChart } from '@/components/TVChart';
 import { DEFAULT_SYMBOL, STRATEGY_NAMES } from '@/config';
@@ -31,7 +31,7 @@ import { ContextPanel } from '@/strategy/context';
 import { riskPercent } from '@/strategy/risk';
 import { useSignal, type StrategyId } from '@/strategy/useSignal';
 import { SettingsChip } from '@/trading/position-form';
-import { maxLossFraction, usePositionSettings } from '@/trading/useSettings';
+import { maxLossFraction, takeProfitFraction, usePositionSettings } from '@/trading/useSettings';
 import { useTrading } from '@/trading/useTrading';
 import { Button, DirectionKeys } from '@/ui/button';
 import { useCountdown } from '@/ui/countdown';
@@ -62,7 +62,45 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
       settings.horizonMinutes * 60,
       maxLossFraction(settings),
       String(settings.leverage),
+      takeProfitFraction(settings),
     );
+
+  // When the position ends — by the tap below, or by the timer, the stop or
+  // the target while this screen is up — the screen becomes the result. The
+  // round trip is looked up by the order that closed it, or, when the
+  // platform closed it, as the newest one closed since the position opened.
+  const leaving = useRef(false);
+  const goToResult = async (closeOrderID: string | null, openedAfter: string | null) => {
+    if (leaving.current) return;
+    leaving.current = true;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      try {
+        const trades = await api.trades(DEFAULT_SYMBOL, id);
+        const done = trades.find((x) =>
+          x.id && x.closed_at && (closeOrderID ? x.close_order_id === closeOrderID : !openedAfter || x.opened_at >= openedAfter),
+        );
+        if (done?.id) {
+          router.replace({ pathname: '/result', params: { id: done.id, strategy: id } });
+          return;
+        }
+      } catch {
+        // asked again below
+      }
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    leaving.current = false;
+  };
+  const closeNow = async () => {
+    const order = await t.close();
+    if (order) void goToResult(order.venue_id, null);
+  };
+  const was = useRef<Position | null>(null);
+  useEffect(() => {
+    const before = was.current;
+    was.current = t.position;
+    if (before && !t.position && t.state) void goToResult(null, before.opened_at ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [t.position]);
 
   // One screen minus a peek of what is below: the fold is a promise that
   // everything needed to tap is above it, and a hint that more is under it.
@@ -92,7 +130,7 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
           ) : null}
 
           {t.position ? (
-            <OpenPosition position={t.position} busy={t.busy === 'close'} onClose={() => void t.close()} />
+            <OpenPosition position={t.position} busy={t.busy === 'close'} onClose={() => void closeNow()} />
           ) : (
             // The keys and what a tap opens, on a rule that runs edge to edge:
             // the line under them is where the screen's promise ends.
@@ -217,7 +255,7 @@ function ChartBox({ id, lit, trades, position }: { id: StrategyId; lit: boolean;
         ma={id === 'ma-cross' ? 21 : 0}
         study={id === 'rsi' ? 'rsi' : undefined}
         trades={trades}
-        position={position}
+        position={position ? levelsOf(position) : null}
         onTick={setTick}
       />
 
@@ -275,6 +313,32 @@ function ChartBox({ id, lit, trades, position }: { id: StrategyId; lit: boolean;
       </View>
     </View>
   );
+}
+
+/**
+ * The open position as the chart draws it: the entry, and the prices at
+ * which the stop, the target and the venue end it. The platform states the
+ * first two as results, so they are turned back into prices here, written
+ * with the entry's own decimals.
+ */
+function levelsOf(p: Position): ChartPosition {
+  const size = Number(p.size);
+  const entry = Number(p.entry_price);
+  const sign = p.side === 'long' ? 1 : -1;
+  const decimals = (p.entry_price.split('.')[1] ?? '').length;
+  const at = (pnl: string | undefined): string | undefined => {
+    if (pnl === undefined || !(size > 0)) return undefined;
+    return (entry + (sign * Number(pnl)) / size).toFixed(decimals);
+  };
+  return {
+    side: p.side,
+    size: p.size,
+    entry_price: p.entry_price,
+    unrealized_pnl: p.unrealized_pnl,
+    stop_price: at(p.stop_pnl),
+    tp_price: at(p.tp_pnl),
+    liquidation_price: p.liquidation_price ? Number(p.liquidation_price).toFixed(decimals) : undefined,
+  };
 }
 
 /** What the strategy has to say: a question, or a side, or silence with a reason. */
@@ -415,7 +479,7 @@ function OpenPosition({ position, busy, onClose }: { position: Position; busy: b
           position.stop_pnl !== undefined
             ? `Stops by itself at ${money(Number(position.stop_pnl))} AUSD (${stopAgainst(position).toFixed(1)}% against you).`
             : 'No stop: the time limit is the exit.'
-        } Liquidation is ${(100 / Math.max(1, Number(position.leverage))).toFixed(1)}% away.`}
+        }${position.tp_pnl !== undefined ? ` Takes profit at ${money(Number(position.tp_pnl))}.` : ''} Liquidation is ${(100 / Math.max(1, Number(position.leverage))).toFixed(1)}% away.`}
       </Text>
 
       <Button testID="close-position" title="Close now" variant="outline" busy={busy} disabled={busy} onPress={onClose} />
@@ -456,27 +520,33 @@ function HistoryCard({ id, trades }: { id: StrategyId; trades: Trade[] }) {
       {rows.length === 0 ? (
         <Text variant="small" style={{ paddingVertical: 8 }}>{`No trades yet in ${STRATEGY_NAMES[id] ?? 'Direction'}.`}</Text>
       ) : tab === 'positions' ? (
-        rows.map((t) => <TradeRow key={t.opened_at} trade={t} />)
+        rows.map((t) => <TradeRow key={t.opened_at} trade={t} strategy={id} />)
       ) : (
-        rows.flatMap((t) => orderRows(t)).map((o) => <OrderRow key={o.key} title={o.title} sub={o.sub} />)
+        rows.flatMap((t) => orderRows(t)).map((o) => <OrderRow key={o.key} title={o.title} sub={o.sub} to={o.to} />)
       )}
     </Card>
   );
 }
 
-function TradeRow({ trade }: { trade: Trade }) {
+/** One round trip; a closed one opens the card that reports it, as the history does. */
+function TradeRow({ trade, strategy }: { trade: Trade; strategy: string }) {
   const theme = useTheme();
   const pnl = Number(trade.pnl ?? '0');
+  const to = trade.id && trade.closed_at ? { pathname: '/trade/[id]' as const, params: { id: trade.id, strategy } } : null;
   return (
-    <View
+    <Pressable
       testID="history-position"
-      style={{
+      accessibilityRole={to ? 'button' : undefined}
+      disabled={!to}
+      onPress={to ? () => router.push(to) : undefined}
+      style={({ pressed }) => ({
         flexDirection: 'row',
         alignItems: 'center',
         paddingVertical: 8,
         borderTopWidth: theme.size.bw,
         borderTopColor: theme.color.hair,
-      }}
+        opacity: pressed ? 0.6 : 1,
+      })}
     >
       <View style={{ flex: 1, gap: 1 }}>
         <Text variant="body" style={{ fontSize: theme.type.tSm }}>
@@ -484,44 +554,54 @@ function TradeRow({ trade }: { trade: Trade }) {
         </Text>
         <Text variant="small" style={{ fontSize: theme.type.t2xs }}>{`${hm(trade.opened_at)} – ${hm(trade.closed_at ?? trade.opened_at)} · ${reason(trade)}`}</Text>
       </View>
-      <Text variant="num" signOf={pnl} style={{ fontFamily: face(theme, 'num', 700) }}>
-        {trade.pnl === undefined ? '—' : money(pnl)}
-      </Text>
-    </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s2 }}>
+        <Text variant="num" signOf={pnl} style={{ fontFamily: face(theme, 'num', 700) }}>
+          {trade.pnl === undefined ? '—' : money(pnl)}
+        </Text>
+        {to ? <Text variant="small" style={{ fontSize: theme.type.t2xs }}>›</Text> : null}
+      </View>
+    </Pressable>
   );
 }
 
-function OrderRow({ title, sub }: { title: string; sub: string }) {
+type OrderLink = { pathname: '/trade/[id]'; params: { id: string; strategy: string; order: 'open' | 'close' } } | null;
+
+function OrderRow({ title, sub, to }: { title: string; sub: string; to: OrderLink }) {
   const theme = useTheme();
   return (
-    <View
+    <Pressable
       testID="history-order"
-      style={{
+      accessibilityRole={to ? 'button' : undefined}
+      disabled={!to}
+      onPress={to ? () => router.push(to) : undefined}
+      style={({ pressed }) => ({
         flexDirection: 'row',
         alignItems: 'center',
         paddingVertical: 8,
         borderTopWidth: theme.size.bw,
         borderTopColor: theme.color.hair,
-      }}
+        opacity: pressed ? 0.6 : 1,
+      })}
     >
       <View style={{ flex: 1, gap: 1 }}>
         <Text variant="body" style={{ fontSize: theme.type.tSm }}>{title}</Text>
         <Text variant="small" style={{ fontSize: theme.type.t2xs }}>{sub}</Text>
       </View>
-      <Text variant="small" style={{ fontSize: theme.type.t2xs }}>filled</Text>
-    </View>
+      <Text variant="small" style={{ fontSize: theme.type.t2xs }}>{to ? 'filled ›' : 'filled'}</Text>
+    </Pressable>
   );
 }
 
 /** A round trip is two fills: the exit is the news, so it comes first. */
-function orderRows(t: Trade): { key: string; title: string; sub: string }[] {
+function orderRows(t: Trade): { key: string; title: string; sub: string; to: OrderLink }[] {
   const side = t.side === 'long' ? 'Up' : 'Down';
   const id = t.opened_at;
-  const open = { key: `${id}-open`, title: `Open ${side} · @ ${trim(t.entry_price)}`, sub: `${hm(t.opened_at)} · fee ${trim(t.entry_fee)}` };
+  const link = (order: 'open' | 'close'): OrderLink => (t.id ? { pathname: '/trade/[id]', params: { id: t.id, strategy: t.strategy, order } } : null);
+  const open = { key: `${id}-open`, title: `Open ${side} · @ ${trim(t.entry_price)}`, sub: `${hm(t.opened_at)} · fee ${trim(t.entry_fee)}`, to: link('open') };
   if (!t.closed_at) return [open];
   // The exit is the news, so it comes first.
   return [
-    { key: `${id}-close`, title: `Close ${side} · @ ${trim(t.exit_price ?? '0')}`, sub: `${hm(t.closed_at)} · fee ${trim(t.exit_fee ?? '0')}` },
+    { key: `${id}-close`, title: `Close ${side} · @ ${trim(t.exit_price ?? '0')}`, sub: `${hm(t.closed_at)} · fee ${trim(t.exit_fee ?? '0')}`, to: link('close') },
     open,
   ];
 }
@@ -529,6 +609,7 @@ function orderRows(t: Trade): { key: string; title: string; sub: string }[] {
 function reason(t: Trade): string {
   if (t.close_reason === 'horizon') return 'by timer';
   if (t.close_reason === 'stop') return 'stop';
+  if (t.close_reason === 'take_profit') return 'take profit';
   if (t.close_reason === 'manual') return 'closed';
   return 'open';
 }
