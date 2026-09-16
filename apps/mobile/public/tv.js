@@ -5,7 +5,7 @@
  * Loaded at /tv.html by the app — inside an iframe on web, a WebView on the
  * phone — with the platform, the market and the skin's colours in the query:
  *
- *   /tv.html?api=http://host:8080&symbol=MON&theme=light&ma=20&bg=%23F0F0F3
+ *   /tv.html?api=http://host:8080&symbol=MON&theme=light&fast=5&slow=20&bg=%23F0F0F3
  *          &up=%231C9A6B&down=%23DC5546&accent=%23836EF9&text=%236E6862&grid=%23E8E4DE
  *
  * The app talks to the page with postMessage: chartType (candles | line),
@@ -20,7 +20,8 @@
   var API = (params.get('api') || '').replace(/\/$/, '');
   var SYMBOL = (params.get('symbol') || 'MON').toUpperCase();
   var THEME = params.get('theme') === 'dark' ? 'dark' : 'light';
-  var MA_LENGTH = Number(params.get('ma') || 20);
+  // The two averages MA Cross reads; 0 draws none.
+  var FAST = Number(params.get('fast') || 0), SLOW = Number(params.get('slow') || 0);
   var STUDY = params.get('study') || '';
   var BG = params.get('bg') || (THEME === 'dark' ? '#212225' : '#F0F0F3');
   var UP = params.get('up') || '#16a34a', DOWN = params.get('down') || '#dc2626', MA = params.get('accent') || '#2563eb';
@@ -89,6 +90,7 @@
   function saw(bar) {
     if (!last || bar.time >= last.time) { last = bar; }
     if (oldest === null || bar.time < oldest.time) { oldest = bar; }
+    bars[bar.time] = bar;
   }
   (function findDayOpen() {
     var midnight = new Date(); midnight.setHours(0, 0, 0, 0);
@@ -191,6 +193,9 @@
       'scalesProperties.textColor': TEXT,
       'scalesProperties.lineColor': GRID,
       'scalesProperties.fontSize': 11,
+      // The averages' own values do not belong on the axis: the pane already
+      // shows where they run, and the last price is the only number there.
+      'scalesProperties.showStudyLastValue': false,
       'symbolWatermarkProperties.visibility': false,
       'mainSeriesProperties.candleStyle.upColor': UP,
       'mainSeriesProperties.candleStyle.downColor': DOWN,
@@ -215,7 +220,10 @@
   // fill), and the open position (its entry, and the levels that end it:
   // the stop, the target and the liquidation). Every redraw clears and
   // draws from one state, so a burst of messages never stacks duplicates.
-  var drawn = { box: null, trades: [], position: null };
+  var drawn = { box: null, trades: [], position: null, cross: null };
+  // Every bar the chart has been given, by its time: the cross is marked at
+  // the close of the bar it happened on.
+  var bars = {};
   // A level across the pane, with its name and price at the right edge.
   // Dashed and thin: it is a line the position is measured against, not a
   // thing on the chart.
@@ -254,6 +262,27 @@
         }
       } catch (e) { console.warn('tv: trade mark', e && e.message); }
     });
+    if (drawn.cross) {
+      var when = Date.parse(drawn.cross.at);
+      // The bar the cross closed on, at the chart's own resolution.
+      var period = (PERIODS[chart.resolution()] || 60) * 1000;
+      var at = Math.floor(when / period) * period;
+      var bar = bars[at];
+      if (bar) {
+        // As the design draws it: a dot where the lines crossed and a
+        // dashed rule up from it. The legend under the pane says the rest.
+        try {
+          chart.createShape({ time: at / 1000 }, {
+            shape: 'vertical_line', lock: true, disableSelection: true, disableSave: true, disableUndo: true,
+            overrides: { linecolor: MA, linewidth: 1, linestyle: 2, showTime: false },
+          });
+          chart.createShape({ time: at / 1000, price: bar.close }, {
+            shape: 'text', lock: true, disableSelection: true, disableSave: true, disableUndo: true, text: '●',
+            overrides: { color: MA, fontsize: 18, bold: true, fillBackground: false, drawBorder: false, wordWrapWidth: 0 },
+          });
+        } catch (e) { console.warn('tv: cross mark', e && e.message); }
+      }
+    }
     if (drawn.position) {
       var p = drawn.position;
       try {
@@ -266,11 +295,9 @@
       } catch (e) { console.warn('tv: position levels', e && e.message); }
     }
   }
-  function paintTrend(value) {
-    if (!ma) { pendingTrend = value; return; }
-    var color = value === 'up' ? UP : value === 'down' ? DOWN : MA;
-    widget.activeChart().getStudyById(ma).applyOverrides({ 'plot.color': color });
-  }
+  // The averages keep their colours whatever the position: which line is
+  // on top says the trend, and the entry level says the position.
+  function paintTrend(value) { pendingTrend = value; }
   // The same stretch of bars whatever the resolution, with a little room
   // ahead of the last one.
   function frame(chart, resolution) {
@@ -289,11 +316,13 @@
         'plot.color': MA, 'plot.linewidth': 2, 'upper band.color': DOWN, 'lower band.color': UP, 'upper band.value': 70, 'lower band.value': 30,
       }).catch(function (e) { console.warn('tv: rsi study', e && e.message); });
     }
-    if (!MA_LENGTH) { post({ type: 'ready' }); return; }
-    // One average, drawn well: the strategy's slow line.
-    chart.createStudy('Moving Average', false, false, { length: MA_LENGTH, source: 'close' }, {
-      'plot.color': MA, 'plot.linewidth': 2, 'plot.linestyle': 0, 'plot.transparency': 0,
-    }).then(function (id) { ma = id; if (pendingTrend) paintTrend(pendingTrend); post({ type: 'ready' }); });
+    if (!FAST || !SLOW) { post({ type: 'ready' }); return; }
+    // The two lines the strategy reads: the fast one in the accent, the
+    // slow one quieter, as the design draws them.
+    Promise.all([
+      chart.createStudy('Moving Average', false, false, { length: SLOW, source: 'close' }, { 'plot.color': TEXT, 'plot.linewidth': 2, 'plot.linestyle': 0, 'plot.transparency': 0 }),
+      chart.createStudy('Moving Average', false, false, { length: FAST, source: 'close' }, { 'plot.color': MA, 'plot.linewidth': 3, 'plot.linestyle': 0, 'plot.transparency': 0 }),
+    ]).then(function (ids) { ma = ids[1]; post({ type: 'ready' }); }).catch(function (e) { console.warn('tv: averages', e && e.message); post({ type: 'ready' }); });
   });
 
   window.addEventListener('message', function (e) {
@@ -315,6 +344,7 @@
       if (msg.type === 'box') { drawn.box = msg.value || null; redraw(); }
       if (msg.type === 'trades') { drawn.trades = msg.value || []; redraw(); }
       if (msg.type === 'position') { drawn.position = msg.value || null; redraw(); }
+      if (msg.type === 'cross') { drawn.cross = msg.value || null; redraw(); }
     });
   });
   // React Native's WebView delivers injected messages through the same event.

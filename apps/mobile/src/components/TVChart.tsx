@@ -9,13 +9,14 @@ import { WebView } from 'react-native-webview';
 
 import { chartPageUrl, tickFrom, type ChartMessage, type TVChartProps } from '@/chart/page';
 
-export function TVChart({ symbol, theme, colours, chartType, interval, trend, ma, study, box, trades, position, onTick }: TVChartProps) {
+export function TVChart({ symbol, theme, colours, chartType, interval, trend, averages, cross, study, box, trades, position, onTick }: TVChartProps) {
   const web = useRef<WebView>(null);
   const [ready, setReady] = useState(false);
-  const url = chartPageUrl({ symbol, theme, colours, ma, study });
+  const url = chartPageUrl({ symbol, theme, colours, averages, study });
   const boxKey = JSON.stringify(box ?? null);
   const tradesKey = JSON.stringify(trades ?? []);
   const positionKey = JSON.stringify(position ?? null);
+  const crossKey = JSON.stringify(cross ?? null);
 
   const send = (msg: ChartMessage) =>
     web.current?.injectJavaScript(`window.dispatchEvent(new MessageEvent('message', { data: ${JSON.stringify(JSON.stringify(msg))} })); true;`);
@@ -40,6 +41,10 @@ export function TVChart({ symbol, theme, colours, chartType, interval, trend, ma
     if (ready) send({ type: 'position', value: position ?? null });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, positionKey]);
+  useEffect(() => {
+    if (ready) send({ type: 'cross', value: cross ?? null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, crossKey]);
 
   return (
     <View style={{ flex: 1 }} testID="signal-chart">

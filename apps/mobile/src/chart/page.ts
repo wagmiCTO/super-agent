@@ -39,10 +39,14 @@ export type ChartPosition = {
 /** What the page says back: the last close, and its move since the day opened, in percent. */
 export type ChartTick = { price: string; change: number | null };
 
+/** Where the averages last crossed: the page marks the bar. */
+export type ChartCross = { at: string; side: 'long' | 'short' };
+
 export type ChartMessage =
   | { type: 'chartType'; value: ChartType }
   | { type: 'interval'; value: Interval }
   | { type: 'trend'; value: Trend }
+  | { type: 'cross'; value: ChartCross | null }
   | { type: 'box'; value: Box | null }
   | { type: 'trades'; value: ChartTrade[] }
   | { type: 'position'; value: ChartPosition | null };
@@ -57,8 +61,10 @@ export type TVChartProps = {
   chartType: ChartType;
   interval: Interval;
   trend: Trend;
-  /** Length of the one moving average drawn; 0 draws none. */
-  ma?: number;
+  /** The two moving averages MA Cross reads, in bars; absent draws none. */
+  averages?: { fast: number; slow: number };
+  /** The last cross to mark on the pane. */
+  cross?: ChartCross | null;
   /** An extra study in its own pane: the RSI for the counter-trend screen. */
   study?: 'rsi';
   box?: Box | null;
@@ -69,7 +75,7 @@ export type TVChartProps = {
 };
 
 /** Where the chart page lives, with the platform, the market and the colours in the query. */
-export function chartPageUrl({ symbol, theme, colours, ma, study }: Pick<TVChartProps, 'symbol' | 'theme' | 'colours' | 'ma' | 'study'>): string {
+export function chartPageUrl({ symbol, theme, colours, averages, study }: Pick<TVChartProps, 'symbol' | 'theme' | 'colours' | 'averages' | 'study'>): string {
   const q = new URLSearchParams({
     api: API_URL,
     symbol,
@@ -81,7 +87,8 @@ export function chartPageUrl({ symbol, theme, colours, ma, study }: Pick<TVChart
     text: colours.text,
     grid: colours.grid,
     line: colours.line,
-    ma: String(ma ?? 20),
+    fast: String(averages?.fast ?? 0),
+    slow: String(averages?.slow ?? 0),
     study: study ?? '',
   });
   return `${WEB_URL}/tv.html?${q.toString()}`;

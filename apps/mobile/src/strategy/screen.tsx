@@ -112,7 +112,7 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
         <View style={{ minHeight: fold, paddingTop: TOP, gap: theme.space.s4 }}>
           <Header id={id} state={t.state} offline={t.offline} locked={t.locked} symbol={t.position ? DEFAULT_SYMBOL : null} />
 
-          <ChartBox id={id} lit={lit !== null} trades={t.trades} position={t.position} />
+          <ChartBox id={id} lit={lit !== null} trades={t.trades} position={t.position} signal={signal} />
 
           {t.position ? null : <Says id={id} signal={signal} />}
 
@@ -211,8 +211,9 @@ function Header({ id, state, offline, locked, symbol }: { id: StrategyId; state:
  * honour: the bar size, and candles or a line. It fills whatever the fold
  * leaves after the keys and the header, and never less than a readable pane.
  */
-function ChartBox({ id, lit, trades, position }: { id: StrategyId; lit: boolean; trades: Trade[]; position: Position | null }) {
+function ChartBox({ id, lit, trades, position, signal }: { id: StrategyId; lit: boolean; trades: Trade[]; position: Position | null; signal: ReturnType<typeof useSignal> }) {
   const theme = useTheme();
+  const averages = id === 'ma-cross' ? signal?.averages ?? { fast: 5, slow: 20, trend: 'flat' as const, lastCross: null } : null;
   const { name } = useThemeControls();
   const [line, setLine] = useState(false);
   const [interval, setInterval] = useState<Interval>('1');
@@ -252,7 +253,8 @@ function ChartBox({ id, lit, trades, position }: { id: StrategyId; lit: boolean;
         chartType={line ? 'line' : 'candles'}
         interval={interval}
         trend={position ? (position.side === 'long' ? 'up' : 'down') : 'flat'}
-        ma={id === 'ma-cross' ? 21 : 0}
+        averages={averages ? { fast: averages.fast, slow: averages.slow } : undefined}
+        cross={averages?.lastCross ?? null}
         study={id === 'rsi' ? 'rsi' : undefined}
         trades={trades}
         position={position ? levelsOf(position) : null}
@@ -272,6 +274,19 @@ function ChartBox({ id, lit, trades, position }: { id: StrategyId; lit: boolean;
           {tick?.change === null || tick?.change === undefined ? DEFAULT_SYMBOL : `${DEFAULT_SYMBOL} · ${money(tick.change, 1)}% today`}
         </Text>
       </View>
+
+      {/* Bottom-left, MA Cross only: which lines these are, and what they say. */}
+      {averages ? (
+        <View
+          pointerEvents="none"
+          testID="chart-legend"
+          style={{ position: 'absolute', bottom: 36, left: 10, paddingVertical: 3, paddingHorizontal: 8, borderRadius: theme.radius.rSm, ...glass }}
+        >
+          <Text variant="small" style={{ fontSize: theme.type.tXs, lineHeight: theme.type.tXs * 1.3 }}>
+            {`MA ${averages.fast} · MA ${averages.slow} · ${lit ? 'cross just now' : `trend ${averages.trend}`}`}
+          </Text>
+        </View>
+      ) : null}
 
       {/* Top-right: the bar size, and the shape of the series. */}
       <View style={{ position: 'absolute', top: 10, right: 10, flexDirection: 'row', alignItems: 'center', gap: theme.space.s2 }}>

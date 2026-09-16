@@ -27,8 +27,11 @@ export function Card({ children, style, onPress, testID }: { children: React.Rea
   const base: ViewStyle = {
     backgroundColor: theme.color.cardBg,
     borderRadius: theme.radius.rLg,
-    borderWidth: theme.color.cardLine === 'transparent' ? 0 : theme.size.bw,
-    borderColor: theme.color.cardLine,
+    // A hairline even where the skin draws none: on a white page the shadow
+    // alone is too faint for the card's edge to read, and a card whose edge
+    // is not read looks narrower than the bordered blocks beside it.
+    borderWidth: theme.size.bw,
+    borderColor: theme.color.cardLine === 'transparent' ? theme.color.hair : theme.color.cardLine,
     padding: theme.space.s4,
     gap: theme.space.s3,
     // The skin's own depth: Paper lifts a card off the page, Terminal draws a

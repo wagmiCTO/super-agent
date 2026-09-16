@@ -27,6 +27,8 @@ export type Signal = {
   /** When the last one was, in words. */
   last: string | null;
   ready: boolean;
+  /** MA Cross only: the two averages the chart draws, which is on top, and where they last crossed. */
+  averages?: { fast: number; slow: number; trend: 'up' | 'down' | 'flat'; lastCross: { at: string; side: Side } | null };
 };
 
 export function useSignal(id: StrategyId, symbol: string): Signal | null {
@@ -59,6 +61,7 @@ function fromCross(s: MACrossSignal): Signal {
     quiet: s.ready ? 'waiting for a cross' : 'warming up',
     last: s.last_cross ? `last ${s.last_cross.side === 'long' ? '↑' : '↓'} ${hm(s.last_cross.at)}` : null,
     ready: s.ready,
+    averages: { fast: s.fast, slow: s.slow, trend: s.trend, lastCross: s.last_cross ? { at: s.last_cross.at, side: s.last_cross.side } : null },
   };
 }
 
