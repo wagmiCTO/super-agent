@@ -29,11 +29,26 @@ contract StrategyPrizePool {
     /// week => strategy => wallet => prize
     mapping(uint64 => mapping(bytes32 => mapping(address => uint256))) public prizes;
     mapping(uint64 => mapping(bytes32 => mapping(address => bool))) public claimed;
+    /// What a week's pool received from the week before it. It may be won in
+    /// this week; if it is not, it does not travel on. Money is carried once.
+    mapping(uint64 => mapping(bytes32 => uint256)) public carriedIn;
+    /// What settlements left behind because it had already been carried once:
+    /// the owner's to take back with `sweep`.
+    uint256 public retained;
 
     event Funded(uint64 indexed week, bytes32 indexed strategy, address indexed from, uint256 amount, uint256 total);
-    event Settled(uint64 indexed week, bytes32 indexed strategy, address[] winners, uint256[] amounts, int128[] pnls, uint256 carried);
+    event Settled(
+        uint64 indexed week,
+        bytes32 indexed strategy,
+        address[] winners,
+        uint256[] amounts,
+        int128[] pnls,
+        uint256 carried
+    );
     event Claimed(uint64 indexed week, bytes32 indexed strategy, address indexed wallet, uint256 amount);
     event SettlerSet(address indexed settler, bool allowed);
+    event Retained(uint64 indexed week, bytes32 indexed strategy, uint256 amount, uint256 total);
+    event Swept(address indexed to, uint256 amount);
     event OwnerSet(address indexed owner);
 
     error NotOwner();
@@ -122,18 +137,43 @@ contract StrategyPrizePool {
         for (uint256 i = 0; i < winners.length; i++) {
             prizes[week][strategy][winners[i]] += amounts[i];
         }
-        uint256 carried = available - total;
         pool[week][strategy] = total;
         settled[week][strategy] = true;
-        _carry(week, strategy, carried);
+        uint256 carried = _rest(week, strategy, available, total);
         emit Settled(week, strategy, winners, amounts, pnls, carried);
+    }
+
+    /// What settlement left unpaid: this week's own contributions travel to
+    /// the next week; what arrived from the week before has had its second
+    /// chance and is retained. Returns what travelled.
+    function _rest(uint64 week, bytes32 strategy, uint256 available, uint256 paid) internal returns (uint256 carried) {
+        uint256 left = available - paid;
+        uint256 fresh = available - carriedIn[week][strategy];
+        carried = left < fresh ? left : fresh;
+        uint256 stale = left - carried;
+        _carry(week, strategy, carried);
+        if (stale > 0) {
+            retained += stale;
+            emit Retained(week, strategy, stale, retained);
+        }
     }
 
     function _carry(uint64 week, bytes32 strategy, uint256 carried) internal {
         if (carried == 0) return;
         uint64 next = week + 1;
         pool[next][strategy] += carried;
+        carriedIn[next][strategy] += carried;
         emit Funded(next, strategy, address(this), carried, pool[next][strategy]);
+    }
+
+    /// Takes back what settlements retained. Nothing a winner can claim is
+    /// ever part of it: prizes are allocated before anything is retained.
+    function sweep(address to) external onlyOwner {
+        uint256 amount = retained;
+        if (amount == 0) revert ZeroAmount();
+        retained = 0;
+        if (!token.transfer(to, amount)) revert TransferFailed();
+        emit Swept(to, amount);
     }
 
     /// @notice Pays the caller their prize for a settled week.
@@ -147,7 +187,11 @@ contract StrategyPrizePool {
     }
 
     /// @notice A wallet's prize and whether it was taken.
-    function prizeOf(uint64 week, bytes32 strategy, address wallet) external view returns (uint256 amount, bool taken) {
+    function prizeOf(uint64 week, bytes32 strategy, address wallet)
+        external
+        view
+        returns (uint256 amount, bool taken)
+    {
         return (prizes[week][strategy][wallet], claimed[week][strategy][wallet]);
     }
 }
