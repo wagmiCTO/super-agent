@@ -357,6 +357,14 @@ type positionDTO struct {
 	// unrealized result at which it closes; absent without a stop.
 	MaxLoss string `json:"max_loss,omitempty"`
 	StopPnL string `json:"stop_pnl,omitempty"`
+	// TakeProfit is the armed target as a fraction of collateral, and TPPnL
+	// the unrealized result at which it closes; absent without a target.
+	TakeProfit string `json:"take_profit,omitempty"`
+	TPPnL      string `json:"tp_pnl,omitempty"`
+	// LiquidationPrice is where the venue would liquidate, estimated from
+	// the entry, the leverage and the market's maintenance margin; absent
+	// when the venue does not publish the latter.
+	LiquidationPrice string `json:"liquidation_price,omitempty"`
 }
 
 type limitsDTO struct {
@@ -401,6 +409,9 @@ type openReqDTO struct {
 	// MaxLoss arms a stop: the fraction of collateral the position may
 	// lose before the platform closes it. Absent or "0" arms none.
 	MaxLoss string `json:"max_loss,omitempty"`
+	// TakeProfit arms a target: the fraction of collateral the position
+	// may make before the platform closes it. Absent or "0" arms none.
+	TakeProfit string `json:"take_profit,omitempty"`
 }
 
 type lastCloseDTO struct {
@@ -483,7 +494,16 @@ func (h *handler) state(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, toStateDTO(st))
+	// Markets once, for the liquidation price of what is open.
+	markets := map[string]venue.Market{}
+	if len(st.Positions) > 0 {
+		if ms, err := h.svc.Markets(r.Context()); err == nil {
+			for _, m := range ms {
+				markets[m.Symbol] = m
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, toStateDTO(st, markets))
 }
 
 func (h *handler) open(w http.ResponseWriter, r *http.Request) {
@@ -632,13 +652,18 @@ func parseOpen(in openReqDTO) (OpenRequest, error) {
 		return OpenRequest{}, fmt.Errorf("%w: horizon_seconds must not be negative", ErrInvalid)
 	}
 	rules := strategy.Rules{Horizon: time.Duration(in.HorizonSeconds) * time.Second}
-	var maxLoss fixed.D
+	var maxLoss, takeProfit fixed.D
 	if strings.TrimSpace(in.MaxLoss) != "" {
 		if maxLoss, err = fixed.Parse(in.MaxLoss); err != nil {
 			return OpenRequest{}, fmt.Errorf("%w: max_loss: %v", ErrInvalid, err)
 		}
 	}
-	return OpenRequest{Symbol: in.Symbol, Side: side, Notional: notional, Leverage: leverage, Rules: rules, Strategy: strings.TrimSpace(in.Strategy), MaxLoss: maxLoss}, nil
+	if strings.TrimSpace(in.TakeProfit) != "" {
+		if takeProfit, err = fixed.Parse(in.TakeProfit); err != nil {
+			return OpenRequest{}, fmt.Errorf("%w: take_profit: %v", ErrInvalid, err)
+		}
+	}
+	return OpenRequest{Symbol: in.Symbol, Side: side, Notional: notional, Leverage: leverage, Rules: rules, Strategy: strings.TrimSpace(in.Strategy), MaxLoss: maxLoss, TakeProfit: takeProfit}, nil
 }
 
 func toMarketDTO(m venue.Market) marketDTO {
@@ -663,28 +688,16 @@ func toMarketDTO(m venue.Market) marketDTO {
 	}
 }
 
-func toStateDTO(st State) stateDTO {
+// toStateDTO renders the state; markets, when given, add each position's
+// liquidation price.
+func toStateDTO(st State, markets map[string]venue.Market) stateDTO {
 	positions := make([]positionDTO, 0, len(st.Positions))
 	for _, p := range st.Positions {
-		d := positionDTO{
-			ID:            p.VenueID,
-			Symbol:        p.Symbol,
-			Side:          p.Side.String(),
-			Size:          p.Size.String(),
-			EntryPrice:    p.EntryPrice.String(),
-			Notional:      p.EntryPrice.Mul(p.Size).String(),
-			Collateral:    p.Collateral.String(),
-			Leverage:      p.Leverage.String(),
-			UnrealizedPnL: p.UnrealizedPnL.String(),
-			FeesPaid:      p.FeesPaid.String(),
-			OpenedAt:      timeOrEmpty(p.OpenedAt),
-			ClosesAt:      timeOrEmpty(st.Deadlines[p.Symbol]),
+		var m *venue.Market
+		if mk, ok := markets[p.Symbol]; ok {
+			m = &mk
 		}
-		if ml, ok := st.Stops[p.Symbol]; ok && ml.IsPos() {
-			d.MaxLoss = ml.String()
-			d.StopPnL = p.Collateral.Mul(ml).Neg().String()
-		}
-		positions = append(positions, d)
+		positions = append(positions, toPositionDTO(p, st, m))
 	}
 	var last *lastCloseDTO
 	if st.LastClose != nil {
@@ -1108,6 +1121,7 @@ type tradeDTO struct {
 	Leverage     string `json:"leverage,omitempty"`
 	Collateral   string `json:"collateral,omitempty"`
 	StopPnL      string `json:"stop_pnl,omitempty"`
+	TPPnL        string `json:"tp_pnl,omitempty"`
 	WorstPnL     string `json:"worst_pnl,omitempty"`
 	BestPnL      string `json:"best_pnl,omitempty"`
 	OpenOrderID  string `json:"open_order_id,omitempty"`
@@ -1139,7 +1153,59 @@ func toTradeDTO(t store.ClosedTrade) tradeDTO {
 	}
 	d.Leverage, d.Collateral = decimalOrEmpty(t.Leverage), decimalOrEmpty(t.Collateral)
 	d.StopPnL, d.WorstPnL, d.BestPnL = decimalOrEmpty(t.StopPnL), decimalOrEmpty(t.WorstPnL), decimalOrEmpty(t.BestPnL)
+	d.TPPnL = decimalOrEmpty(t.TakeProfitPnL)
 	return d
+}
+
+// toPositionDTO renders one open position with its bounds: the horizon,
+// the stop and the target the platform holds for it, and where the venue
+// would liquidate it.
+func toPositionDTO(p venue.Position, st State, market *venue.Market) positionDTO {
+	d := positionDTO{
+		ID:            p.VenueID,
+		Symbol:        p.Symbol,
+		Side:          p.Side.String(),
+		Size:          p.Size.String(),
+		EntryPrice:    p.EntryPrice.String(),
+		Notional:      p.EntryPrice.Mul(p.Size).String(),
+		Collateral:    p.Collateral.String(),
+		Leverage:      p.Leverage.String(),
+		UnrealizedPnL: p.UnrealizedPnL.String(),
+		FeesPaid:      p.FeesPaid.String(),
+		OpenedAt:      timeOrEmpty(p.OpenedAt),
+		ClosesAt:      timeOrEmpty(st.Deadlines[p.Symbol]),
+	}
+	if ml, ok := st.Stops[p.Symbol]; ok && ml.IsPos() {
+		d.MaxLoss = ml.String()
+		d.StopPnL = p.Collateral.Mul(ml).Neg().String()
+	}
+	if tp, ok := st.TakeProfits[p.Symbol]; ok && tp.IsPos() {
+		d.TakeProfit = tp.String()
+		d.TPPnL = p.Collateral.Mul(tp).String()
+	}
+	if liq, _, ok := liquidationOf(p, market); ok {
+		d.LiquidationPrice = liq.String()
+	}
+	return d
+}
+
+// liquidationOf estimates where the venue liquidates a position: at
+// liquidation leverage L_liq the margin left is notional / L_liq, so the
+// price may move 1/leverage − 1/L_liq against the entry. Fees and funding
+// move it a little; the venue's own number is the one that counts.
+func liquidationOf(p venue.Position, market *venue.Market) (price, distance fixed.D, ok bool) {
+	if market == nil || !market.LiquidationLeverage.IsPos() || !p.EntryPrice.IsPos() || !p.Leverage.IsPos() {
+		return 0, 0, false
+	}
+	one := fixed.FromInt(1)
+	dist := one.Div(p.Leverage).Sub(one.Div(market.LiquidationLeverage))
+	if !dist.IsPos() {
+		return 0, 0, false
+	}
+	if p.Side == venue.Long {
+		return p.EntryPrice.Mul(one.Sub(dist)), dist, true
+	}
+	return p.EntryPrice.Mul(one.Add(dist)), dist, true
 }
 
 func decimalOrEmpty(d *fixed.D) string {

@@ -904,8 +904,8 @@ components:
         pnl: { $ref: "#/components/schemas/Decimal" }
         close_reason:
           type: string
-          enum: [manual, horizon, stop]
-          description: Who closed the round trip — a tap, the horizon, or the stop; absent while open.
+          enum: [manual, horizon, stop, take_profit]
+          description: Who closed the round trip — a tap, the horizon, the stop or the target; absent while open.
         opened_at: { type: string, format: date-time }
         closed_at: { type: string, format: date-time, description: Absent while the position is open. }
         id:
@@ -923,6 +923,9 @@ components:
         stop_pnl:
           allOf: [{ $ref: "#/components/schemas/Decimal" }]
           description: The loss the stop allowed, negative; absent when none was armed.
+        tp_pnl:
+          allOf: [{ $ref: "#/components/schemas/Decimal" }]
+          description: The gain the target closed at, positive; absent when none was armed.
         worst_pnl:
           allOf: [{ $ref: "#/components/schemas/Decimal" }]
           description: The worst the position was worth while open, as the platform sampled it.
@@ -1121,7 +1124,7 @@ components:
         side: { $ref: "#/components/schemas/Side" }
         reason:
           type: string
-          enum: [manual, horizon]
+          enum: [manual, horizon, stop, take_profit]
         price: { $ref: "#/components/schemas/Decimal" }
         pnl: { $ref: "#/components/schemas/Decimal" }
         at: { type: string, format: date-time }
@@ -1151,6 +1154,18 @@ components:
         stop_pnl:
           $ref: "#/components/schemas/Decimal"
           description: The unrealized result at which the stop closes; absent without one.
+        take_profit:
+          $ref: "#/components/schemas/Decimal"
+          description: The armed target as a fraction of collateral; absent without one.
+        tp_pnl:
+          $ref: "#/components/schemas/Decimal"
+          description: The unrealized result at which the target closes; absent without one.
+        liquidation_price:
+          $ref: "#/components/schemas/Decimal"
+          description: >-
+            Where the venue would liquidate, estimated from the entry, the
+            leverage and the market's maintenance margin. Absent when the
+            venue does not publish the latter.
 
     Limits:
       type: object
@@ -1214,6 +1229,12 @@ components:
             Arms a stop: the fraction of the position's collateral it may
             lose (0..1) before the platform closes it, judged on the venue's
             own mark. Absent or 0 arms none.
+        take_profit:
+          $ref: "#/components/schemas/Decimal"
+          description: >-
+            Arms a target: the fraction of the position's collateral it may
+            make (0 or more) before the platform closes it, judged on the
+            venue's own mark. Absent or 0 arms none.
         horizon_seconds:
           type: integer
           minimum: 0

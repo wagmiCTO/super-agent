@@ -162,7 +162,7 @@ type limitsBlockDTO struct {
 func limitsBlockFrom(chosen LimitTier, states map[*Service]State, now time.Time) limitsBlockDTO {
 	out := limitsBlockDTO{Chosen: chosen, Safe: SafeTier, Ceiling: CeilingTier, DayResetsAt: timeOrEmpty(StartOfDay(now.UTC()).Add(24 * time.Hour))}
 	for _, st := range states {
-		lim := toStateDTO(st).Limits
+		lim := toStateDTO(st, nil).Limits
 		out.Active = &lim
 		out.Balance = st.Account.Balance.String()
 		break

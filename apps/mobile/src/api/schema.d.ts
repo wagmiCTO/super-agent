@@ -1679,10 +1679,10 @@ export interface components {
             exit_fee?: components["schemas"]["Decimal"];
             pnl?: components["schemas"]["Decimal"];
             /**
-             * @description Who closed the round trip — a tap, the horizon, or the stop; absent while open.
+             * @description Who closed the round trip — a tap, the horizon, the stop or the target; absent while open.
              * @enum {string}
              */
-            close_reason?: "manual" | "horizon" | "stop";
+            close_reason?: "manual" | "horizon" | "stop" | "take_profit";
             /** Format: date-time */
             opened_at: string;
             /**
@@ -1701,6 +1701,8 @@ export interface components {
             collateral?: components["schemas"]["Decimal"];
             /** @description The loss the stop allowed, negative; absent when none was armed. */
             stop_pnl?: components["schemas"]["Decimal"];
+            /** @description The gain the target closed at, positive; absent when none was armed. */
+            tp_pnl?: components["schemas"]["Decimal"];
             /** @description The worst the position was worth while open, as the platform sampled it. */
             worst_pnl?: components["schemas"]["Decimal"];
             /** @description The best it was worth, on the same readings. */
@@ -1850,7 +1852,7 @@ export interface components {
             symbol: string;
             side: components["schemas"]["Side"];
             /** @enum {string} */
-            reason: "manual" | "horizon";
+            reason: "manual" | "horizon" | "stop" | "take_profit";
             price: components["schemas"]["Decimal"];
             pnl: components["schemas"]["Decimal"];
             /** Format: date-time */
@@ -1878,6 +1880,12 @@ export interface components {
             max_loss?: components["schemas"]["Decimal"];
             /** @description The unrealized result at which the stop closes; absent without one. */
             stop_pnl?: components["schemas"]["Decimal"];
+            /** @description The armed target as a fraction of collateral; absent without one. */
+            take_profit?: components["schemas"]["Decimal"];
+            /** @description The unrealized result at which the target closes; absent without one. */
+            tp_pnl?: components["schemas"]["Decimal"];
+            /** @description Where the venue would liquidate, estimated from the entry, the leverage and the market's maintenance margin. Absent when the venue does not publish the latter. */
+            liquidation_price?: components["schemas"]["Decimal"];
         };
         Limits: {
             allowed_symbols: string[];
@@ -1921,6 +1929,8 @@ export interface components {
             strategy?: string;
             /** @description Arms a stop: the fraction of the position's collateral it may lose (0..1) before the platform closes it, judged on the venue's own mark. Absent or 0 arms none. */
             max_loss?: components["schemas"]["Decimal"];
+            /** @description Arms a target: the fraction of the position's collateral it may make (0 or more) before the platform closes it, judged on the venue's own mark. Absent or 0 arms none. */
+            take_profit?: components["schemas"]["Decimal"];
             /** @description The strategy's exit: the platform closes the position this many seconds after it opens (10 s to 24 h). 0 or absent leaves the close to the user. A manual close disarms it. */
             horizon_seconds?: number;
         };

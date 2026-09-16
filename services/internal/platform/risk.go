@@ -128,20 +128,10 @@ func pct(part, whole fixed.D) float64 {
 // riskPosition turns a venue position into the screen's row, with the
 // stop, the liquidation distance and what is still at risk.
 func riskPosition(p venue.Position, st State, strategyID string, market *venue.Market) riskPositionDTO {
-	base := positionDTO{
-		ID: p.VenueID, Symbol: p.Symbol, Side: p.Side.String(), Size: p.Size.String(), EntryPrice: p.EntryPrice.String(),
-		Notional: p.EntryPrice.Mul(p.Size).String(), Collateral: p.Collateral.String(), Leverage: p.Leverage.String(),
-		UnrealizedPnL: p.UnrealizedPnL.String(), FeesPaid: p.FeesPaid.String(), OpenedAt: timeOrEmpty(p.OpenedAt),
-		ClosesAt: timeOrEmpty(st.Deadlines[p.Symbol]),
-	}
-	out := riskPositionDTO{positionDTO: base, Strategy: strategyID}
+	out := riskPositionDTO{positionDTO: toPositionDTO(p, st, market), Strategy: strategyID}
 	atRisk := p.Collateral
 	if ml, ok := st.Stops[p.Symbol]; ok && ml.IsPos() {
-		base.MaxLoss = ml.String()
-		stopPnL := p.Collateral.Mul(ml).Neg()
-		base.StopPnL = stopPnL.String()
 		atRisk = p.Collateral.Mul(ml)
-		out.positionDTO = base
 	}
 	// What can still be lost from here: the allowance minus what is already lost.
 	if p.UnrealizedPnL.IsNeg() {
@@ -151,22 +141,9 @@ func riskPosition(p venue.Position, st State, strategyID string, market *venue.M
 		}
 	}
 	out.AtRisk = atRisk.String()
-	if market != nil && market.LiquidationLeverage.IsPos() && p.EntryPrice.IsPos() && p.Leverage.IsPos() {
-		// Liquidation when the loss reaches collateral × (leverage / liquidation leverage):
-		// at liquidation leverage L_liq, the margin left is notional / L_liq.
-		// Distance as a fraction of entry: 1/leverage − 1/L_liq.
-		one := fixed.FromInt(1)
-		dist := one.Div(p.Leverage).Sub(one.Div(market.LiquidationLeverage))
-		if dist.IsPos() {
-			var liq fixed.D
-			if p.Side == venue.Long {
-				liq = p.EntryPrice.Mul(one.Sub(dist))
-			} else {
-				liq = p.EntryPrice.Mul(one.Add(dist))
-			}
-			out.LiquidationPrice = liq.String()
-			out.DistanceToLiquidationPct = dist.Mul(fixed.FromInt(100)).String()
-		}
+	if liq, dist, ok := liquidationOf(p, market); ok {
+		out.LiquidationPrice = liq.String()
+		out.DistanceToLiquidationPct = dist.Mul(fixed.FromInt(100)).String()
 	}
 	return out
 }
@@ -243,7 +220,7 @@ func (h *handler) risk(w http.ResponseWriter, r *http.Request) {
 			}
 			states[svc] = st
 		}
-		lim := toStateDTO(st).Limits
+		lim := toStateDTO(st, nil).Limits
 		row.Limits = &lim
 		var cooldownLeft float64
 		if st.Limits.Cooldown > 0 && !st.Risk.LastOpen.IsZero() {

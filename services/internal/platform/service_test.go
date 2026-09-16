@@ -472,3 +472,46 @@ func TestStopClosesALosingPosition(t *testing.T) {
 		t.Fatal("max_loss above 1 accepted")
 	}
 }
+
+// A take-profit is the fraction of collateral a position may make. Below it
+// the position runs on; at it the platform closes through the one close
+// path and the journal says the target did it.
+func TestTakeProfitClosesAWinningPosition(t *testing.T) {
+	fv := &fakeVenue{}
+	svc, _ := newService(t, fv)
+	svc.stopEvery = 10 * time.Millisecond
+	ctx := context.Background()
+	if _, err := svc.Open(ctx, OpenRequest{Symbol: "MON", Side: venue.Long, Notional: fixed.FromInt(10), Leverage: fixed.FromInt(2), TakeProfit: fixed.MustParse("0.5")}); err != nil {
+		t.Fatal(err)
+	}
+	st, _ := svc.State(ctx)
+	if len(st.Positions) != 1 || st.TakeProfits["MON"] != fixed.MustParse("0.5") || len(st.Stops) != 0 {
+		t.Fatalf("state after open = %+v", st)
+	}
+	collateral := st.Positions[0].Collateral // 5
+	// Up 40% of collateral: short of the target.
+	fv.mark("MON", collateral.Mul(fixed.MustParse("0.4")))
+	time.Sleep(60 * time.Millisecond)
+	if ps, _ := fv.Positions(ctx); len(ps) != 1 {
+		t.Fatal("closed before the target was made")
+	}
+	// Up 60%: the target fires.
+	fv.mark("MON", collateral.Mul(fixed.MustParse("0.6")))
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if ps, _ := fv.Positions(ctx); len(ps) == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the take-profit never closed the position")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	st, _ = svc.State(ctx)
+	if st.LastClose == nil || st.LastClose.Reason != CloseTakeProfit || len(st.TakeProfits) != 0 {
+		t.Fatalf("after take-profit: %+v", st)
+	}
+	if _, err := svc.Open(ctx, OpenRequest{Symbol: "MON", Side: venue.Long, Notional: fixed.FromInt(10), Leverage: fixed.FromInt(2), TakeProfit: fixed.MustParse("-0.1")}); err == nil {
+		t.Fatal("negative take_profit accepted")
+	}
+}

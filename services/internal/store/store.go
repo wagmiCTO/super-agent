@@ -330,12 +330,14 @@ type Horizon struct {
 	ClosesAt time.Time
 	// MaxLoss is the stop as a fraction of collateral; zero means none.
 	MaxLoss fixed.D
+	// TakeProfit is the target as a fraction of collateral; zero means none.
+	TakeProfit fixed.D
 }
 
 func (s *Store) SaveHorizon(ctx context.Context, h Horizon) error {
-	_, err := s.pool.Exec(ctx, `insert into horizons (account, symbol, closes_at, max_loss) values ($1, $2, $3, $4)
-		on conflict (account, symbol) do update set closes_at = excluded.closes_at, max_loss = excluded.max_loss`,
-		h.Account, h.Symbol, h.ClosesAt, h.MaxLoss.String())
+	_, err := s.pool.Exec(ctx, `insert into horizons (account, symbol, closes_at, max_loss, take_profit) values ($1, $2, $3, $4, $5)
+		on conflict (account, symbol) do update set closes_at = excluded.closes_at, max_loss = excluded.max_loss, take_profit = excluded.take_profit`,
+		h.Account, h.Symbol, h.ClosesAt, h.MaxLoss.String(), h.TakeProfit.String())
 	return err
 }
 
@@ -345,7 +347,7 @@ func (s *Store) DeleteHorizon(ctx context.Context, account, symbol string) error
 }
 
 func (s *Store) Horizons(ctx context.Context, account string) ([]Horizon, error) {
-	rows, err := s.pool.Query(ctx, `select account, symbol, closes_at, max_loss::text from horizons where account = $1`, account)
+	rows, err := s.pool.Query(ctx, `select account, symbol, closes_at, max_loss::text, take_profit::text from horizons where account = $1`, account)
 	if err != nil {
 		return nil, err
 	}
@@ -353,12 +355,15 @@ func (s *Store) Horizons(ctx context.Context, account string) ([]Horizon, error)
 	var out []Horizon
 	for rows.Next() {
 		var h Horizon
-		var maxLoss string
-		if err := rows.Scan(&h.Account, &h.Symbol, &h.ClosesAt, &maxLoss); err != nil {
+		var maxLoss, takeProfit string
+		if err := rows.Scan(&h.Account, &h.Symbol, &h.ClosesAt, &maxLoss, &takeProfit); err != nil {
 			return nil, err
 		}
 		if h.MaxLoss, err = fixed.Parse(maxLoss); err != nil {
 			return nil, fmt.Errorf("store: horizon %s/%s max_loss %q: %w", h.Account, h.Symbol, maxLoss, err)
+		}
+		if h.TakeProfit, err = fixed.Parse(takeProfit); err != nil {
+			return nil, fmt.Errorf("store: horizon %s/%s take_profit %q: %w", h.Account, h.Symbol, takeProfit, err)
 		}
 		out = append(out, h)
 	}
@@ -377,11 +382,11 @@ type Fill struct {
 
 // TradeOpened journals an opening fill.
 func (s *Store) TradeOpened(ctx context.Context, wallet, strategy, symbol, orderID string, f Fill, t Terms, at time.Time) error {
-	_, err := s.pool.Exec(ctx, `insert into trades (wallet, strategy, symbol, open_order_id, side, size, entry_price, entry_fee, opened_at, leverage, collateral, stop_pnl)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+	_, err := s.pool.Exec(ctx, `insert into trades (wallet, strategy, symbol, open_order_id, side, size, entry_price, entry_fee, opened_at, leverage, collateral, stop_pnl, tp_pnl)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		on conflict (wallet, open_order_id) do nothing`,
 		wallet, strategy, symbol, orderID, f.Side, f.Size.String(), f.Price.String(), f.Fee.String(), at,
-		decimalOrNil(t.Leverage), decimalOrNil(t.Collateral), decimalOrNil(t.StopPnL))
+		decimalOrNil(t.Leverage), decimalOrNil(t.Collateral), decimalOrNil(t.StopPnL), decimalOrNil(t.TakeProfitPnL))
 	return err
 }
 
@@ -424,8 +429,10 @@ type Terms struct {
 	Leverage   *fixed.D
 	Collateral *fixed.D
 	StopPnL    *fixed.D
-	WorstPnL   *fixed.D
-	BestPnL    *fixed.D
+	// TakeProfitPnL is the result the target closes at; nil without one.
+	TakeProfitPnL *fixed.D
+	WorstPnL      *fixed.D
+	BestPnL       *fixed.D
 }
 
 // TradeClosed completes the open round trip for a wallet's symbol. A close
@@ -470,7 +477,7 @@ func (s *Store) TradeClosed(ctx context.Context, wallet, symbol, fallbackStrateg
 // tradeColumns is what a round trip is read as, everywhere it is read.
 const tradeColumns = `id, wallet, strategy, symbol, open_order_id, coalesce(close_order_id, ''), side, size::text, entry_price::text,
 		coalesce(exit_price::text, ''), entry_fee::text, coalesce(exit_fee::text, ''), coalesce(pnl::text, ''), coalesce(close_reason, ''), opened_at, closed_at,
-		leverage::text, collateral::text, stop_pnl::text, worst_pnl::text, best_pnl::text`
+		leverage::text, collateral::text, stop_pnl::text, worst_pnl::text, best_pnl::text, tp_pnl::text`
 
 func (s *Store) Trades(ctx context.Context, wallet, symbol, strategy string, limit int) ([]ClosedTrade, error) {
 	out, _, err := s.TradesPage(ctx, TradeQuery{Wallet: wallet, Symbol: symbol, Strategy: strategy, Limit: limit})
@@ -562,10 +569,10 @@ func scanTrade(row scanner) (ClosedTrade, error) {
 	var t ClosedTrade
 	var size, entry, exit, entryFee, exitFee, pnl string
 	var closedAt *time.Time
-	var leverage, collateral, stopPnL, worstPnL, bestPnL *string
+	var leverage, collateral, stopPnL, worstPnL, bestPnL, tpPnL *string
 	if err := row.Scan(&t.ID, &t.Wallet, &t.Strategy, &t.Symbol, &t.OpenOrderID, &t.CloseOrderID, &t.Side, &size, &entry, &exit,
 		&entryFee, &exitFee, &pnl, &t.CloseReason, &t.OpenedAt, &closedAt,
-		&leverage, &collateral, &stopPnL, &worstPnL, &bestPnL); err != nil {
+		&leverage, &collateral, &stopPnL, &worstPnL, &bestPnL, &tpPnL); err != nil {
 		return ClosedTrade{}, err
 	}
 	t.Size, _ = fixed.Parse(size)
@@ -585,6 +592,7 @@ func scanTrade(row scanner) (ClosedTrade, error) {
 	}
 	t.Leverage, t.Collateral = optionalDecimal(leverage), optionalDecimal(collateral)
 	t.StopPnL, t.WorstPnL, t.BestPnL = optionalDecimal(stopPnL), optionalDecimal(worstPnL), optionalDecimal(bestPnL)
+	t.TakeProfitPnL = optionalDecimal(tpPnL)
 	return t, nil
 }
 
