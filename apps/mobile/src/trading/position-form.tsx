@@ -246,9 +246,15 @@ function Outcome({ label, value }: { label: string; value: string }) {
  * The standard position as one line on a trading screen: what a tap opens,
  * and the number it can cost. Tapping it opens the form.
  */
-export function SettingsChip({ onPress }: { onPress: () => void }) {
+/**
+ * The standard position in one line. `maxLeverage` is the market's own
+ * ceiling: a position set at 3x on the home market is still 3x here, and
+ * one set above what this market allows is shown at what it will get.
+ */
+export function SettingsChip({ onPress, maxLeverage }: { onPress: () => void; maxLeverage?: number }) {
   const theme = useTheme();
-  const { settings } = usePositionSettings();
+  const { settings: stored } = usePositionSettings();
+  const settings = maxLeverage && maxLeverage > 0 && stored.leverage > maxLeverage ? { ...stored, leverage: maxLeverage } : stored;
   return (
     <Pressable onPress={onPress} testID="settings-chip">
       <View

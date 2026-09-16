@@ -127,7 +127,12 @@ export function PositionSettingsProvider({ children }: { children: ReactNode }) 
   const refresh = useCallback(() => {
     Promise.all([api.state('direction'), api.markets().catch(() => [])])
       .then(([s, markets]) => {
-        const fees = markets.find((m) => m.symbol === DEFAULT_SYMBOL)?.fees;
+        const home = markets.find((m) => m.symbol === DEFAULT_SYMBOL);
+        const fees = home?.fees;
+        // The policy's ceiling spans every market it allows; the standard
+        // position is sized for the home market, whose own ceiling is lower.
+        // A screen on a bigger market caps at the same number, never above.
+        const maxLeverage = Math.min(Number(s.limits.max_leverage), home ? Number(home.max_leverage) : Number(s.limits.max_leverage));
         // On a venue that charges the whole round trip at the open, the
         // open is what the balance has to cover.
         const openFee = fees ? Number(fees.charged_on === 'open-only' ? fees.round_trip_taker : fees.taker_rate) + Number(fees.builder_rate) : 0;
@@ -135,7 +140,7 @@ export function PositionSettingsProvider({ children }: { children: ReactNode }) 
           minSize: Number(s.limits.min_notional),
           maxNotional: Number(s.limits.max_notional),
           balance: Number(s.account.balance),
-          maxLeverage: Number(s.limits.max_leverage),
+          maxLeverage: Number.isFinite(maxLeverage) && maxLeverage > 0 ? maxLeverage : Number(s.limits.max_leverage),
           openFee: Number.isFinite(openFee) ? openFee : 0,
           known: true,
         });

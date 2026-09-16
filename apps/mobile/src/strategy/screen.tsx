@@ -26,13 +26,14 @@ import { api, type Position, type State, type Trade } from '@/api/client';
 import { INTERVALS, INTERVAL_LABELS, type ChartPosition, type ChartTick, type Interval } from '@/chart/page';
 import { trim } from '@/components/format';
 import { TVChart } from '@/components/TVChart';
-import { DEFAULT_SYMBOL, STRATEGY_NAMES } from '@/config';
+import { STRATEGY_NAMES, SYMBOLS } from '@/config';
 import { ContextPanel } from '@/strategy/context';
 import { riskPercent } from '@/strategy/risk';
 import { useSignal, type StrategyId } from '@/strategy/useSignal';
 import { SettingsChip } from '@/trading/position-form';
 import { shareTrade } from '@/trading/share';
 import { maxLossFraction, takeProfitFraction, usePositionSettings } from '@/trading/useSettings';
+import { useSymbol } from '@/trading/useSymbol';
 import { useTrading } from '@/trading/useTrading';
 import { Button, DirectionKeys } from '@/ui/button';
 import { useCountdown } from '@/ui/countdown';
@@ -50,19 +51,41 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
   const theme = useTheme();
   const { height } = useWindowDimensions();
 
-  const t = useTrading(DEFAULT_SYMBOL, id);
-  const signal = useSignal(id, DEFAULT_SYMBOL);
+  const [symbol, chooseSymbol] = useSymbol(id);
+  const t = useTrading(symbol, id);
+  const signal = useSignal(id, symbol);
   const { settings } = usePositionSettings();
+
+  // One account, one position per market: a market that holds another
+  // strategy's position is not on offer here. This strategy's own position
+  // is the one whose opening trade is in its own list.
+  const allowed = t.state?.limits.allowed_symbols ?? null;
+  const offered = SYMBOLS.filter((s) => !allowed || allowed.includes(s));
+  const held = new Set((t.state?.positions ?? []).map((p) => p.symbol));
+  const ownsHere = t.trades.some((tr) => !tr.closed_at && tr.symbol === symbol);
+  const busy = (s: string) => held.has(s) && !(s === symbol && ownsHere);
+  // Landed on a market another strategy is in: move to the first free one
+  // rather than show its position as this strategy's.
+  useEffect(() => {
+    if (!t.state || !busy(symbol)) return;
+    const free = offered.find((s) => !busy(s));
+    if (free && free !== symbol) chooseSymbol(free);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [t.state, t.trades, symbol]);
 
   const lit = signal?.side ?? null;
   const armed = id === 'direction';
+  // Never above what this market allows: the standard position is one
+  // number for every market, and the venue refuses a leverage it does not offer.
+  const marketMax = t.market ? Number(t.market.max_leverage) : 0;
+  const leverage = marketMax > 0 ? Math.min(settings.leverage, marketMax) : settings.leverage;
   const tap = (side: 'up' | 'down') =>
     void t.open(
       side === 'up' ? 'long' : 'short',
       String(settings.size),
       settings.horizonMinutes * 60,
       maxLossFraction(settings),
-      String(settings.leverage),
+      String(leverage),
       takeProfitFraction(settings),
     );
 
@@ -76,7 +99,7 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
     leaving.current = true;
     for (let attempt = 0; attempt < 6; attempt++) {
       try {
-        const trades = await api.trades(DEFAULT_SYMBOL, id);
+        const trades = await api.trades(symbol, id);
         const done = trades.find((x) =>
           x.id && x.closed_at && (closeOrderID ? x.close_order_id === closeOrderID : !openedAfter || x.opened_at >= openedAfter),
         );
@@ -111,11 +134,20 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
     <Screen>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: theme.space.s5 }}>
         <View style={{ minHeight: fold, paddingTop: TOP, gap: theme.space.s4 }}>
-          <Header id={id} state={t.state} offline={t.offline} locked={t.locked} symbol={t.position ? DEFAULT_SYMBOL : null} />
+          <Header id={id} state={t.state} offline={t.offline} locked={t.locked} symbol={t.position ? symbol : null} />
 
-          <ChartBox id={id} lit={lit !== null} trades={t.trades} position={t.position} signal={signal} />
+          {/* Which market. Hidden while a position runs: the screen is that position. */}
+          {t.position ? null : (
+            <View style={{ flexDirection: 'row', gap: theme.space.s1 }} testID="symbol-picker">
+              {offered.map((s) => (
+                <Chip key={s} label={s} small on={s === symbol} disabled={busy(s)} onPress={() => chooseSymbol(s)} testID={`symbol-${s}`} />
+              ))}
+            </View>
+          )}
 
-          {t.position ? null : <Says id={id} signal={signal} />}
+          <ChartBox id={id} symbol={symbol} lit={lit !== null} trades={t.trades} position={t.position} signal={signal} />
+
+          {t.position ? null : <Says id={id} symbol={symbol} signal={signal} />}
 
           {/* What just happened stays on the screen whether or not it left a
               position: a fill is the answer to the tap that was made. */}
@@ -152,13 +184,13 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
                 alwaysArmed={armed}
                 disabled={t.busy !== null || t.state === null}
               />
-              <SettingsChip onPress={() => router.push('/settings')} />
+              <SettingsChip onPress={() => router.push('/settings')} maxLeverage={marketMax} />
             </View>
           )}
         </View>
 
         <View style={{ paddingTop: theme.space.s4, gap: theme.space.s4 }}>
-          <ContextPanel symbol={DEFAULT_SYMBOL} />
+          <ContextPanel symbol={symbol} />
           <HistoryCard id={id} trades={t.trades} />
         </View>
       </ScrollView>
@@ -212,7 +244,7 @@ function Header({ id, state, offline, locked, symbol }: { id: StrategyId; state:
  * honour: the bar size, and candles or a line. It fills whatever the fold
  * leaves after the keys and the header, and never less than a readable pane.
  */
-function ChartBox({ id, lit, trades, position, signal }: { id: StrategyId; lit: boolean; trades: Trade[]; position: Position | null; signal: ReturnType<typeof useSignal> }) {
+function ChartBox({ id, symbol, lit, trades, position, signal }: { id: StrategyId; symbol: string; lit: boolean; trades: Trade[]; position: Position | null; signal: ReturnType<typeof useSignal> }) {
   const theme = useTheme();
   const averages = id === 'ma-cross' ? signal?.averages ?? { fast: 5, slow: 20, trend: 'flat' as const, lastCross: null } : null;
   const { name } = useThemeControls();
@@ -240,7 +272,7 @@ function ChartBox({ id, lit, trades, position, signal }: { id: StrategyId; lit: 
       }}
     >
       <TVChart
-        symbol={DEFAULT_SYMBOL}
+        symbol={symbol}
         theme={name === 'terminal' ? 'dark' : 'light'}
         colours={{
           background: theme.color.soft,
@@ -272,7 +304,7 @@ function ChartBox({ id, lit, trades, position, signal }: { id: StrategyId; lit: 
           {tick ? trim(tick.price) : ' '}
         </Text>
         <Text variant="small" style={{ fontSize: theme.type.tXs }}>
-          {tick?.change === null || tick?.change === undefined ? DEFAULT_SYMBOL : `${DEFAULT_SYMBOL} · ${money(tick.change, 1)}% today`}
+          {tick?.change === null || tick?.change === undefined ? symbol : `${symbol} · ${money(tick.change, 1)}% today`}
         </Text>
       </View>
 
@@ -358,7 +390,7 @@ function levelsOf(p: Position): ChartPosition {
 }
 
 /** What the strategy has to say: a question, or a side, or silence with a reason. */
-function Says({ id, signal }: { id: StrategyId; signal: ReturnType<typeof useSignal> }) {
+function Says({ id, symbol, signal }: { id: StrategyId; symbol: string; signal: ReturnType<typeof useSignal> }) {
   const theme = useTheme();
   const { settings } = usePositionSettings();
   const left = useCountdown(signal?.expiresAt ?? null);
@@ -366,7 +398,7 @@ function Says({ id, signal }: { id: StrategyId; signal: ReturnType<typeof useSig
   if (id === 'direction') {
     return (
       <Text variant="bodyStrong" style={{ textAlign: 'center', fontSize: theme.type.tMd, fontFamily: face(theme, 'display', 700) }} testID="says">
-        {`Where does ${DEFAULT_SYMBOL} go in the next ${settings.horizonMinutes} minutes?`}
+        {`Where does ${symbol} go in the next ${settings.horizonMinutes} minutes?`}
       </Text>
     );
   }

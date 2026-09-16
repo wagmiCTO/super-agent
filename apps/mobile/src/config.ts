@@ -65,8 +65,15 @@ export const NOTIONAL_PRESETS = ['5', '10', '20', '50'] as const;
 /** Leverage the Direction strategy trades at. MON allows at most 3x. */
 export const DEFAULT_LEVERAGE = '2';
 
-/** The market the Direction strategy opens on by default. */
+/** The market a strategy screen opens on until another is chosen. */
 export const DEFAULT_SYMBOL = 'MON';
+
+/**
+ * The markets a strategy screen offers, in this order, narrowed to what the
+ * platform's policy allows. Perpl testnet lists BTC, ETH, SOL, MON, ZEC, LIT
+ * and PUMP — no DOGE — so these four are the majors it has.
+ */
+export const SYMBOLS = ['MON', 'ETH', 'BTC', 'SOL'] as const;
 
 /**
  * Horizons the Direction strategy offers: the platform closes the position
