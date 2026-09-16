@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"math/big"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,11 +19,13 @@ import (
 	"github.com/wagmiCTO/super-agent/services/internal/strategy"
 )
 
-// Prize keeps the StrategyPrizePool contract fed and settled: every closed
-// round trip adds a share of the builder fee it paid to its strategy's pool
-// for the week (sent in batches, one transaction per strategy), and once a
-// week is over the top of each board is published as that week's winners.
-// Payouts are the winners' own claims; the platform never holds them.
+// Prize keeps the StrategyPrizePool contract fed and settled (ADR 0006).
+// During a week the journal counts what each strategy's round trips earned
+// the pool — a share of the builder fee they paid. Once the week is over
+// and the fees have been received from the venue, a receipt funds each
+// pool with what it accrued, never more than what arrived, and settles the
+// week: the top of each board is published as its winners. Payouts are
+// the winners' own claims; the platform never holds them.
 type Prize struct {
 	client   *chain.Client
 	key      *chain.Key
@@ -116,35 +119,126 @@ func WeekStart(week uint64) time.Time { return time.Unix(int64(week)*7*86400-3*8
 func (p *Prize) Contract() string { return addrHex(p.contract) }
 func (p *Prize) Token() string    { return addrHex(p.token) }
 
-// OnClosed is the ledger hook: the round trip's share of its builder fee,
-// both legs, owed to this week's pool. A trade that paid no builder fee —
-// the platform's own account, a key enrolled without one — owes nothing.
-func (p *Prize) OnClosed(t Trade) {
-	amount := p.contribution(t)
-	if amount.Sign() == 0 {
-		return
+// ErrReceiptExists says a week's fees were confirmed once already.
+var ErrReceiptExists = errors.New("platform: that week's fees were already received")
+
+// ErrWeekNotOver says a receipt was offered for a week still running.
+var ErrWeekNotOver = errors.New("platform: the week is not over yet")
+
+// Accrued is what a week's closed round trips have earned each strategy's
+// pool so far, in token units: the share of the builder fee they paid. A
+// number for the app to show; it becomes money on the contract only with
+// the week's receipt.
+func (p *Prize) Accrued(ctx context.Context, week uint64) (map[string]*big.Int, error) {
+	out := map[string]*big.Int{}
+	if p.store == nil || p.share <= 0 {
+		return out, nil
 	}
-	k := fundKey{week: WeekOf(t.ClosedAt), strategy: t.Strategy}
-	p.mu.Lock()
-	if p.due[k] == nil {
-		p.due[k] = new(big.Int)
+	fees, err := p.store.BuilderFeesByStrategy(ctx, WeekStart(week), WeekStart(week+1))
+	if err != nil {
+		return nil, err
 	}
-	p.due[k].Add(p.due[k], amount)
-	p.mu.Unlock()
+	for id, fee := range fees {
+		if !fee.IsPos() {
+			continue
+		}
+		v := collateralMicros(fee)
+		v.Mul(v, big.NewInt(int64(p.share)))
+		out[id] = v.Div(v, big.NewInt(100))
+	}
+	return out, nil
 }
 
-// contribution is what a closed round trip adds to the pool, in token units.
-func (p *Prize) contribution(t Trade) *big.Int {
-	if p.share <= 0 {
-		return new(big.Int)
+// Receipt is a week's fees confirmed: what arrived, what of it went to
+// each pool, and which strategies were settled on the spot.
+type Receipt struct {
+	Week    uint64
+	Amount  *big.Int
+	Funded  map[string]*big.Int
+	Settled []string
+}
+
+// Receive confirms that a finished week's builder fees, `amount` token
+// units of them, have reached the settler wallet. Each strategy's pool is
+// funded with what it accrued, scaled down if less arrived, and the week
+// is settled. Once per week: a second receipt is refused before anything
+// is sent.
+func (p *Prize) Receive(ctx context.Context, week uint64, amount *big.Int) (Receipt, error) {
+	if amount == nil || amount.Sign() < 0 {
+		return Receipt{}, fmt.Errorf("%w: amount must not be negative", ErrInvalid)
 	}
-	fee := t.Entry.BuilderFee.Add(t.Exit.BuilderFee)
-	if !fee.IsPos() {
-		return new(big.Int)
+	if week >= WeekOf(p.now()) {
+		return Receipt{}, ErrWeekNotOver
 	}
-	v := collateralMicros(fee)
-	v.Mul(v, big.NewInt(int64(p.share)))
-	return v.Div(v, big.NewInt(100))
+	if p.store == nil {
+		return Receipt{}, errors.New("platform: receipts need the journal")
+	}
+	accrued, err := p.Accrued(ctx, week)
+	if err != nil {
+		return Receipt{}, err
+	}
+	funded := allocate(accrued, amount)
+	inserted, err := p.store.SaveReceipt(ctx, store.PrizeReceipt{Week: week, Amount: micros(amount), Funded: fundedJSON(funded), ReceivedAt: p.now()})
+	if err != nil {
+		return Receipt{}, err
+	}
+	if !inserted {
+		return Receipt{}, ErrReceiptExists
+	}
+	p.mu.Lock()
+	for id, v := range funded {
+		if v.Sign() == 0 {
+			continue
+		}
+		k := fundKey{week: week, strategy: id}
+		if p.due[k] == nil {
+			p.due[k] = new(big.Int)
+		}
+		p.due[k].Add(p.due[k], v)
+	}
+	p.mu.Unlock()
+	p.flush(ctx)
+	settled := p.settleWeek(ctx, week)
+	p.log.Info("prize receipt", "week", week, "amount", amount.String(), "funded", fundedJSON(funded), "settled", settled)
+	return Receipt{Week: week, Amount: amount, Funded: funded, Settled: settled}, nil
+}
+
+// allocate gives each strategy what it accrued, or its share of what was
+// received when that is less: the contract never holds more than arrived.
+func allocate(accrued map[string]*big.Int, received *big.Int) map[string]*big.Int {
+	out := map[string]*big.Int{}
+	total := new(big.Int)
+	for _, v := range accrued {
+		total.Add(total, v)
+	}
+	for id, v := range accrued {
+		if v.Sign() == 0 {
+			continue
+		}
+		if received.Cmp(total) >= 0 {
+			out[id] = new(big.Int).Set(v)
+			continue
+		}
+		part := new(big.Int).Mul(v, received)
+		out[id] = part.Div(part, total)
+	}
+	return out
+}
+
+func fundedJSON(m map[string]*big.Int) string {
+	parts := make([]string, 0, len(m))
+	for _, s := range strategy.Catalog {
+		if v, ok := m[s.ID]; ok {
+			parts = append(parts, fmt.Sprintf("%q:%q", s.ID, v.String()))
+		}
+	}
+	return "{" + strings.Join(parts, ",") + "}"
+}
+
+// micros turns token units (6 decimals) back into a fixed-point amount.
+func micros(v *big.Int) fixed.D {
+	scaled := new(big.Int).Mul(v, big.NewInt(int64(fixed.Scale)/1_000_000))
+	return fixed.D(scaled.Int64())
 }
 
 const (
@@ -202,12 +296,19 @@ func (p *Prize) flush(ctx context.Context) {
 }
 
 // settleDue publishes last week's winners for every strategy whose pool has
-// money and is not settled yet.
+// money and is not settled yet — the safety net behind a receipt whose
+// settlement did not go through.
 func (p *Prize) settleDue(ctx context.Context) {
 	if p.store == nil {
 		return
 	}
-	last := WeekOf(p.now()) - 1
+	p.settleWeek(ctx, WeekOf(p.now())-1)
+}
+
+// settleWeek settles one week for every strategy whose pool has money and
+// is not settled yet; returns the strategies it settled.
+func (p *Prize) settleWeek(ctx context.Context, last uint64) []string {
+	var done []string
 	for _, s := range strategy.Catalog {
 		settled, err := p.boolCall(ctx, chain.Encode("settled(uint64,bytes32)", last, StrategyKey(s.ID)))
 		if err != nil || settled {
@@ -244,7 +345,9 @@ func (p *Prize) settleDue(ctx context.Context) {
 			}
 		}
 		p.log.Info("prize settled", "week", last, "strategy", s.ID, "pool", pool.String(), "winners", len(winners))
+		done = append(done, s.ID)
 	}
+	return done
 }
 
 // Winner is one line of a settlement.

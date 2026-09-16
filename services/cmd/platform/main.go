@@ -266,9 +266,14 @@ func run(log *slog.Logger) error {
 		if err != nil {
 			return err
 		}
-		ledger.OnClosed(prize.OnClosed)
 		go prize.Run(ctx)
 		handlerOpts = append(handlerOpts, platform.WithPrize(prize))
+		if token := os.Getenv("PLATFORM_ADMIN_TOKEN"); token != "" {
+			handlerOpts = append(handlerOpts, platform.WithAdminToken(token))
+			log.Info("operator endpoints enabled: the weekly prize receipt")
+		} else {
+			log.Warn("operator endpoints disabled: PLATFORM_ADMIN_TOKEN is not set; weeks cannot be funded or settled")
+		}
 	} else {
 		log.Warn("prize pool disabled: PLATFORM_SETTLER_KEY or PLATFORM_PRIZE_POOL_ADDRESS is not set")
 	}

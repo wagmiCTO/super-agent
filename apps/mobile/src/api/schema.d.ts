@@ -723,6 +723,146 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/prizes/accrued": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What a week earned each pool (operator)
+         * @description The platform's share of the builder fees each strategy's round trips paid in the week — what to withdraw from the venue before confirming the receipt. Bearer `PLATFORM_ADMIN_TOKEN`; 403 when no token is configured.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Defaults to last week. */
+                    week?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Accrued per strategy, and the receipt if one is on record. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            week: number;
+                            /** Format: date-time */
+                            week_start: string;
+                            accrued: {
+                                [key: string]: components["schemas"]["Decimal"];
+                            };
+                            receipt?: {
+                                amount?: components["schemas"]["Decimal"];
+                                funded?: {
+                                    [key: string]: string;
+                                };
+                                /** Format: date-time */
+                                received_at?: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Wrong or missing operator token. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Operator endpoints are not enabled. */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/prizes/receipts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm a finished week's fees arrived (operator)
+         * @description Funds each strategy's pool for the week with what it accrued — scaled down if less was received — and settles the week, so winners can claim. Once per week. Bearer `PLATFORM_ADMIN_TOKEN`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description A week already over. */
+                        week: number;
+                        /** @description Collateral received on the settler wallet for that week. */
+                        amount: components["schemas"]["Decimal"];
+                    };
+                };
+            };
+            responses: {
+                /** @description What was funded and which strategies were settled. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            week: number;
+                            amount: components["schemas"]["Decimal"];
+                            funded: {
+                                [key: string]: components["schemas"]["Decimal"];
+                            };
+                            settled: string[];
+                        };
+                    };
+                };
+                /** @description The week is not over */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description That week's receipt is already on record. */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/trades": {
         parameters: {
             query?: never;
@@ -1744,7 +1884,10 @@ export interface components {
             week: number;
             pools: {
                 strategy: string;
+                /** @description What is on the contract for this week; zero until the week's fees are received. */
                 pool: components["schemas"]["Decimal"];
+                /** @description What this week's round trips have earned the pool so far — the platform's share of the builder fees they paid. A number the app shows as the pool "so far"; it is funded on the week's receipt. */
+                accrued: components["schemas"]["Decimal"];
             }[];
             last_week: number;
             /** @description Last week's published winners, best first per strategy. */

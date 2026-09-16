@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"math/rand/v2"
@@ -145,77 +146,120 @@ func newTestPrize(t *testing.T, rpc *fakeRPC, st *store.Store, share int) *Prize
 	return p
 }
 
-// paid is a round trip whose two fills carried this much builder fee each.
-func paid(strategy string, at time.Time, builderFee string) Trade {
-	f := store.Fill{BuilderFee: fixed.MustParse(builderFee)}
-	return Trade{Strategy: strategy, ClosedAt: at, Entry: f, Exit: f}
+// A receipt funds each pool with what it accrued, or its share of what was
+// received when less arrived: the contract never holds more than the
+// platform was paid.
+func TestAllocateNeverExceedsWhatArrived(t *testing.T) {
+	accrued := map[string]*big.Int{"direction": big.NewInt(600_000), "rsi": big.NewInt(400_000)}
+	full := allocate(accrued, big.NewInt(2_000_000))
+	if full["direction"].Int64() != 600_000 || full["rsi"].Int64() != 400_000 {
+		t.Fatalf("with more than enough received, pools should get what they accrued: %v", full)
+	}
+	short := allocate(accrued, big.NewInt(500_000))
+	if short["direction"].Int64() != 300_000 || short["rsi"].Int64() != 200_000 {
+		t.Fatalf("with half received, pools should get half of what they accrued: %v", short)
+	}
+	if n := len(allocate(map[string]*big.Int{}, big.NewInt(500_000))); n != 0 {
+		t.Fatalf("nothing accrued funds nothing, got %d pools", n)
+	}
 }
 
-// Closed trades owe half of the builder fee they paid, both legs, to their
-// week's pool per strategy; one flush sends one transaction per (week,
-// strategy) carrying the sum. A trade that paid no builder fee owes nothing.
-func TestPrizeFundsPerStrategyInBatches(t *testing.T) {
+// A week still running has no receipt: its fees are not in yet.
+func TestReceiveRefusesARunningWeek(t *testing.T) {
 	rpc := newFakeRPC()
 	p := newTestPrize(t, rpc, nil, 50)
-	at := time.Date(2035, 3, 10, 12, 0, 0, 0, time.UTC)
-	p.OnClosed(paid("direction", at, "0.1"))                  // 0.2 paid → 0.1 owed
-	p.OnClosed(paid("direction", at.Add(time.Minute), "0.1")) // another 0.1
-	p.OnClosed(paid("rsi", at, "0.1"))
-	p.OnClosed(Trade{Strategy: "rsi", ClosedAt: at}) // the platform's own account: no builder fee
-	p.flush(context.Background())
-
-	week := WeekOf(at)
-	if n := rpc.sentWith(chain.Encode("fund(uint64,bytes32,uint256)", week, StrategyKey("direction"), big.NewInt(200_000))); n != 1 {
-		t.Fatalf("direction funding transactions = %d, want 1 with the sum of both trades", n)
+	if _, err := p.Receive(context.Background(), WeekOf(p.now()), big.NewInt(1)); !errors.Is(err, ErrWeekNotOver) {
+		t.Fatalf("receipt for the current week: err = %v, want ErrWeekNotOver", err)
 	}
-	if n := rpc.sentWith(chain.Encode("fund(uint64,bytes32,uint256)", week, StrategyKey("rsi"), big.NewInt(100_000))); n != 1 {
+	if _, err := p.Receive(context.Background(), WeekOf(p.now())-1, big.NewInt(-1)); err == nil {
+		t.Fatal("a negative receipt was accepted")
+	}
+	if len(rpc.sent) != 0 {
+		t.Fatal("a refused receipt sent a transaction")
+	}
+}
+
+// A finished week's receipt funds each strategy's pool with half of the
+// builder fees its round trips paid, and settles the week from the board;
+// a second receipt for the same week is refused before anything is sent.
+func TestReceiveFundsWhatTheWeekEarnedAndSettles(t *testing.T) {
+	st := testStoreForPrize(t)
+	rpc := newFakeRPC()
+	p := newTestPrize(t, rpc, st, 50)
+	now := time.Date(2035, 3, 10, 12, 0, 0, 0, time.UTC).Add(time.Duration(rand.IntN(20000)) * 7 * 24 * time.Hour)
+	p.now = func() time.Time { return now }
+	last := WeekOf(now) - 1
+	closedAt := WeekStart(last).Add(time.Hour)
+
+	w := []string{testWallet(t, 1), testWallet(t, 2)}
+	// 0.1 builder fee on each leg: 0.2 per round trip, 0.1 to the pool.
+	journalPaidRoundTrip(t, st, w[0], "direction", fixed.MustParse("2"), fixed.MustParse("0.1"), closedAt)
+	journalPaidRoundTrip(t, st, w[1], "direction", fixed.MustParse("1"), fixed.MustParse("0.1"), closedAt.Add(time.Minute))
+	journalPaidRoundTrip(t, st, w[1], "rsi", fixed.MustParse("1"), fixed.MustParse("0.05"), closedAt)
+	// The platform's own account pays no builder fee and accrues nothing.
+	journalPaidRoundTrip(t, st, w[0], "ma-cross", fixed.MustParse("1"), 0, closedAt)
+
+	accrued, err := p.Accrued(context.Background(), last)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accrued["direction"].Int64() != 200_000 || accrued["rsi"].Int64() != 50_000 || accrued["ma-cross"] != nil {
+		t.Fatalf("accrued = %v", accrued)
+	}
+
+	// The pools show the funding once it lands, so the settlement can split it.
+	rpc.pools[poolKey(last, "direction")] = big.NewInt(200_000)
+	rpc.pools[poolKey(last, "rsi")] = big.NewInt(50_000)
+	rec, err := p.Receive(context.Background(), last, big.NewInt(250_000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := rpc.sentWith(chain.Encode("fund(uint64,bytes32,uint256)", last, StrategyKey("direction"), big.NewInt(200_000))); n != 1 {
+		t.Fatalf("direction funding transactions = %d, want 1", n)
+	}
+	if n := rpc.sentWith(chain.Encode("fund(uint64,bytes32,uint256)", last, StrategyKey("rsi"), big.NewInt(50_000))); n != 1 {
 		t.Fatalf("rsi funding transactions = %d, want 1", n)
 	}
-	if len(rpc.sent) != 2 {
-		t.Fatalf("transactions sent = %d, want 2", len(rpc.sent))
+	if len(rec.Settled) != 2 || len(rpc.sent) != 4 {
+		t.Fatalf("settled %v, transactions %d; want both strategies settled after two fundings", rec.Settled, len(rpc.sent))
 	}
-	if st := p.Stats(); st.Sent != 2 || st.Failed != 0 || st.Due != 0 {
-		t.Fatalf("stats = %+v", st)
+	recs, err := st.PrizesFor(context.Background(), w[0])
+	if err != nil {
+		t.Fatal(err)
 	}
-	// Nothing owed any more: a second flush sends nothing.
-	p.flush(context.Background())
-	if len(rpc.sent) != 2 {
-		t.Fatalf("second flush sent %d more transactions", len(rpc.sent)-2)
+	// The journal persists between runs; only this week's record is ours.
+	var mine []store.PrizeRecord
+	for _, r := range recs {
+		if r.Week == last {
+			mine = append(mine, r)
+		}
+	}
+	if len(mine) != 1 || mine[0].Amount != "100000" {
+		t.Fatalf("first place on direction should hold half the pool: %+v", mine)
+	}
+
+	if _, err := p.Receive(context.Background(), last, big.NewInt(250_000)); !errors.Is(err, ErrReceiptExists) {
+		t.Fatalf("second receipt: err = %v, want ErrReceiptExists", err)
+	}
+	if len(rpc.sent) != 4 {
+		t.Fatal("a second receipt sent transactions")
+	}
+	if got, ok, _ := st.Receipt(context.Background(), last); !ok || got.Amount != fixed.MustParse("0.25") {
+		t.Fatalf("receipt on record = %+v (%v)", got, ok)
 	}
 }
 
-// A failed funding transaction is owed again and goes out with the next flush.
-func TestPrizeFundingRetriesAfterFailure(t *testing.T) {
-	rpc := newFakeRPC()
-	p := newTestPrize(t, rpc, nil, 50)
-	at := time.Date(2035, 3, 10, 12, 0, 0, 0, time.UTC)
-	p.OnClosed(paid("ma-cross", at, "0.1"))
-	rpc.failNext = 1
-	p.flush(context.Background())
-	if len(rpc.sent) != 0 {
-		t.Fatalf("a rejected transaction was counted as sent")
+// journalPaidRoundTrip is journalRoundTrip with a builder fee on each leg.
+func journalPaidRoundTrip(t *testing.T, st *store.Store, wallet, strategy string, pnl, builderFee fixed.D, at time.Time) {
+	t.Helper()
+	ctx := context.Background()
+	id := fmt.Sprintf("%s-%d", wallet, at.UnixNano())
+	fill := store.Fill{Side: "long", Size: fixed.FromInt(10), Price: fixed.MustParse("0.02"), BuilderFee: builderFee}
+	if err := st.TradeOpened(ctx, wallet, strategy, "MON", id+"-o", fill, store.Terms{}, at.Add(-time.Minute)); err != nil {
+		t.Fatal(err)
 	}
-	if st := p.Stats(); st.Failed != 1 || st.Due != 1 || st.LastError == "" {
-		t.Fatalf("stats after failure = %+v", st)
-	}
-	p.OnClosed(paid("ma-cross", at, "0.1"))
-	p.flush(context.Background())
-	if n := rpc.sentWith(chain.Encode("fund(uint64,bytes32,uint256)", WeekOf(at), StrategyKey("ma-cross"), big.NewInt(200_000))); n != 1 {
-		t.Fatalf("retry did not carry the owed amount plus the new trade")
-	}
-	if st := p.Stats(); st.Due != 0 || st.Sent != 1 {
-		t.Fatalf("stats after retry = %+v", st)
-	}
-}
-
-// With no share of the fee the pool is never touched.
-func TestPrizeZeroShareSendsNothing(t *testing.T) {
-	rpc := newFakeRPC()
-	p := newTestPrize(t, rpc, nil, 0)
-	p.OnClosed(paid("direction", time.Now(), "0.1"))
-	p.flush(context.Background())
-	if len(rpc.sent) != 0 {
-		t.Fatal("funded with a zero share")
+	if _, err := st.TradeClosed(ctx, wallet, "MON", strategy, id+"-c", fill, pnl, "manual", store.Excursion{}, at); err != nil {
+		t.Fatal(err)
 	}
 }
 

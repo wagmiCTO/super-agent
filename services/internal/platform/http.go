@@ -1,12 +1,14 @@
 package platform
 
 import (
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/big"
 	"net/http"
 	"strconv"
 	"strings"
@@ -48,7 +50,7 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	if referrals == nil {
 		referrals = NewMemReferrals()
 	}
-	h := &handler{svc: s, log: log, enroll: o.enrollment, registry: o.registry, signals: o.signals, ledger: o.ledger, prize: o.prize, auth: newAuthenticator(authKeys), context: o.context, deposits: o.deposits, history: o.history, ownAccount: o.ownAccount, limits: limitsStore, referrals: referrals}
+	h := &handler{svc: s, log: log, enroll: o.enrollment, registry: o.registry, signals: o.signals, ledger: o.ledger, prize: o.prize, auth: newAuthenticator(authKeys), context: o.context, deposits: o.deposits, history: o.history, ownAccount: o.ownAccount, limits: limitsStore, referrals: referrals, adminToken: o.adminToken}
 	if o.ledger != nil {
 		s.UseLedger(o.ledger)
 	}
@@ -64,6 +66,8 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /v1/leaderboard", h.leaderboard)
 	mux.HandleFunc("GET /v1/leaderboard/standings", h.standings)
 	mux.HandleFunc("GET /v1/prizes", h.prizes)
+	mux.HandleFunc("GET /v1/admin/prizes/accrued", h.prizeAccrued)
+	mux.HandleFunc("POST /v1/admin/prizes/receipts", h.prizeReceipt)
 	mux.HandleFunc("GET /v1/prizes/history", h.prizeHistory)
 	mux.HandleFunc("GET /v1/candles", h.candles)
 	mux.HandleFunc("GET /v1/trades", h.trades)
@@ -109,6 +113,13 @@ type options struct {
 	ownAccount  bool
 	limits      LimitsStore
 	referrals   Referrals
+	adminToken  string
+}
+
+// WithAdminToken enables the operator's endpoints — the weekly prize
+// receipt — behind a bearer token. Without one they answer 403.
+func WithAdminToken(token string) Option {
+	return func(o *options) { o.adminToken = strings.TrimSpace(token) }
 }
 
 // WithOwnAccount lets requests without a wallet header trade the
@@ -230,6 +241,7 @@ type handler struct {
 	ownAccount bool
 	limits     LimitsStore
 	referrals  Referrals
+	adminToken string
 }
 
 // AccountHeader names the wallet a request acts for. On its own it is
@@ -1336,6 +1348,9 @@ type boardDTO struct {
 type prizePoolDTO struct {
 	Strategy string `json:"strategy"`
 	Pool     string `json:"pool"` // collateral units, decimal
+	// Accrued is what this week's round trips have earned the pool so far:
+	// a share of the builder fees they paid. Funded on the week's receipt.
+	Accrued string `json:"accrued"`
 }
 
 type prizeWinnerDTO struct {
@@ -1412,9 +1427,18 @@ func (h *handler) readPrizeBlock(r *http.Request, week uint64) *prizeDTO {
 		h.log.Warn("prize pools not read", "err", err)
 		return nil
 	}
+	accrued, err := h.prize.Accrued(r.Context(), week)
+	if err != nil {
+		h.log.Warn("prize accrual not read", "err", err)
+		accrued = map[string]*big.Int{}
+	}
 	out := &prizeDTO{Contract: h.prize.Contract(), Token: h.prize.Token(), Week: week, LastWeek: week - 1, Pools: make([]prizePoolDTO, 0, len(pools)), Winners: []prizeWinnerDTO{}}
 	for _, p := range pools {
-		out.Pools = append(out.Pools, prizePoolDTO{Strategy: p.Strategy, Pool: tokenDecimal(p.Pool.String())})
+		earned := "0"
+		if v := accrued[p.Strategy]; v != nil {
+			earned = tokenDecimal(v.String())
+		}
+		out.Pools = append(out.Pools, prizePoolDTO{Strategy: p.Strategy, Pool: tokenDecimal(p.Pool.String()), Accrued: earned})
 	}
 	if h.prize.store != nil {
 		recs, err := h.prize.store.Prizes(r.Context(), week-1)
@@ -1427,6 +1451,110 @@ func (h *handler) readPrizeBlock(r *http.Request, week uint64) *prizeDTO {
 				out.Winners = append(out.Winners, prizeWinnerDTO{Strategy: rec.Strategy, Wallet: rec.Wallet, Amount: tokenDecimal(rec.Amount), PnL: rec.PnL.String(), Claimed: claimed})
 			}
 		}
+	}
+	return out
+}
+
+// admin admits the operator, or says why not. The token is compared in
+// constant time; a platform without one has no operator endpoints at all.
+func (h *handler) admin(w http.ResponseWriter, r *http.Request) bool {
+	if h.adminToken == "" {
+		writeJSON(w, http.StatusForbidden, errorDTO{Error: "own_account_disabled", Message: "operator endpoints are not enabled on this platform"})
+		return false
+	}
+	got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if subtle.ConstantTimeCompare([]byte(strings.TrimSpace(got)), []byte(h.adminToken)) != 1 {
+		writeJSON(w, http.StatusUnauthorized, errorDTO{Error: "unauthenticated", Message: "an operator token is required"})
+		return false
+	}
+	return true
+}
+
+type prizeReceiptDTO struct {
+	Week    uint64            `json:"week"`
+	Amount  string            `json:"amount"` // collateral units, decimal
+	Funded  map[string]string `json:"funded"` // strategy → collateral units, decimal
+	Settled []string          `json:"settled"`
+}
+
+// prizeAccrued tells the operator what a week has earned each pool, so
+// they know what to withdraw from the venue: ?week= defaults to last week.
+func (h *handler) prizeAccrued(w http.ResponseWriter, r *http.Request) {
+	if !h.admin(w, r) {
+		return
+	}
+	if h.prize == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "prize_unavailable", Message: "no prize pool is configured"})
+		return
+	}
+	week := WeekOf(time.Now()) - 1
+	if q := r.URL.Query().Get("week"); q != "" {
+		n, err := strconv.ParseUint(q, 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errorDTO{Error: "invalid", Message: "week must be a whole number"})
+			return
+		}
+		week = n
+	}
+	accrued, err := h.prize.Accrued(r.Context(), week)
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	out := map[string]any{"week": week, "week_start": timeOrEmpty(WeekStart(week)), "accrued": decimalMap(accrued)}
+	if h.prize.store != nil {
+		if rec, ok, err := h.prize.store.Receipt(r.Context(), week); err == nil && ok {
+			out["receipt"] = map[string]any{"amount": rec.Amount.String(), "funded": json.RawMessage(rec.Funded), "received_at": timeOrEmpty(rec.ReceivedAt)}
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// prizeReceipt confirms a finished week's fees have arrived: funds the
+// pools and settles the week (ADR 0006).
+func (h *handler) prizeReceipt(w http.ResponseWriter, r *http.Request) {
+	if !h.admin(w, r) {
+		return
+	}
+	if h.prize == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "prize_unavailable", Message: "no prize pool is configured"})
+		return
+	}
+	var in struct {
+		Week   uint64 `json:"week"`
+		Amount string `json:"amount"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorDTO{Error: "malformed_request", Message: err.Error()})
+		return
+	}
+	amount, err := fixed.Parse(strings.TrimSpace(in.Amount))
+	if err != nil || amount.IsNeg() {
+		writeJSON(w, http.StatusBadRequest, errorDTO{Error: "invalid", Message: "amount must be a non-negative decimal in collateral units"})
+		return
+	}
+	rec, err := h.prize.Receive(r.Context(), in.Week, collateralMicros(amount))
+	switch {
+	case errors.Is(err, ErrReceiptExists):
+		writeJSON(w, http.StatusConflict, errorDTO{Error: "receipt_exists", Message: err.Error()})
+		return
+	case errors.Is(err, ErrWeekNotOver):
+		writeJSON(w, http.StatusBadRequest, errorDTO{Error: "invalid", Message: err.Error()})
+		return
+	case err != nil:
+		h.fail(w, err)
+		return
+	}
+	if rec.Settled == nil {
+		rec.Settled = []string{}
+	}
+	writeJSON(w, http.StatusOK, prizeReceiptDTO{Week: rec.Week, Amount: tokenDecimal(rec.Amount.String()), Funded: decimalMap(rec.Funded), Settled: rec.Settled})
+}
+
+func decimalMap(m map[string]*big.Int) map[string]string {
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		out[k] = tokenDecimal(v.String())
 	}
 	return out
 }

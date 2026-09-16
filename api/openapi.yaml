@@ -352,6 +352,74 @@ paths:
           description: No prize pool configured.
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
+  /v1/admin/prizes/accrued:
+    get:
+      summary: What a week earned each pool (operator)
+      description: >-
+        The platform's share of the builder fees each strategy's round trips
+        paid in the week — what to withdraw from the venue before confirming
+        the receipt. Bearer `PLATFORM_ADMIN_TOKEN`; 403 when no token is configured.
+      parameters:
+        - in: query
+          name: week
+          schema: { type: integer }
+          description: Defaults to last week.
+      responses:
+        "200":
+          description: Accrued per strategy, and the receipt if one is on record.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [week, week_start, accrued]
+                properties:
+                  week: { type: integer }
+                  week_start: { type: string, format: date-time }
+                  accrued:
+                    type: object
+                    additionalProperties: { $ref: "#/components/schemas/Decimal" }
+                  receipt:
+                    type: object
+                    properties:
+                      amount: { $ref: "#/components/schemas/Decimal" }
+                      funded: { type: object, additionalProperties: { type: string } }
+                      received_at: { type: string, format: date-time }
+        "401": { description: Wrong or missing operator token. }
+        "403": { description: Operator endpoints are not enabled. }
+  /v1/admin/prizes/receipts:
+    post:
+      summary: Confirm a finished week's fees arrived (operator)
+      description: >-
+        Funds each strategy's pool for the week with what it accrued — scaled
+        down if less was received — and settles the week, so winners can claim.
+        Once per week. Bearer `PLATFORM_ADMIN_TOKEN`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [week, amount]
+              properties:
+                week: { type: integer, description: A week already over. }
+                amount:
+                  allOf: [{ $ref: "#/components/schemas/Decimal" }]
+                  description: Collateral received on the settler wallet for that week.
+      responses:
+        "200":
+          description: What was funded and which strategies were settled.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [week, amount, funded, settled]
+                properties:
+                  week: { type: integer }
+                  amount: { $ref: "#/components/schemas/Decimal" }
+                  funded: { type: object, additionalProperties: { $ref: "#/components/schemas/Decimal" } }
+                  settled: { type: array, items: { type: string } }
+        "400": { description: The week is not over, or the amount is not a decimal. }
+        "409": { description: That week's receipt is already on record. }
   /v1/trades:
     get:
       summary: This wallet's round trips, newest first, one page at a time
@@ -989,10 +1057,18 @@ components:
           type: array
           items:
             type: object
-            required: [strategy, pool]
+            required: [strategy, pool, accrued]
             properties:
               strategy: { type: string }
-              pool: { $ref: "#/components/schemas/Decimal" }
+              pool:
+                allOf: [{ $ref: "#/components/schemas/Decimal" }]
+                description: What is on the contract for this week; zero until the week's fees are received.
+              accrued:
+                allOf: [{ $ref: "#/components/schemas/Decimal" }]
+                description: >-
+                  What this week's round trips have earned the pool so far — the
+                  platform's share of the builder fees they paid. A number the
+                  app shows as the pool "so far"; it is funded on the week's receipt.
         last_week: { type: integer }
         winners:
           type: array

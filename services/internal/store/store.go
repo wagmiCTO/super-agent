@@ -385,12 +385,76 @@ type Fill struct {
 
 // TradeOpened journals an opening fill.
 func (s *Store) TradeOpened(ctx context.Context, wallet, strategy, symbol, orderID string, f Fill, t Terms, at time.Time) error {
-	_, err := s.pool.Exec(ctx, `insert into trades (wallet, strategy, symbol, open_order_id, side, size, entry_price, entry_fee, opened_at, leverage, collateral, stop_pnl, tp_pnl)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+	_, err := s.pool.Exec(ctx, `insert into trades (wallet, strategy, symbol, open_order_id, side, size, entry_price, entry_fee, opened_at, leverage, collateral, stop_pnl, tp_pnl, entry_builder_fee)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		on conflict (wallet, open_order_id) do nothing`,
 		wallet, strategy, symbol, orderID, f.Side, f.Size.String(), f.Price.String(), f.Fee.String(), at,
-		decimalOrNil(t.Leverage), decimalOrNil(t.Collateral), decimalOrNil(t.StopPnL), decimalOrNil(t.TakeProfitPnL))
+		decimalOrNil(t.Leverage), decimalOrNil(t.Collateral), decimalOrNil(t.StopPnL), decimalOrNil(t.TakeProfitPnL), f.BuilderFee.String())
 	return err
+}
+
+// BuilderFeesByStrategy sums the builder fee the round trips closed in
+// [from, to) paid, both legs, per strategy: what the week earned the pool
+// (ADR 0006). Strategies with nothing closed are absent.
+func (s *Store) BuilderFeesByStrategy(ctx context.Context, from, to time.Time) (map[string]fixed.D, error) {
+	rows, err := s.pool.Query(ctx, `select strategy, sum(coalesce(entry_builder_fee, 0) + coalesce(exit_builder_fee, 0))::text
+		from trades where closed_at >= $1 and closed_at < $2 group by strategy`, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]fixed.D{}
+	for rows.Next() {
+		var strategy, sum string
+		if err := rows.Scan(&strategy, &sum); err != nil {
+			return nil, err
+		}
+		d, err := fixed.Parse(sum)
+		if err != nil {
+			return nil, fmt.Errorf("store: builder fees for %s %q: %w", strategy, sum, err)
+		}
+		out[strategy] = d
+	}
+	return out, rows.Err()
+}
+
+// PrizeReceipt is one week's fees, received from the venue and confirmed:
+// what arrived and what of it went to each pool.
+type PrizeReceipt struct {
+	Week       uint64
+	Amount     fixed.D
+	Funded     string // JSON, strategy → token units
+	ReceivedAt time.Time
+}
+
+// SaveReceipt records a week's receipt. False when the week already has
+// one: the second confirmation must not fund anything.
+func (s *Store) SaveReceipt(ctx context.Context, r PrizeReceipt) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `insert into prize_receipts (week, amount, funded, received_at) values ($1, $2, $3, $4) on conflict (week) do nothing`,
+		int64(r.Week), r.Amount.String(), r.Funded, r.ReceivedAt)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
+// Receipt reads a week's receipt, if it has one.
+func (s *Store) Receipt(ctx context.Context, week uint64) (PrizeReceipt, bool, error) {
+	var r PrizeReceipt
+	var amount string
+	var w int64
+	err := s.pool.QueryRow(ctx, `select week, amount::text, funded, received_at from prize_receipts where week = $1`, int64(week)).Scan(&w, &amount, &r.Funded, &r.ReceivedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return PrizeReceipt{}, false, nil
+	}
+	if err != nil {
+		return PrizeReceipt{}, false, err
+	}
+	r.Week = uint64(w)
+	if r.Amount, err = fixed.Parse(amount); err != nil {
+		return PrizeReceipt{}, false, fmt.Errorf("store: receipt %d amount %q: %w", week, amount, err)
+	}
+	return r, true, nil
 }
 
 // decimalOrNil renders an optional fixed-point number for the database: a
@@ -451,13 +515,13 @@ func (s *Store) TradeClosed(ctx context.Context, wallet, symbol, fallbackStrateg
 		with open as (
 			select id from trades where wallet = $1 and symbol = $2 and ($9 = '' or strategy = $9) and closed_at is null order by opened_at desc limit 1
 		)
-		update trades set close_order_id = $3, pnl = $4, closed_at = $5, exit_price = $6, exit_fee = $7, close_reason = $8, worst_pnl = $10, best_pnl = $11 where id = (select id from open)
+		update trades set close_order_id = $3, pnl = $4, closed_at = $5, exit_price = $6, exit_fee = $7, close_reason = $8, worst_pnl = $10, best_pnl = $11, exit_builder_fee = $12 where id = (select id from open)
 		returning id, wallet, strategy, symbol, open_order_id, close_order_id, side, size::text, entry_price::text, exit_price::text, entry_fee::text, pnl::text, opened_at, closed_at`,
 		wallet, symbol, closeOrderID, pnl.String(), at, f.Price.String(), f.Fee.String(), reason, fallbackStrategy,
-		decimalOrNil(ex.Worst), decimalOrNil(ex.Best)).Scan(&t.ID, &t.Wallet, &t.Strategy, &t.Symbol, &t.OpenOrderID, &t.CloseOrderID, &t.Side, &size, &entry, &exit, &entryFee, &pnlS, &t.OpenedAt, &t.ClosedAt)
+		decimalOrNil(ex.Worst), decimalOrNil(ex.Best), f.BuilderFee.String()).Scan(&t.ID, &t.Wallet, &t.Strategy, &t.Symbol, &t.OpenOrderID, &t.CloseOrderID, &t.Side, &size, &entry, &exit, &entryFee, &pnlS, &t.OpenedAt, &t.ClosedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
-		_, err = s.pool.Exec(ctx, `insert into trades (wallet, strategy, symbol, open_order_id, close_order_id, side, size, entry_price, exit_price, exit_fee, pnl, close_reason, opened_at, closed_at)
-			values ($1, $2, $3, $4, $5, $6, $7, 0, $8, $9, $10, $11, $12, $12)`, wallet, fallbackStrategy, symbol, "unknown-"+closeOrderID, closeOrderID, f.Side, f.Size.String(), f.Price.String(), f.Fee.String(), pnl.String(), reason, at)
+		_, err = s.pool.Exec(ctx, `insert into trades (wallet, strategy, symbol, open_order_id, close_order_id, side, size, entry_price, exit_price, exit_fee, pnl, close_reason, opened_at, closed_at, exit_builder_fee)
+			values ($1, $2, $3, $4, $5, $6, $7, 0, $8, $9, $10, $11, $12, $12, $13)`, wallet, fallbackStrategy, symbol, "unknown-"+closeOrderID, closeOrderID, f.Side, f.Size.String(), f.Price.String(), f.Fee.String(), pnl.String(), reason, at, f.BuilderFee.String())
 		t = ClosedTrade{Wallet: wallet, Strategy: fallbackStrategy, Symbol: symbol, OpenOrderID: "unknown-" + closeOrderID, CloseOrderID: closeOrderID, Side: f.Side, Size: f.Size, ExitPrice: f.Price, ExitFee: f.Fee, PnL: pnl, CloseReason: reason, OpenedAt: at, ClosedAt: at}
 		return t, err
 	}
