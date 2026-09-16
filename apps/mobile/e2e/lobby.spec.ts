@@ -77,7 +77,9 @@ test('the leaderboard shows the on-chain prize pools from the indexer', async ({
   await page.getByTestId('leaderboard-link').click({ force: true });
   const past = page.getByTestId('past-weeks');
   await expect(past).toBeVisible({ timeout: 20_000 });
-  await expect(past).toContainText(/PRIZE POOLS/);
+  // Upper case is a style, not the text: the caps variant renders it, the
+  // DOM keeps what was written.
+  await expect(past).toContainText(/prize pools/i);
   await expect(past).toContainText(/pools · [\d.]+ AUSD funded/);
   await expect(past).toContainText(/Indexed by Envio/);
   await expect(page.getByTestId('leaderboard-source')).toHaveText(/^Prizes paid by contract 0x[0-9a-f]{4}…[0-9a-f]{4} · week \d+/);

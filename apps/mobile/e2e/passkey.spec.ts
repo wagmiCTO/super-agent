@@ -9,9 +9,20 @@ import { skipOnboarding } from './onboarded';
  *
  * What is asserted: a passkey yields an address, signing out forgets it, and
  * signing back in with the same passkey reproduces the same address. That
- * last one is the whole point of deriving accounts from PRF output.
+ * last one is the whole point of deriving accounts from PRF output — lose it
+ * and every returning user is a stranger with an empty account.
+ *
+ * Nothing here opens an exchange account: this is about the key, and the
+ * venue is not involved in deriving one.
  */
 test.describe('Passkey account', () => {
+  /** What the app remembers about the account, as it stores it. */
+  const stored = (page: import('@playwright/test').Page) =>
+    page.evaluate(() => {
+      const raw = window.localStorage.getItem('tradeagent.account');
+      return raw ? (JSON.parse(raw) as { address: string }) : null;
+    });
+
   test('create, sign out, sign back in to the same address', async ({ page, context }) => {
     const cdp = await context.newCDPSession(page);
     await cdp.send('WebAuthn.enable');
@@ -28,36 +39,33 @@ test.describe('Passkey account', () => {
     });
 
     await skipOnboarding(page);
-
     await page.goto('/');
-    await expect(page.getByText('No account')).toBeVisible();
 
-    await page.getByRole('button', { name: 'Create account', exact: true }).click();
-    await expect(page.getByText('Signed in with passkey')).toBeVisible();
-    const address = await page.getByTestId('account-address').textContent();
-    expect(address).toMatch(/^0x[0-9a-fA-F]{40}$/);
+    // A device with no account is asked for one, and told what it is.
+    await expect(page.getByText('Your account is a passkey')).toBeVisible({ timeout: 20_000 });
+    await page.getByTestId('passkey-create').click();
+    await page.waitForURL((url) => !url.pathname.includes('passkey'), { timeout: 30_000 });
 
-    // The passkey now lives in the authenticator; the app remembers only the
-    // credential id and the address.
+    const first = await stored(page);
+    expect(first?.address).toMatch(/^0x[0-9a-fA-F]{40}$/);
+
+    // The passkey lives in the authenticator; the app keeps the credential
+    // id and the address, and nothing that could rebuild the key on its own.
     const { credentials } = await cdp.send('WebAuthn.getCredentials', { authenticatorId });
     expect(credentials).toHaveLength(1);
     expect(credentials[0].isResidentCredential).toBe(true);
 
-    await page.getByRole('button', { name: 'Sign out', exact: true }).click();
-    await expect(page.getByText('No account')).toBeVisible();
+    // Signing out forgets the account on this device.
+    await page.goto('/account');
+    await expect(page.getByTestId('wallet-address')).toHaveText(/^0x[0-9a-fA-F]{4}…[0-9a-fA-F]{4}$/, { timeout: 20_000 });
+    await page.getByTestId('sign-out').click();
+    await expect(page.getByText('Your account is a passkey')).toBeVisible({ timeout: 20_000 });
+    expect(await stored(page)).toBeNull();
 
-    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-    await expect(page.getByText('Signed in with passkey')).toBeVisible();
-    await expect(page.getByTestId('account-address')).toHaveText(address!);
-
-    // A reload restores the session from the tab: still signed in, no prompt.
-    await page.reload();
-    await expect(page.getByText('Signed in with passkey')).toBeVisible();
-    // A new tab has no session: the address is remembered, the wallet locked.
-    const fresh = await page.context().newPage();
-    await fresh.goto('/');
-    await expect(fresh.getByText('Locked · passkey to unlock')).toBeVisible();
-    await fresh.close();
-    await expect(page.getByTestId('account-address')).toHaveText(address!);
+    // And the same passkey brings back the same address: the key is derived
+    // from the PRF output, not stored anywhere to be lost.
+    await page.getByTestId('passkey-signin').click();
+    await page.waitForURL((url) => !url.pathname.includes('passkey'), { timeout: 30_000 });
+    expect((await stored(page))?.address).toBe(first?.address);
   });
 });

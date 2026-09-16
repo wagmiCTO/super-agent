@@ -75,7 +75,7 @@ test('a first visit runs from the promo to the first tap', async ({ page, contex
   await expect(page.getByText('Ready')).toBeVisible();
   await page.getByTestId('lesson-next').click();
 
-  await expect(page.getByText(/^DIRECTION · /)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('key-up').last()).toBeVisible({ timeout: 30_000 });
 });
 
 test('every step of the first visit can be skipped', async ({ page, context }) => {
@@ -99,7 +99,7 @@ test('every step of the first visit can be skipped', async ({ page, context }) =
   await page.getByTestId('strategy-direction').click({ force: true });
   await expect(page.getByText('Fifteen minutes. One call.')).toBeVisible({ timeout: 30_000 });
   await page.getByTestId('lesson-skip').click();
-  await expect(page.getByText(/^DIRECTION · /)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('key-up').last()).toBeVisible({ timeout: 30_000 });
 });
 
 /**
@@ -199,11 +199,13 @@ test('the lobby is reachable from a strategy, and a reload stays put', async ({ 
   await page.getByTestId('strategy-direction').click({ force: true });
   await expect(page.getByText('Fifteen minutes. One call.')).toBeVisible({ timeout: 20_000 });
   await page.getByTestId('lesson-skip').click();
-  await expect(page.getByText(/^DIRECTION · /)).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('key-up').last()).toBeVisible({ timeout: 20_000 });
 
   // The regression: this link used to land on the passkey screen, because the
   // entry point decided before the account layer had answered.
-  await page.getByRole('link', { name: /Lobby/ }).click();
+  // The way back is the header's own link, by its id: since the redesign it
+  // is a line of text with a press on it, not an anchor with a role.
+  await page.getByTestId('lobby-link').last().click({ force: true });
   await expect(page).toHaveURL(/\/$/, { timeout: 30_000 });
   await expect(page.getByText('Your account is a passkey')).toHaveCount(0);
 

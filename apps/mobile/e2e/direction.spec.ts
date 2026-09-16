@@ -72,16 +72,26 @@ test.describe('Direction screen', () => {
     await expect(page.getByTestId('key-up')).toBeVisible({ timeout: 30_000 });
   });
 
+  /** Waits out the pause between two taps, whatever the wallet set it to. */
+  async function ensureCooldownOver(page: Page) {
+    const state = await page.evaluate(() => (window as unknown as { __tradeagent?: { state: (s: string) => Promise<{ limits: { cooldown_seconds: number } }> } }).__tradeagent?.state('direction'));
+    await page.waitForTimeout(((state?.limits.cooldown_seconds ?? 10) + 2) * 1000);
+  }
+
   test('a policy refusal is shown in words, with the limit', async ({ page }) => {
     await ensureFlat(page);
-    await page.waitForTimeout(6_000);
+    // Past the cooldown the previous test's tap started. It is the safe
+    // tier's own — ten seconds since the limits became the wallet's choice,
+    // not the five this waited for when it was written.
+    await ensureCooldownOver(page);
 
     await page.getByTestId('key-down').click();
     await expect(page.getByTestId('open-position')).toContainText(/^Down/, { timeout: 40_000 });
     await page.getByTestId('close-position').click();
     await expect(page.getByTestId('key-up')).toBeVisible({ timeout: 30_000 });
 
-    // The open above started a 5s cooldown; a second open inside it is refused.
+    // The open above started the cooldown again; a second open inside it is
+    // refused, in words, with the wait.
     await page.getByTestId('key-up').click();
     await expect(page.getByTestId('notice')).toHaveText(/^Wait \d+s before opening again$/, { timeout: 20_000 });
   });
