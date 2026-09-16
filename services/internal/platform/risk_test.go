@@ -12,6 +12,25 @@ import (
 	"github.com/wagmiCTO/super-agent/services/internal/venue"
 )
 
+// A wallet whose week has no trades still gets an object to read counts
+// from. A nil Go map serializes as null, and the risk screen reads
+// by_reason.stop off it — which took the screen down rather than showing a
+// zero.
+func TestPerfByReasonIsNeverNull(t *testing.T) {
+	var empty PerfStats
+	dto := toPerfDTO(empty)
+	if dto.ByReason == nil {
+		t.Fatal("by_reason is nil")
+	}
+	out, err := json.Marshal(dto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), `"by_reason":{}`) {
+		t.Errorf("serialized as %s", out)
+	}
+}
+
 // The report on the platform's own account: every strategy enabled, an
 // open position with its stop and what it can still lose, usage against
 // the limits, and the market's volatility from candles. Then close-all

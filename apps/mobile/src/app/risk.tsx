@@ -311,7 +311,10 @@ function Body({ report, trades, leverage, refresh }: { report: RiskReport; trade
           <Row label="Result" value={`${money(Number(week.pnl))} AUSD`} tone={Number(week.pnl)} />
           <Row label="Won" value={`${week.wins} of ${week.trades}`} />
           <Row label="Worst single tap" value={money(Number(week.worst))} tone={Number(week.worst)} />
-          <Row label="Stops that fired" value={String(week.by_reason.stop ?? 0)} />
+          {/* The platform sends an object; a wallet whose week is empty used
+              to get null here, and reading a count off it took the whole
+              screen down. */}
+          <Row label="Stops that fired" value={String(week.by_reason?.stop ?? 0)} />
           <Row label="Fees paid" value={Number(week.fees).toFixed(2)} />
         </Card>
       ) : null}

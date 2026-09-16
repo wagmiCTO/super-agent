@@ -104,6 +104,13 @@ type riskReportDTO struct {
 }
 
 func toPerfDTO(p PerfStats) *perfDTO {
+	// Never null: the field is an object in the contract, and a client that
+	// reads `by_reason.stop` on a wallet whose week has no trades would
+	// otherwise crash on a screen about its own risk. A Go nil map is not an
+	// empty JSON object, it is `null`.
+	if p.ByReason == nil {
+		p.ByReason = map[string]int{}
+	}
 	return &perfDTO{
 		Trades: p.Trades, Wins: p.Wins, Losses: p.Losses, WinRate: p.WinRate(), PnL: p.PnL.String(), Fees: p.Fees.String(),
 		Best: p.Best.String(), Worst: p.Worst.String(), AvgWin: p.AvgWin.String(), AvgLoss: p.AvgLoss.String(),
