@@ -24,6 +24,10 @@ export type Side = components['schemas']['Side'];
 export type MACrossSignal = components['schemas']['MACrossSignal'];
 export type RSISignal = components['schemas']['RSISignal'];
 export type Trade = components['schemas']['Trade'];
+export type Perf = components['schemas']['Perf'];
+export type TradesPage = components['schemas']['TradesPage'];
+export type Standings = components['schemas']['Standings'];
+export type Standing = components['schemas']['Standing'];
 export type Leaderboard = components['schemas']['Leaderboard'];
 export type Board = components['schemas']['Board'];
 export type MarketContext = components['schemas']['MarketContext'];
@@ -59,6 +63,7 @@ export type ErrorCode =
   | 'context_unavailable'
   | 'deposit_unavailable'
   | 'history_unavailable'
+  | 'no_trade'
   | 'referrals_unavailable'
   | 'no_such_code'
   | 'own_account_disabled'
@@ -190,8 +195,25 @@ export const api = {
   close: (body: CloseRequest) =>
     request<Order>('/v1/orders/close', { method: 'POST', body: JSON.stringify(body) }, { strategy: body.strategy }),
   maCross: (symbol: string) => request<MACrossSignal>(`/v1/signals/ma-cross?symbol=${encodeURIComponent(symbol)}`),
+  /** A strategy's round trips in one market — the chart's marks, one page. */
   trades: (symbol: string, strategy: string) =>
-    request<Trade[]>(`/v1/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&limit=50`, undefined, { strategy }),
+    request<TradesPage>(`/v1/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&limit=50`, undefined, { strategy }).then((p) => p.trades),
+  /**
+   * One page of history. `cursor` comes from the page before it; absent
+   * starts at the newest. Routed by the strategy whose key signs for the
+   * wallet, and answered for the wallet, not the strategy.
+   */
+  tradesPage: (strategy: string, cursor?: string, limit = 25) =>
+    request<TradesPage>(
+      `/v1/trades?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+      undefined,
+      { strategy },
+    ),
+  /** One round trip of this wallet's, by id. */
+  trade: (id: string, strategy: string) => request<Trade>(`/v1/trades/${encodeURIComponent(id)}`, undefined, { strategy }),
+  /** One page of a board, and how many wallets are on it altogether. */
+  standings: (strategy: string, period: 'week' | 'all', offset = 0, limit = 25) =>
+    request<Standings>(`/v1/leaderboard/standings?strategy=${encodeURIComponent(strategy)}&period=${period}&limit=${limit}&offset=${offset}`),
   rsi: (symbol: string) => request<RSISignal>(`/v1/signals/rsi?symbol=${encodeURIComponent(symbol)}`),
   /** The boards, by result: this week's, or every trade on record. */
   leaderboard: (period: 'week' | 'all' = 'week') => request<Leaderboard>(`/v1/leaderboard?period=${period}`),

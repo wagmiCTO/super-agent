@@ -23,6 +23,9 @@ async function toLobby(page: Page) {
 }
 
 test('history, account and the invite link, on one account', async ({ page, context }) => {
+  // Opening a real account on testnet, a real tap, and a second wallet
+  // arriving on the invite all sit inside this one.
+  test.setTimeout(300_000);
   await asReturningUser(page, context);
   await expect(page.getByText('Choose a strategy').last()).toBeVisible({ timeout: 30_000 });
 
@@ -50,6 +53,28 @@ test('history, account and the invite link, on one account', async ({ page, cont
   await page.getByTestId('tab-orders').last().click();
   await expect(page.getByTestId('order-row').last()).toContainText(/Open Up · @ [\d.]+/);
   await expect(page.getByTestId('order-row').last()).toContainText(/fee \d+\.\d\d/);
+
+  // Every row opens the card that reports it: what it was, what it made,
+  // and what the position was made of.
+  await page.getByTestId('tab-positions').last().click();
+  await position.click();
+  await expect(page.getByTestId('trade-title').last()).toHaveText('Trade', { timeout: 20_000 });
+  await expect(page.getByTestId('trade-what').last()).toContainText(/Direction · Up/);
+  await expect(page.getByTestId('trade-report').last()).toContainText(/Moved/);
+  await expect(page.getByTestId('trade-report').last()).toContainText(/Size/);
+  await expect(page.getByTestId('trade-orders').last()).toContainText(/Order ids/);
+  await page.getByTestId('history-link').last().click({ force: true });
+  await expect(page.getByTestId('history-title').last()).toBeVisible();
+
+  // And so does an order, which is one side of the same round trip and
+  // leads back to it.
+  await page.getByTestId('tab-orders').last().click();
+  await page.getByTestId('order-row').last().click();
+  await expect(page.getByTestId('trade-title').last()).toHaveText('Order', { timeout: 20_000 });
+  await expect(page.getByTestId('order-card').last()).toContainText(/Side · size/);
+  await page.getByTestId('to-trade').last().click();
+  await expect(page.getByTestId('trade-title').last()).toHaveText('Trade', { timeout: 20_000 });
+  await page.getByTestId('history-link').last().click({ force: true });
 
   // A filter that has nothing in it says so rather than showing another
   // strategy's trades.

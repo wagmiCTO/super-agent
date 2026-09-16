@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -61,10 +62,12 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /v1/signals/ma-cross", h.maCross)
 	mux.HandleFunc("GET /v1/signals/rsi", h.rsi)
 	mux.HandleFunc("GET /v1/leaderboard", h.leaderboard)
+	mux.HandleFunc("GET /v1/leaderboard/standings", h.standings)
 	mux.HandleFunc("GET /v1/prizes", h.prizes)
 	mux.HandleFunc("GET /v1/prizes/history", h.prizeHistory)
 	mux.HandleFunc("GET /v1/candles", h.candles)
 	mux.HandleFunc("GET /v1/trades", h.trades)
+	mux.HandleFunc("GET /v1/trades/{id}", h.trade)
 	mux.HandleFunc("GET /v1/risk", h.risk)
 	mux.HandleFunc("POST /v1/risk/close-all", h.closeAll)
 	mux.HandleFunc("GET /v1/referral", h.referral)
@@ -1084,6 +1087,9 @@ func (h *handler) candles(w http.ResponseWriter, r *http.Request) {
 // --- trades ---
 
 type tradeDTO struct {
+	// ID names the round trip for the card that reports it. Absent for a
+	// trade the process has in memory but the journal never saw.
+	ID          string `json:"id,omitempty"`
 	Strategy    string `json:"strategy"`
 	Symbol      string `json:"symbol"`
 	Side        string `json:"side"`
@@ -1096,10 +1102,59 @@ type tradeDTO struct {
 	CloseReason string `json:"close_reason,omitempty"`
 	OpenedAt    string `json:"opened_at"`
 	ClosedAt    string `json:"closed_at,omitempty"`
+	// What the position was made of and how far it ran. Absent on rows
+	// journaled before the platform recorded them.
+	Notional     string `json:"notional,omitempty"`
+	Leverage     string `json:"leverage,omitempty"`
+	Collateral   string `json:"collateral,omitempty"`
+	StopPnL      string `json:"stop_pnl,omitempty"`
+	WorstPnL     string `json:"worst_pnl,omitempty"`
+	BestPnL      string `json:"best_pnl,omitempty"`
+	OpenOrderID  string `json:"open_order_id,omitempty"`
+	CloseOrderID string `json:"close_order_id,omitempty"`
 }
 
-// trades lists the account's round trips in a market, newest first, for the
-// chart's marks and the history: ?symbol=MON&strategy=direction&limit=50.
+// tradesPageDTO is one page of history and where the next one starts.
+type tradesPageDTO struct {
+	Trades []tradeDTO `json:"trades"`
+	// NextCursor is empty on the last page.
+	NextCursor string `json:"next_cursor,omitempty"`
+}
+
+// toTradeDTO renders one journaled round trip.
+func toTradeDTO(t store.ClosedTrade) tradeDTO {
+	d := tradeDTO{
+		Strategy: t.Strategy, Symbol: t.Symbol, Side: t.Side, Size: t.Size.String(), EntryPrice: t.EntryPrice.String(),
+		EntryFee: t.EntryFee.String(), OpenedAt: timeOrEmpty(t.OpenedAt), OpenOrderID: t.OpenOrderID, CloseOrderID: t.CloseOrderID,
+	}
+	if t.ID != 0 {
+		d.ID = strconv.FormatInt(t.ID, 10)
+	}
+	if !t.ClosedAt.IsZero() {
+		d.ExitPrice, d.ExitFee, d.PnL, d.CloseReason, d.ClosedAt = t.ExitPrice.String(), t.ExitFee.String(), t.PnL.String(), t.CloseReason, timeOrEmpty(t.ClosedAt)
+	}
+	// What was opened, as money: the size at the price it filled at.
+	if t.Size.IsPos() && t.EntryPrice.IsPos() {
+		d.Notional = t.Size.Mul(t.EntryPrice).String()
+	}
+	d.Leverage, d.Collateral = decimalOrEmpty(t.Leverage), decimalOrEmpty(t.Collateral)
+	d.StopPnL, d.WorstPnL, d.BestPnL = decimalOrEmpty(t.StopPnL), decimalOrEmpty(t.WorstPnL), decimalOrEmpty(t.BestPnL)
+	return d
+}
+
+func decimalOrEmpty(d *fixed.D) string {
+	if d == nil {
+		return ""
+	}
+	return d.String()
+}
+
+// trades lists the account's round trips, newest first, for the chart's
+// marks and for history: ?symbol=MON&strategy=direction&limit=50&cursor=…
+//
+// One page at a time. History is a table that only grows, and a wallet that
+// has played for a month should not have to wait for a month of rows to draw
+// the first screen of them.
 func (h *handler) trades(w http.ResponseWriter, r *http.Request) {
 	svc, ok := h.service(w, r)
 	if !ok {
@@ -1111,20 +1166,76 @@ func (h *handler) trades(w http.ResponseWriter, r *http.Request) {
 			limit = n
 		}
 	}
-	list, err := svc.Trades(r.Context(), r.URL.Query().Get("symbol"), r.URL.Query().Get("strategy"), limit)
+	after, err := parseTradeCursor(r.URL.Query().Get("cursor"))
 	if err != nil {
 		h.fail(w, err)
 		return
 	}
-	out := make([]tradeDTO, 0, len(list))
+	list, next, err := svc.TradesPage(r.Context(), r.URL.Query().Get("symbol"), r.URL.Query().Get("strategy"), limit, after)
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	out := tradesPageDTO{Trades: make([]tradeDTO, 0, len(list)), NextCursor: encodeTradeCursor(next)}
 	for _, t := range list {
-		d := tradeDTO{Strategy: t.Strategy, Symbol: t.Symbol, Side: t.Side, Size: t.Size.String(), EntryPrice: t.EntryPrice.String(), EntryFee: t.EntryFee.String(), OpenedAt: timeOrEmpty(t.OpenedAt)}
-		if !t.ClosedAt.IsZero() {
-			d.ExitPrice, d.ExitFee, d.PnL, d.CloseReason, d.ClosedAt = t.ExitPrice.String(), t.ExitFee.String(), t.PnL.String(), t.CloseReason, timeOrEmpty(t.ClosedAt)
-		}
-		out = append(out, d)
+		out.Trades = append(out.Trades, toTradeDTO(t))
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// trade serves one round trip of the wallet's own, for the card that
+// reports it. An id that belongs to another wallet is not found, because
+// the wallet is part of the lookup rather than a check after it.
+func (h *handler) trade(w http.ResponseWriter, r *http.Request) {
+	svc, ok := h.service(w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		h.fail(w, fmt.Errorf("%w: trade id must be a number", ErrInvalid))
+		return
+	}
+	t, found, err := svc.Trade(r.Context(), id)
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	if !found {
+		writeJSON(w, http.StatusNotFound, errorDTO{Error: "no_trade", Message: "no such trade for this wallet"})
+		return
+	}
+	writeJSON(w, http.StatusOK, toTradeDTO(t))
+}
+
+// A cursor is where the last page ended: the opening time and the row, so
+// two trades opened in the same second cannot straddle a page boundary. It
+// is opaque on purpose — the app carries it back, it does not read it.
+func encodeTradeCursor(c store.TradeCursor) string {
+	if c.IsZero() {
+		return ""
+	}
+	return base64.RawURLEncoding.EncodeToString(fmt.Appendf(nil, "%d:%d", c.OpenedAt.UnixNano(), c.ID))
+}
+
+func parseTradeCursor(v string) (store.TradeCursor, error) {
+	if strings.TrimSpace(v) == "" {
+		return store.TradeCursor{}, nil
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(v)
+	if err != nil {
+		return store.TradeCursor{}, fmt.Errorf("%w: cursor", ErrInvalid)
+	}
+	nanos, id, ok := strings.Cut(string(raw), ":")
+	if !ok {
+		return store.TradeCursor{}, fmt.Errorf("%w: cursor", ErrInvalid)
+	}
+	n, err1 := strconv.ParseInt(nanos, 10, 64)
+	rowID, err2 := strconv.ParseInt(id, 10, 64)
+	if err1 != nil || err2 != nil {
+		return store.TradeCursor{}, fmt.Errorf("%w: cursor", ErrInvalid)
+	}
+	return store.TradeCursor{OpenedAt: time.Unix(0, n).UTC(), ID: rowID}, nil
 }
 
 // --- leaderboard ---
@@ -1310,6 +1421,72 @@ func (h *handler) leaderboard(w http.ResponseWriter, r *http.Request) {
 			d.Top = append(d.Top, standingDTO{Wallet: s.Wallet, PnL: s.PnL.String(), Trades: s.Trades})
 		}
 		out.Boards = append(out.Boards, d)
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// standingsDTO is one page of a board.
+type standingsDTO struct {
+	Strategy  string        `json:"strategy"`
+	Period    string        `json:"period"`
+	Standings []standingDTO `json:"standings"`
+	// Players is how many wallets are on this board altogether, not how
+	// many this page carries.
+	Players int `json:"players"`
+	// NextOffset is where the next page starts; absent on the last.
+	NextOffset int `json:"next_offset,omitempty"`
+}
+
+// standings serves one board, one page at a time:
+// ?strategy=direction&period=week&limit=25&offset=0. `strategy` empty or
+// "all" is every strategy together, by wallet.
+func (h *handler) standings(w http.ResponseWriter, r *http.Request) {
+	if h.ledger == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "leaderboard_unavailable", Message: "no ledger is running"})
+		return
+	}
+	q := r.URL.Query()
+	period := strings.TrimSpace(q.Get("period"))
+	if period == "" {
+		period = "week"
+	}
+	if period != "week" && period != "all" {
+		h.fail(w, fmt.Errorf("%w: period must be week or all", ErrInvalid))
+		return
+	}
+	strategyID := strings.TrimSpace(q.Get("strategy"))
+	if strategyID == "all" {
+		strategyID = ""
+	}
+	if strategyID != "" && !strategy.Known(strategyID) {
+		h.fail(w, fmt.Errorf("%w: unknown strategy %q", ErrInvalid, strategyID))
+		return
+	}
+	limit, offset := 25, 0
+	if v := q.Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+			limit = n
+		}
+	}
+	if v := q.Get("offset"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			offset = n
+		}
+	}
+	rows, players, err := h.ledger.StandingsPage(period, strategyID, limit, offset)
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	out := standingsDTO{Strategy: q.Get("strategy"), Period: period, Standings: make([]standingDTO, 0, len(rows)), Players: players}
+	if out.Strategy == "" {
+		out.Strategy = "all"
+	}
+	for _, st := range rows {
+		out.Standings = append(out.Standings, standingDTO{Wallet: st.Wallet, PnL: st.PnL.String(), Trades: st.Trades})
+	}
+	if offset+len(rows) < players {
+		out.NextOffset = offset + len(rows)
 	}
 	writeJSON(w, http.StatusOK, out)
 }

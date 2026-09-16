@@ -33,6 +33,9 @@ type Ledger struct {
 }
 
 type openTrade struct {
+	// Terms are what the position was made of: the wallet's own money in
+	// it, the leverage on top, and where the stop stood.
+	Terms store.Terms
 	// Wallet is the address the round trip belongs to. The map is keyed by
 	// the policy account, which is "<wallet>/<strategy>" for a strategy's
 	// own key — one wallet can hold the same symbol under two strategies,
@@ -107,13 +110,13 @@ func TradeRef(openOrderID, closeOrderID string) [32]byte {
 // `account` is the policy account the position is held under and `wallet`
 // the address it belongs to — the same wallet trading two strategies has two
 // accounts and one line on the board.
-func (l *Ledger) Opened(account, wallet, strategyID, symbol, orderID string, f store.Fill) {
+func (l *Ledger) Opened(account, wallet, strategyID, symbol, orderID string, f store.Fill, terms store.Terms) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.open[tradeKey(account, symbol)] = openTrade{Wallet: wallet, Strategy: strategyID, Symbol: symbol, OrderID: orderID, Fill: f, OpenedAt: l.now()}
+	l.open[tradeKey(account, symbol)] = openTrade{Wallet: wallet, Strategy: strategyID, Symbol: symbol, OrderID: orderID, Fill: f, Terms: terms, OpenedAt: l.now()}
 	l.wallets[wallet] = true
 	if l.journal != nil {
-		if err := l.journal.TradeOpened(context.Background(), wallet, strategyID, symbol, orderID, f, l.now()); err != nil {
+		if err := l.journal.TradeOpened(context.Background(), wallet, strategyID, symbol, orderID, f, terms, l.now()); err != nil {
 			slog.Warn("ledger: open not journaled", "wallet", wallet, "err", err)
 		}
 	}
@@ -123,7 +126,7 @@ func (l *Ledger) Opened(account, wallet, strategyID, symbol, orderID string, f s
 // with no recorded open (a position from before a restart) counts under the
 // default strategy. closeOrderID is the venue's id of the closing order and
 // f what it filled.
-func (l *Ledger) Closed(account, wallet, symbol string, pnl fixed.D, closeOrderID string, f store.Fill, reason string) {
+func (l *Ledger) Closed(account, wallet, symbol string, pnl fixed.D, closeOrderID string, f store.Fill, reason string, ex store.Excursion) {
 	l.mu.Lock()
 	key := tradeKey(account, symbol)
 	o, ok := l.open[key]
@@ -135,7 +138,7 @@ func (l *Ledger) Closed(account, wallet, symbol string, pnl fixed.D, closeOrderI
 	if l.journal != nil {
 		// The journal knows the strategy of a position opened before this
 		// process started; memory may not.
-		if ct, err := l.journal.TradeClosed(context.Background(), wallet, symbol, o.Strategy, closeOrderID, f, pnl, reason, t.ClosedAt); err != nil {
+		if ct, err := l.journal.TradeClosed(context.Background(), wallet, symbol, o.Strategy, closeOrderID, f, pnl, reason, ex, t.ClosedAt); err != nil {
 			slog.Warn("ledger: close not journaled", "wallet", wallet, "err", err)
 		} else {
 			t.Strategy, t.OpenedAt, t.Ref = ct.Strategy, ct.OpenedAt, TradeRef(ct.OpenOrderID, closeOrderID)
@@ -149,6 +152,29 @@ func (l *Ledger) Closed(account, wallet, symbol string, pnl fixed.D, closeOrderI
 	for _, fn := range listeners {
 		fn(t)
 	}
+}
+
+// TradesPage is Trades one page at a time. Memory has no pages: it holds
+// what this process has seen, which is one screen's worth at most, so it
+// answers the first page and says there is no next.
+func (l *Ledger) TradesPage(ctx context.Context, wallet, symbol, strategyID string, limit int, after store.TradeCursor) ([]store.ClosedTrade, store.TradeCursor, error) {
+	if l.journal != nil {
+		return l.journal.TradesPage(ctx, wallet, symbol, strategyID, limit, after)
+	}
+	if !after.IsZero() {
+		return nil, store.TradeCursor{}, nil
+	}
+	out, err := l.Trades(ctx, wallet, symbol, strategyID, limit)
+	return out, store.TradeCursor{}, err
+}
+
+// Trade reads one journaled round trip of a wallet's. Without a journal
+// there are no ids to read one by.
+func (l *Ledger) Trade(ctx context.Context, wallet string, id int64) (store.ClosedTrade, bool, error) {
+	if l.journal == nil {
+		return store.ClosedTrade{}, false, nil
+	}
+	return l.journal.TradeByID(ctx, wallet, id)
 }
 
 // Trades lists a wallet's round trips in a symbol, newest first. Without a
@@ -231,6 +257,69 @@ func (l *Ledger) Leaderboard() Leaderboard { return l.boards(weekStartOf(l.now()
 // AllTime computes the same boards over every trade on record. The prize is
 // weekly, so this board pays nothing — it is the standing of the house.
 func (l *Ledger) AllTime() Leaderboard { return l.boards(epoch, "all") }
+
+// StandingsPage is one board, one page at a time, with how many wallets
+// are on it altogether. `strategy` empty means every strategy at once, and
+// then a wallet counts once however many it played — which is the honest
+// answer to "how many players", and the reason this does not add up the
+// per-board counts.
+//
+// Without a journal there are no pages: memory answers the first one from
+// what this process has seen.
+func (l *Ledger) StandingsPage(period, strategy string, limit, offset int) ([]Standing, int, error) {
+	weekStart := weekStartOf(l.now())
+	since := weekStart
+	if period == "all" {
+		since = epoch
+	}
+	until := weekStart.AddDate(0, 0, 7)
+	if l.journal != nil {
+		rows, total, err := l.journal.StandingsPage(context.Background(), strategy, since, until, limit, offset)
+		if err == nil {
+			out := make([]Standing, 0, len(rows))
+			for _, r := range rows {
+				out = append(out, Standing{Wallet: r.Wallet, PnL: r.PnL, Trades: r.Trades})
+			}
+			return out, total, nil
+		}
+		slog.Warn("ledger: standings not read from the journal, serving memory", "err", err)
+	}
+	return l.standingsFromMemory(since, strategy, limit, offset)
+}
+
+func (l *Ledger) standingsFromMemory(since time.Time, strategyID string, limit, offset int) ([]Standing, int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	by := map[string]*Standing{}
+	for _, t := range l.closed {
+		if t.ClosedAt.Before(since) || (strategyID != "" && t.Strategy != strategyID) {
+			continue
+		}
+		st := by[t.Wallet]
+		if st == nil {
+			st = &Standing{Wallet: t.Wallet}
+			by[t.Wallet] = st
+		}
+		st.PnL = st.PnL.Add(t.PnL)
+		st.Trades++
+	}
+	all := make([]Standing, 0, len(by))
+	for _, st := range by {
+		all = append(all, *st)
+	}
+	sort.Slice(all, func(i, j int) bool {
+		if all[i].PnL != all[j].PnL {
+			return all[i].PnL > all[j].PnL
+		}
+		return all[i].Wallet < all[j].Wallet
+	})
+	total := len(all)
+	if offset >= total {
+		return nil, total, nil
+	}
+	end := min(offset+limit, total)
+	return all[offset:end], total, nil
+}
 
 // boards reads the standings for trades closed at or after `since`. With a
 // journal they come from Postgres; memory answers only while the database

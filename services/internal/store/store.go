@@ -376,14 +376,27 @@ type Fill struct {
 }
 
 // TradeOpened journals an opening fill.
-func (s *Store) TradeOpened(ctx context.Context, wallet, strategy, symbol, orderID string, f Fill, at time.Time) error {
-	_, err := s.pool.Exec(ctx, `insert into trades (wallet, strategy, symbol, open_order_id, side, size, entry_price, entry_fee, opened_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		on conflict (wallet, open_order_id) do nothing`, wallet, strategy, symbol, orderID, f.Side, f.Size.String(), f.Price.String(), f.Fee.String(), at)
+func (s *Store) TradeOpened(ctx context.Context, wallet, strategy, symbol, orderID string, f Fill, t Terms, at time.Time) error {
+	_, err := s.pool.Exec(ctx, `insert into trades (wallet, strategy, symbol, open_order_id, side, size, entry_price, entry_fee, opened_at, leverage, collateral, stop_pnl)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		on conflict (wallet, open_order_id) do nothing`,
+		wallet, strategy, symbol, orderID, f.Side, f.Size.String(), f.Price.String(), f.Fee.String(), at,
+		decimalOrNil(t.Leverage), decimalOrNil(t.Collateral), decimalOrNil(t.StopPnL))
 	return err
+}
+
+// decimalOrNil renders an optional fixed-point number for the database: a
+// string it can parse as numeric, or nothing at all.
+func decimalOrNil(d *fixed.D) any {
+	if d == nil {
+		return nil
+	}
+	return d.String()
 }
 
 // ClosedTrade is a round trip as journaled; an open one has no exit.
 type ClosedTrade struct {
+	ID                        int64
 	Wallet, Strategy, Symbol  string
 	OpenOrderID, CloseOrderID string
 	Side                      string
@@ -393,12 +406,32 @@ type ClosedTrade struct {
 	PnL                       fixed.D
 	CloseReason               string
 	OpenedAt, ClosedAt        time.Time
+	Terms
+}
+
+// Excursion is how far a position ran each way before it closed, as the
+// platform saw it: the worst and the best its unrealized result was worth.
+// Both optional — nothing was watching a position opened before a restart.
+type Excursion struct {
+	Worst, Best *fixed.D
+}
+
+// Terms is what the position was made of and how far it ran: the wallet's
+// own money in it, the leverage on top, where the stop stood, and the worst
+// and best it was worth before it closed. Every one of them is optional —
+// rows journaled before the columns existed have none.
+type Terms struct {
+	Leverage   *fixed.D
+	Collateral *fixed.D
+	StopPnL    *fixed.D
+	WorstPnL   *fixed.D
+	BestPnL    *fixed.D
 }
 
 // TradeClosed completes the open round trip for a wallet's symbol. A close
 // with no open on record (a position from before the journal) is inserted
 // as a whole under the given strategy, with the exit as its only price.
-func (s *Store) TradeClosed(ctx context.Context, wallet, symbol, fallbackStrategy, closeOrderID string, f Fill, pnl fixed.D, reason string, at time.Time) (ClosedTrade, error) {
+func (s *Store) TradeClosed(ctx context.Context, wallet, symbol, fallbackStrategy, closeOrderID string, f Fill, pnl fixed.D, reason string, ex Excursion, at time.Time) (ClosedTrade, error) {
 	var t ClosedTrade
 	var size, entry, exit, entryFee, pnlS string
 	// The strategy narrows the match: one wallet can hold the same symbol
@@ -408,9 +441,10 @@ func (s *Store) TradeClosed(ctx context.Context, wallet, symbol, fallbackStrateg
 		with open as (
 			select id from trades where wallet = $1 and symbol = $2 and ($9 = '' or strategy = $9) and closed_at is null order by opened_at desc limit 1
 		)
-		update trades set close_order_id = $3, pnl = $4, closed_at = $5, exit_price = $6, exit_fee = $7, close_reason = $8 where id = (select id from open)
-		returning wallet, strategy, symbol, open_order_id, close_order_id, side, size::text, entry_price::text, exit_price::text, entry_fee::text, pnl::text, opened_at, closed_at`,
-		wallet, symbol, closeOrderID, pnl.String(), at, f.Price.String(), f.Fee.String(), reason, fallbackStrategy).Scan(&t.Wallet, &t.Strategy, &t.Symbol, &t.OpenOrderID, &t.CloseOrderID, &t.Side, &size, &entry, &exit, &entryFee, &pnlS, &t.OpenedAt, &t.ClosedAt)
+		update trades set close_order_id = $3, pnl = $4, closed_at = $5, exit_price = $6, exit_fee = $7, close_reason = $8, worst_pnl = $10, best_pnl = $11 where id = (select id from open)
+		returning id, wallet, strategy, symbol, open_order_id, close_order_id, side, size::text, entry_price::text, exit_price::text, entry_fee::text, pnl::text, opened_at, closed_at`,
+		wallet, symbol, closeOrderID, pnl.String(), at, f.Price.String(), f.Fee.String(), reason, fallbackStrategy,
+		decimalOrNil(ex.Worst), decimalOrNil(ex.Best)).Scan(&t.ID, &t.Wallet, &t.Strategy, &t.Symbol, &t.OpenOrderID, &t.CloseOrderID, &t.Side, &size, &entry, &exit, &entryFee, &pnlS, &t.OpenedAt, &t.ClosedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		_, err = s.pool.Exec(ctx, `insert into trades (wallet, strategy, symbol, open_order_id, close_order_id, side, size, entry_price, exit_price, exit_fee, pnl, close_reason, opened_at, closed_at)
 			values ($1, $2, $3, $4, $5, $6, $7, 0, $8, $9, $10, $11, $12, $12)`, wallet, fallbackStrategy, symbol, "unknown-"+closeOrderID, closeOrderID, f.Side, f.Size.String(), f.Price.String(), f.Fee.String(), pnl.String(), reason, at)
@@ -433,40 +467,125 @@ func (s *Store) TradeClosed(ctx context.Context, wallet, symbol, fallbackStrateg
 // Trades lists a wallet's round trips in a symbol, newest first: what the
 // chart marks and the history shows. An empty strategy means every
 // strategy. Open ones have no exit.
+// tradeColumns is what a round trip is read as, everywhere it is read.
+const tradeColumns = `id, wallet, strategy, symbol, open_order_id, coalesce(close_order_id, ''), side, size::text, entry_price::text,
+		coalesce(exit_price::text, ''), entry_fee::text, coalesce(exit_fee::text, ''), coalesce(pnl::text, ''), coalesce(close_reason, ''), opened_at, closed_at,
+		leverage::text, collateral::text, stop_pnl::text, worst_pnl::text, best_pnl::text`
+
 func (s *Store) Trades(ctx context.Context, wallet, symbol, strategy string, limit int) ([]ClosedTrade, error) {
-	rows, err := s.pool.Query(ctx, `select wallet, strategy, symbol, open_order_id, coalesce(close_order_id, ''), side, size::text, entry_price::text,
-		coalesce(exit_price::text, ''), entry_fee::text, coalesce(exit_fee::text, ''), coalesce(pnl::text, ''), coalesce(close_reason, ''), opened_at, closed_at
-		from trades where wallet = $1 and ($2 = '' or symbol = $2) and ($3 = '' or strategy = $3) order by opened_at desc limit $4`, wallet, symbol, strategy, limit)
+	out, _, err := s.TradesPage(ctx, wallet, symbol, strategy, limit, TradeCursor{})
+	return out, err
+}
+
+// TradeCursor is where a page of history left off. Keyed on the opening
+// time and the row id together, because two trades can open in the same
+// second and a page boundary must not drop or repeat one.
+type TradeCursor struct {
+	OpenedAt time.Time
+	ID       int64
+}
+
+func (c TradeCursor) IsZero() bool { return c.ID == 0 && c.OpenedAt.IsZero() }
+
+// TradesPage reads one page of a wallet's round trips, newest first, and
+// says where the next one starts. An empty cursor starts at the newest; a
+// zero cursor comes back when the page is the last.
+func (s *Store) TradesPage(ctx context.Context, wallet, symbol, strategy string, limit int, after TradeCursor) ([]ClosedTrade, TradeCursor, error) {
+	rows, err := s.pool.Query(ctx, `select `+tradeColumns+`
+		from trades
+		where wallet = $1 and ($2 = '' or symbol = $2) and ($3 = '' or strategy = $3)
+		  and ($5::timestamptz is null or (opened_at, id) < ($5::timestamptz, $6::bigint))
+		order by opened_at desc, id desc limit $4`,
+		wallet, symbol, strategy, limit, nullableTime(after.OpenedAt), after.ID)
 	if err != nil {
-		return nil, err
+		return nil, TradeCursor{}, err
 	}
 	defer rows.Close()
 	var out []ClosedTrade
 	for rows.Next() {
-		var t ClosedTrade
-		var size, entry, exit, entryFee, exitFee, pnl string
-		var closedAt *time.Time
-		if err := rows.Scan(&t.Wallet, &t.Strategy, &t.Symbol, &t.OpenOrderID, &t.CloseOrderID, &t.Side, &size, &entry, &exit, &entryFee, &exitFee, &pnl, &t.CloseReason, &t.OpenedAt, &closedAt); err != nil {
-			return nil, err
-		}
-		t.Size, _ = fixed.Parse(size)
-		t.EntryPrice, _ = fixed.Parse(entry)
-		t.EntryFee, _ = fixed.Parse(entryFee)
-		if exit != "" {
-			t.ExitPrice, _ = fixed.Parse(exit)
-		}
-		if exitFee != "" {
-			t.ExitFee, _ = fixed.Parse(exitFee)
-		}
-		if pnl != "" {
-			t.PnL, _ = fixed.Parse(pnl)
-		}
-		if closedAt != nil {
-			t.ClosedAt = *closedAt
+		t, err := scanTrade(rows)
+		if err != nil {
+			return nil, TradeCursor{}, err
 		}
 		out = append(out, t)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, TradeCursor{}, err
+	}
+	// A full page may or may not be the last; the next read settles it,
+	// which costs one empty page and never a missing trade.
+	var next TradeCursor
+	if len(out) == limit && limit > 0 {
+		last := out[len(out)-1]
+		next = TradeCursor{OpenedAt: last.OpenedAt, ID: last.ID}
+	}
+	return out, next, nil
+}
+
+// TradeByID reads one of a wallet's round trips. The wallet is part of the
+// lookup, not a check after it: an id from another wallet is not found.
+func (s *Store) TradeByID(ctx context.Context, wallet string, id int64) (ClosedTrade, bool, error) {
+	row := s.pool.QueryRow(ctx, `select `+tradeColumns+` from trades where id = $1 and wallet = $2`, id, strings.ToLower(wallet))
+	t, err := scanTrade(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ClosedTrade{}, false, nil
+	}
+	return t, err == nil, err
+}
+
+func nullableTime(t time.Time) any {
+	if t.IsZero() {
+		return nil
+	}
+	return t
+}
+
+// scanner is what both a row and a page of rows answer to.
+type scanner interface {
+	Scan(dest ...any) error
+}
+
+// scanTrade reads one row of tradeColumns.
+func scanTrade(row scanner) (ClosedTrade, error) {
+	var t ClosedTrade
+	var size, entry, exit, entryFee, exitFee, pnl string
+	var closedAt *time.Time
+	var leverage, collateral, stopPnL, worstPnL, bestPnL *string
+	if err := row.Scan(&t.ID, &t.Wallet, &t.Strategy, &t.Symbol, &t.OpenOrderID, &t.CloseOrderID, &t.Side, &size, &entry, &exit,
+		&entryFee, &exitFee, &pnl, &t.CloseReason, &t.OpenedAt, &closedAt,
+		&leverage, &collateral, &stopPnL, &worstPnL, &bestPnL); err != nil {
+		return ClosedTrade{}, err
+	}
+	t.Size, _ = fixed.Parse(size)
+	t.EntryPrice, _ = fixed.Parse(entry)
+	t.EntryFee, _ = fixed.Parse(entryFee)
+	if exit != "" {
+		t.ExitPrice, _ = fixed.Parse(exit)
+	}
+	if exitFee != "" {
+		t.ExitFee, _ = fixed.Parse(exitFee)
+	}
+	if pnl != "" {
+		t.PnL, _ = fixed.Parse(pnl)
+	}
+	if closedAt != nil {
+		t.ClosedAt = *closedAt
+	}
+	t.Leverage, t.Collateral = optionalDecimal(leverage), optionalDecimal(collateral)
+	t.StopPnL, t.WorstPnL, t.BestPnL = optionalDecimal(stopPnL), optionalDecimal(worstPnL), optionalDecimal(bestPnL)
+	return t, nil
+}
+
+// optionalDecimal parses a column that may hold nothing.
+func optionalDecimal(s *string) *fixed.D {
+	if s == nil || *s == "" {
+		return nil
+	}
+	d, err := fixed.Parse(*s)
+	if err != nil {
+		return nil
+	}
+	return &d
 }
 
 // OpenStrategy reports the strategy of a wallet's open round trip.
@@ -563,6 +682,41 @@ func (s *Store) Boards(ctx context.Context, since, until time.Time, topN int) (m
 		b.ActiveNow = n
 	}
 	return out, active.Err()
+}
+
+// StandingsPage is one page of a board, ordered by result, with how many
+// wallets are on it altogether. An empty strategy is every strategy at
+// once, grouped by wallet — the "All" board, where one wallet counts once
+// however many strategies it played.
+func (s *Store) StandingsPage(ctx context.Context, strategy string, since, until time.Time, limit, offset int) ([]Standing, int, error) {
+	var total int
+	if err := s.pool.QueryRow(ctx, `
+		select count(distinct wallet) from trades
+		where closed_at >= $1 and closed_at < $2 and ($3 = '' or strategy = $3)`, since, until, strategy).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.pool.Query(ctx, `
+		select wallet, sum(pnl)::text, count(*)
+		from trades
+		where closed_at >= $1 and closed_at < $2 and ($3 = '' or strategy = $3)
+		group by wallet
+		order by sum(pnl) desc, wallet asc
+		limit $4 offset $5`, since, until, strategy, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var out []Standing
+	for rows.Next() {
+		var st Standing
+		var pnl string
+		if err := rows.Scan(&st.Wallet, &pnl, &st.Trades); err != nil {
+			return nil, 0, err
+		}
+		st.PnL, _ = fixed.Parse(pnl)
+		out = append(out, st)
+	}
+	return out, total, rows.Err()
 }
 
 // Wallets lists every wallet in the journal.

@@ -207,12 +207,12 @@ func TestTradesJournalAndBoards(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	must(s.TradeOpened(ctx, w1, "direction", "MON", "o1", Fill{Side: "long", Size: fixed.FromInt(100), Price: fixed.MustParse("0.025")}, now.Add(-time.Hour)))
+	must(s.TradeOpened(ctx, w1, "direction", "MON", "o1", Fill{Side: "long", Size: fixed.FromInt(100), Price: fixed.MustParse("0.025")}, Terms{}, now.Add(-time.Hour)))
 	st, ok, err := s.OpenStrategy(ctx, w1, "MON")
 	if err != nil || !ok || st != "direction" {
 		t.Fatalf("open strategy = %q %v %v", st, ok, err)
 	}
-	closed, err := s.TradeClosed(ctx, w1, "MON", "direction", "c1", Fill{Side: "long", Size: fixed.FromInt(100), Price: fixed.MustParse("0.026"), Fee: fixed.MustParse("0.001")}, fixed.MustParse("3"), "manual", now.Add(-30*time.Minute))
+	closed, err := s.TradeClosed(ctx, w1, "MON", "direction", "c1", Fill{Side: "long", Size: fixed.FromInt(100), Price: fixed.MustParse("0.026"), Fee: fixed.MustParse("0.001")}, fixed.MustParse("3"), "manual", Excursion{}, now.Add(-30*time.Minute))
 	must(err)
 	if closed.Strategy != "direction" || closed.OpenOrderID != "o1" || closed.EntryPrice != fixed.MustParse("0.025") || closed.ExitPrice != fixed.MustParse("0.026") {
 		t.Fatalf("closed = %+v", closed)
@@ -225,14 +225,14 @@ func TestTradesJournalAndBoards(t *testing.T) {
 	if only, _ := s.Trades(ctx, w1, "MON", "ma-cross", 10); len(only) != 0 {
 		t.Fatalf("strategy filter ignored: %+v", only)
 	}
-	must(s.TradeOpened(ctx, w2, "ma-cross", "MON", "o2", Fill{Side: "short", Size: fixed.FromInt(50), Price: fixed.MustParse("0.025")}, now.Add(-20*time.Minute)))
-	_, err = s.TradeClosed(ctx, w2, "MON", "ma-cross", "c2", Fill{Side: "short", Size: fixed.FromInt(50), Price: fixed.MustParse("0.0255")}, fixed.MustParse("-1"), "horizon", now.Add(-10*time.Minute))
+	must(s.TradeOpened(ctx, w2, "ma-cross", "MON", "o2", Fill{Side: "short", Size: fixed.FromInt(50), Price: fixed.MustParse("0.025")}, Terms{}, now.Add(-20*time.Minute)))
+	_, err = s.TradeClosed(ctx, w2, "MON", "ma-cross", "c2", Fill{Side: "short", Size: fixed.FromInt(50), Price: fixed.MustParse("0.0255")}, fixed.MustParse("-1"), "horizon", Excursion{}, now.Add(-10*time.Minute))
 	must(err)
 	// A close with no open on record is journaled whole under the fallback.
-	_, err = s.TradeClosed(ctx, w2, "BTC", "direction", "c3", Fill{Side: "long", Size: fixed.FromInt(1), Price: fixed.FromInt(78000)}, fixed.MustParse("0.5"), "manual", now.Add(-5*time.Minute))
+	_, err = s.TradeClosed(ctx, w2, "BTC", "direction", "c3", Fill{Side: "long", Size: fixed.FromInt(1), Price: fixed.FromInt(78000)}, fixed.MustParse("0.5"), "manual", Excursion{}, now.Add(-5*time.Minute))
 	must(err)
 	// Open right now.
-	must(s.TradeOpened(ctx, w1, "ma-cross", "MON", "o4", Fill{Side: "long", Size: fixed.FromInt(10), Price: fixed.MustParse("0.025")}, now))
+	must(s.TradeOpened(ctx, w1, "ma-cross", "MON", "o4", Fill{Side: "long", Size: fixed.FromInt(10), Price: fixed.MustParse("0.025")}, Terms{}, now))
 
 	boards, err := s.Boards(ctx, now.Add(-2*time.Hour), now.Add(time.Hour), 10)
 	must(err)

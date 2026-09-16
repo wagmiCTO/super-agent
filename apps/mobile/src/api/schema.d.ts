@@ -731,16 +731,17 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * The account's round trips in a market, newest first
-         * @description What the chart marks — entries, exits and the open position. Routed by X-Account-Address like the rest of the account.
+         * This wallet's round trips, newest first, one page at a time
+         * @description History only grows, so it is read a page at a time: `limit` rows and a `next_cursor` to ask for the next ones. The cursor is opaque — carry it back, do not read it. Absent on the last page.
          */
         get: {
             parameters: {
-                query: {
-                    symbol: string;
-                    /** @description Only this strategy's round trips; absent means all. */
+                query?: {
+                    symbol?: string;
+                    /** @description Empty is every strategy this wallet has traded. */
                     strategy?: string;
                     limit?: number;
+                    cursor?: string;
                 };
                 header?: never;
                 path?: never;
@@ -753,7 +754,56 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Trade"][];
+                        "application/json": components["schemas"]["TradesPage"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/trades/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One round trip of this wallet's, for the card that reports it
+         * @description The wallet is part of the lookup: an id that belongs to another wallet is not found.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Trade"];
+                    };
+                };
+                /** @description No such trade for this wallet. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
                     };
                 };
             };
@@ -1383,6 +1433,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/leaderboard/standings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One board, one page at a time
+         * @description The board for a strategy, or for every strategy at once, ordered by result. `players` is how many wallets are on the board altogether — on the combined board a wallet counts once, however many strategies it played.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description A strategy id, or "all" (the default) for every one together. */
+                    strategy?: string;
+                    period?: "week" | "all";
+                    limit?: number;
+                    offset?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Standings"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/kill": {
         parameters: {
             query?: never;
@@ -1594,6 +1688,42 @@ export interface components {
              * @description Absent while the position is open.
              */
             closed_at?: string;
+            /** @description Names the round trip for the card that reports it; absent for one the journal never saw. */
+            id?: string;
+            open_order_id?: string;
+            close_order_id?: string;
+            /** @description What was opened, as money — the filled size at the price it filled at. */
+            notional?: components["schemas"]["Decimal"];
+            leverage?: components["schemas"]["Decimal"];
+            /** @description The wallet's own money in the position. */
+            collateral?: components["schemas"]["Decimal"];
+            /** @description The loss the stop allowed, negative; absent when none was armed. */
+            stop_pnl?: components["schemas"]["Decimal"];
+            /** @description The worst the position was worth while open, as the platform sampled it. */
+            worst_pnl?: components["schemas"]["Decimal"];
+            /** @description The best it was worth, on the same readings. */
+            best_pnl?: components["schemas"]["Decimal"];
+        };
+        TradesPage: {
+            trades: components["schemas"]["Trade"][];
+            /** @description Opaque; carry it back as `cursor` for the next page. Absent on the last. */
+            next_cursor?: string;
+        };
+        Standings: {
+            /** @description The board asked for */
+            strategy: string;
+            /** @enum {string} */
+            period: "week" | "all";
+            standings: components["schemas"]["Standing"][];
+            /** @description Wallets on this board altogether, not on this page. */
+            players: number;
+            /** @description Where the next page starts; absent on the last. */
+            next_offset?: number;
+        };
+        Standing: {
+            wallet: string;
+            pnl: components["schemas"]["Decimal"];
+            trades: number;
         };
         /** @description The on-chain weekly prize pool (StrategyPrizePool), when configured. */
         Prize: {

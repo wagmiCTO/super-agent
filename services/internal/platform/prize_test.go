@@ -239,10 +239,10 @@ func journalRoundTrip(t *testing.T, st *store.Store, wallet, strategy string, pn
 	ctx := context.Background()
 	id := fmt.Sprintf("%s-%d", wallet, at.UnixNano())
 	fill := store.Fill{Side: "long", Size: fixed.FromInt(10), Price: fixed.MustParse("0.02")}
-	if err := st.TradeOpened(ctx, wallet, strategy, "MON", id+"-o", fill, at.Add(-time.Minute)); err != nil {
+	if err := st.TradeOpened(ctx, wallet, strategy, "MON", id+"-o", fill, store.Terms{}, at.Add(-time.Minute)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.TradeClosed(ctx, wallet, "MON", strategy, id+"-c", fill, pnl, "manual", at); err != nil {
+	if _, err := st.TradeClosed(ctx, wallet, "MON", strategy, id+"-c", fill, pnl, "manual", store.Excursion{}, at); err != nil {
 		t.Fatal(err)
 	}
 }

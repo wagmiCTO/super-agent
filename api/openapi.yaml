@@ -354,19 +354,52 @@ paths:
 
   /v1/trades:
     get:
-      summary: The account's round trips in a market, newest first
-      description: What the chart marks — entries, exits and the open position. Routed by X-Account-Address like the rest of the account.
+      summary: This wallet's round trips, newest first, one page at a time
+      description: >-
+        History only grows, so it is read a page at a time: `limit` rows and a
+        `next_cursor` to ask for the next ones. The cursor is opaque — carry it
+        back, do not read it. Absent on the last page.
       parameters:
-        - { in: query, name: symbol, required: true, schema: { type: string, example: MON } }
-        - { in: query, name: strategy, required: false, schema: { type: string, example: direction }, description: Only this strategy's round trips; absent means all. }
-        - { in: query, name: limit, required: false, schema: { type: integer, default: 50, maximum: 500 } }
+        - in: query
+          name: symbol
+          schema: { type: string }
+        - in: query
+          name: strategy
+          schema: { type: string }
+          description: Empty is every strategy this wallet has traded.
+        - in: query
+          name: limit
+          schema: { type: integer, default: 50, maximum: 500 }
+        - in: query
+          name: cursor
+          schema: { type: string }
       responses:
         "200":
           content:
             application/json:
-              schema:
-                type: array
-                items: { $ref: "#/components/schemas/Trade" }
+              schema: { $ref: "#/components/schemas/TradesPage" }
+
+  /v1/trades/{id}:
+    get:
+      summary: One round trip of this wallet's, for the card that reports it
+      description: >-
+        The wallet is part of the lookup: an id that belongs to another wallet
+        is not found.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Trade" }
+        "404":
+          description: No such trade for this wallet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /v1/risk:
     get:
@@ -644,6 +677,34 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Leaderboard" }
 
+  /v1/leaderboard/standings:
+    get:
+      summary: One board, one page at a time
+      description: >-
+        The board for a strategy, or for every strategy at once, ordered by
+        result. `players` is how many wallets are on the board altogether —
+        on the combined board a wallet counts once, however many strategies
+        it played.
+      parameters:
+        - in: query
+          name: strategy
+          schema: { type: string, example: direction }
+          description: A strategy id, or "all" (the default) for every one together.
+        - in: query
+          name: period
+          schema: { type: string, enum: [week, all], default: week }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 25, maximum: 200 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0 }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Standings" }
+
   /v1/kill:
     post:
       summary: Engage the kill switch — stops all opening, closing stays allowed
@@ -841,6 +902,60 @@ components:
           description: Who closed the round trip — a tap, the horizon, or the stop; absent while open.
         opened_at: { type: string, format: date-time }
         closed_at: { type: string, format: date-time, description: Absent while the position is open. }
+        id:
+          type: string
+          description: Names the round trip for the card that reports it; absent for one the journal never saw.
+        open_order_id: { type: string }
+        close_order_id: { type: string }
+        notional:
+          allOf: [{ $ref: "#/components/schemas/Decimal" }]
+          description: What was opened, as money — the filled size at the price it filled at.
+        leverage: { $ref: "#/components/schemas/Decimal" }
+        collateral:
+          allOf: [{ $ref: "#/components/schemas/Decimal" }]
+          description: The wallet's own money in the position.
+        stop_pnl:
+          allOf: [{ $ref: "#/components/schemas/Decimal" }]
+          description: The loss the stop allowed, negative; absent when none was armed.
+        worst_pnl:
+          allOf: [{ $ref: "#/components/schemas/Decimal" }]
+          description: The worst the position was worth while open, as the platform sampled it.
+        best_pnl:
+          allOf: [{ $ref: "#/components/schemas/Decimal" }]
+          description: The best it was worth, on the same readings.
+
+    TradesPage:
+      type: object
+      required: [trades]
+      properties:
+        trades:
+          type: array
+          items: { $ref: "#/components/schemas/Trade" }
+        next_cursor:
+          type: string
+          description: Opaque; carry it back as `cursor` for the next page. Absent on the last.
+
+    Standings:
+      type: object
+      required: [strategy, period, standings, players]
+      properties:
+        strategy: { type: string, description: The board asked for, or "all". }
+        period: { type: string, enum: [week, all] }
+        standings:
+          type: array
+          items: { $ref: "#/components/schemas/Standing" }
+        players:
+          type: integer
+          description: Wallets on this board altogether, not on this page.
+        next_offset: { type: integer, description: Where the next page starts; absent on the last. }
+
+    Standing:
+      type: object
+      required: [wallet, pnl, trades]
+      properties:
+        wallet: { type: string }
+        pnl: { $ref: "#/components/schemas/Decimal" }
+        trades: { type: integer }
 
     Prize:
       type: object

@@ -99,7 +99,9 @@ type Service struct {
 	mu        sync.Mutex
 	lastClose *CloseEvent
 	stops     map[string]*stop // armed stops by symbol; guarded by mu
-	stopEvery time.Duration    // zero means defaultStopEvery
+	// runs is how far each open position has gone each way, by symbol.
+	runs      map[string]*excursion
+	stopEvery time.Duration // zero means defaultStopEvery
 
 	// limitsFn, when set, recomputes the limits from the balance before
 	// every read and every opening order — the daily budget is a share of
@@ -276,6 +278,10 @@ func (s *Service) State(ctx context.Context) (State, error) {
 		if ml, ok := s.stopFor(p.Symbol); ok {
 			stops[p.Symbol] = ml
 		}
+		// Every read is also a reading: how far the position has run each
+		// way is sampled here and by the stop watcher, and journaled when
+		// it closes.
+		s.noteExcursion(p.Symbol, p.UnrealizedPnL)
 	}
 	s.mu.Lock()
 	last := s.lastClose
@@ -355,7 +361,8 @@ func (s *Service) Open(ctx context.Context, req OpenRequest) (venue.Order, error
 	}
 	s.policy.RecordOpen(s.account, opened)
 	if s.ledger != nil {
-		s.ledger.Opened(s.account, s.wallet, req.Strategy, req.Symbol, placed.VenueID, store.Fill{Side: req.Side.String(), Size: placed.FilledSize, Price: placed.AvgPrice, Fee: placed.Fee})
+		s.ledger.Opened(s.account, s.wallet, req.Strategy, req.Symbol, placed.VenueID,
+			store.Fill{Side: req.Side.String(), Size: placed.FilledSize, Price: placed.AvgPrice, Fee: placed.Fee}, termsOf(opened, req.Leverage, req.MaxLoss))
 	}
 	var closesAt time.Time
 	if req.Rules.Horizon > 0 {
@@ -453,6 +460,7 @@ func (s *Service) watchStop(symbol string, st *stop) {
 			s.disarmStop(symbol)
 			return
 		}
+		s.noteExcursion(symbol, pos.UnrealizedPnL)
 		allowance := pos.Collateral.Mul(st.maxLoss)
 		if !allowance.IsPos() || pos.UnrealizedPnL.Neg().Cmp(allowance) < 0 {
 			continue
@@ -563,7 +571,8 @@ func (s *Service) close(ctx context.Context, symbol string, reason CloseReason) 
 	pnl := realizedPnL(*pos, placed)
 	s.policy.RecordClose(s.account, notional, pnl)
 	if s.ledger != nil {
-		s.ledger.Closed(s.account, s.wallet, symbol, pnl, placed.VenueID, store.Fill{Side: pos.Side.String(), Size: placed.FilledSize, Price: placed.AvgPrice, Fee: placed.Fee}, string(reason))
+		s.ledger.Closed(s.account, s.wallet, symbol, pnl, placed.VenueID,
+			store.Fill{Side: pos.Side.String(), Size: placed.FilledSize, Price: placed.AvgPrice, Fee: placed.Fee}, string(reason), s.takeExcursion(symbol))
 	}
 	s.mu.Lock()
 	s.lastClose = &CloseEvent{Symbol: symbol, Side: pos.Side, Reason: reason, Price: placed.AvgPrice, PnL: pnl, At: s.now()}
@@ -580,6 +589,23 @@ func (s *Service) Trades(ctx context.Context, symbol, strategyID string, limit i
 		return nil, nil
 	}
 	return s.ledger.Trades(ctx, s.wallet, strings.ToUpper(strings.TrimSpace(symbol)), strings.TrimSpace(strategyID), limit)
+}
+
+// TradesPage is Trades one page at a time, newest first, with where the
+// next page starts.
+func (s *Service) TradesPage(ctx context.Context, symbol, strategyID string, limit int, after store.TradeCursor) ([]store.ClosedTrade, store.TradeCursor, error) {
+	if s.ledger == nil {
+		return nil, store.TradeCursor{}, nil
+	}
+	return s.ledger.TradesPage(ctx, s.wallet, strings.ToUpper(strings.TrimSpace(symbol)), strings.TrimSpace(strategyID), limit, after)
+}
+
+// Trade reads one of this wallet's round trips by its id.
+func (s *Service) Trade(ctx context.Context, id int64) (store.ClosedTrade, bool, error) {
+	if s.ledger == nil {
+		return store.ClosedTrade{}, false, nil
+	}
+	return s.ledger.Trade(ctx, s.wallet, id)
 }
 
 // Kill halts opening across the service; Revive lifts it.
@@ -620,4 +646,67 @@ func newClientID(kind string) string {
 func walletOf(account string) string {
 	wallet, _, _ := strings.Cut(account, "/")
 	return wallet
+}
+
+// termsOf is what a position was made of, for the journal: the wallet's own
+// money in it, the leverage on top, and where the stop stood in money. The
+// stop comes in as a share of the collateral, which is how the policy judges
+// it; what the report needs is the loss it allows.
+func termsOf(notional, leverage, maxLoss fixed.D) store.Terms {
+	var t store.Terms
+	if leverage.IsPos() {
+		lev := leverage
+		t.Leverage = &lev
+		if notional.IsPos() {
+			collateral := notional.Div(leverage)
+			t.Collateral = &collateral
+			if maxLoss.IsPos() {
+				stop := collateral.Mul(maxLoss).Neg()
+				t.StopPnL = &stop
+			}
+		}
+	}
+	return t
+}
+
+// excursion is how far an open position has run each way, as the platform
+// has seen it: the worst and the best its unrealized result was worth.
+//
+// Sampled, not continuous: the stop watcher reads the venue every few
+// seconds while a stop is armed, and every state the app asks for adds a
+// reading. A position nobody watched has none, and the card says so rather
+// than drawing a zero.
+type excursion struct{ worst, best fixed.D }
+
+// noteExcursion records one reading of an open position's result.
+func (s *Service) noteExcursion(symbol string, unrealized fixed.D) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.runs == nil {
+		s.runs = map[string]*excursion{}
+	}
+	e := s.runs[symbol]
+	if e == nil {
+		e = &excursion{worst: unrealized, best: unrealized}
+		s.runs[symbol] = e
+	}
+	if unrealized.Cmp(e.worst) < 0 {
+		e.worst = unrealized
+	}
+	if unrealized.Cmp(e.best) > 0 {
+		e.best = unrealized
+	}
+}
+
+// takeExcursion reads and forgets what a symbol's position ran to.
+func (s *Service) takeExcursion(symbol string) store.Excursion {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e := s.runs[symbol]
+	if e == nil {
+		return store.Excursion{}
+	}
+	delete(s.runs, symbol)
+	worst, best := e.worst, e.best
+	return store.Excursion{Worst: &worst, Best: &best}
 }

@@ -89,9 +89,27 @@ test('the leaderboard shows the on-chain prize pools from the indexer', async ({
   // boards, so what is asserted is the line that says what is being played
   // for, which is there either way.
   await expect(page.getByTestId('board-pool')).toContainText(/players · ends \w+$|No pool yet/);
+  // The combined board counts a wallet once, however many strategies it
+  // played — the platform counts them, so the line says players like any
+  // other board.
   await page.getByTestId('board-all').click();
-  await expect(page.getByTestId('board-pool')).toContainText(/entries/);
+  await expect(page.getByTestId('board-pool')).toContainText(/players/);
   await page.getByTestId('period-all').click();
   await expect(page.getByTestId('board-pool')).toContainText(/^Since launch/, { timeout: 20_000 });
   await expect(page.getByTestId('board-note')).toContainText('The prize is weekly');
+
+  // A board is a table that grows, so it arrives a page at a time: at most
+  // a page of rows to begin with, and the rest as the bottom comes into
+  // view. On a board with fewer players than a page there is nothing to
+  // page through, and the count says so.
+  const line = await page.getByTestId('board-pool').textContent();
+  const players = Number(/(\d+) player/.exec(line ?? '')?.[1] ?? 0);
+  const first = await page.getByTestId('board-row').count();
+  expect(first).toBeLessThanOrEqual(25);
+  if (players > 25) {
+    await page.mouse.wheel(0, 4000);
+    await expect
+      .poll(() => page.getByTestId('board-row').count(), { timeout: 20_000 })
+      .toBeGreaterThan(first);
+  }
 });

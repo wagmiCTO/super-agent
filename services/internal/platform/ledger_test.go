@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -12,11 +13,11 @@ import (
 // key, and the same one closed. The policy account is "<wallet>/<strategy>";
 // the board knows the wallet.
 func opened(l *Ledger, wallet, strategyID, symbol string) {
-	l.Opened(wallet+"/"+strategyID, wallet, strategyID, symbol, "o", store.Fill{})
+	l.Opened(wallet+"/"+strategyID, wallet, strategyID, symbol, "o", store.Fill{}, store.Terms{})
 }
 
 func closed(l *Ledger, wallet, strategyID, symbol string, pnl int) {
-	l.Closed(wallet+"/"+strategyID, wallet, symbol, fixed.FromInt(int64(pnl)), "c", store.Fill{}, "manual")
+	l.Closed(wallet+"/"+strategyID, wallet, symbol, fixed.FromInt(int64(pnl)), "c", store.Fill{}, "manual", store.Excursion{})
 }
 
 // The week's board per strategy: who is up, what the strategy made for
@@ -39,7 +40,7 @@ func TestLeaderboardByStrategyAndWeek(t *testing.T) {
 	opened(l, "0xbbb", "ma-cross", "MON")
 	closed(l, "0xbbb", "ma-cross", "MON", 5)
 	// An untagged position from before a restart counts as Direction.
-	l.Closed("0xccc", "0xccc", "MON", fixed.FromInt(1), "c", store.Fill{}, "manual")
+	l.Closed("0xccc", "0xccc", "MON", fixed.FromInt(1), "c", store.Fill{}, "manual", store.Excursion{})
 	// Open right now under MA Cross.
 	opened(l, "0xaaa", "ma-cross", "MON")
 
@@ -150,5 +151,61 @@ func TestWeekStartsMondayUTC(t *testing.T) {
 		if got := weekStartOf(in); !got.Equal(want) {
 			t.Errorf("weekStartOf(%v) = %v, want %v", in, got, want)
 		}
+	}
+}
+
+// History is read a page at a time, newest first, and a page says where the
+// next one starts. Memory has no pages — it holds one screen's worth at
+// most — so this is about the shape the screens rely on.
+func TestTradesPageAndTradeByIDWithoutAJournal(t *testing.T) {
+	l := NewLedger()
+	now := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+	l.now = func() time.Time { return now }
+	opened(l, "0xaaa", "direction", "MON")
+	closed(l, "0xaaa", "direction", "MON", 2)
+
+	rows, next, err := l.TradesPage(context.Background(), "0xaaa", "MON", "direction", 10, store.TradeCursor{})
+	if err != nil || len(rows) != 1 || !next.IsZero() {
+		t.Fatalf("page = %d rows, next %+v, err %v", len(rows), next, err)
+	}
+	// A second page of a memory ledger is empty rather than the first one
+	// again: repeating a page is worse than ending early.
+	rows, _, err = l.TradesPage(context.Background(), "0xaaa", "MON", "direction", 10, store.TradeCursor{ID: 7, OpenedAt: now})
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("second page = %d rows, err %v", len(rows), err)
+	}
+	// And ids belong to the journal: without one there is nothing to open.
+	if _, found, err := l.Trade(context.Background(), "0xaaa", 1); found || err != nil {
+		t.Fatalf("trade by id without a journal: found %v, err %v", found, err)
+	}
+}
+
+// The combined board counts a wallet once, however many strategies it
+// played, and pages through the standings in result order.
+func TestStandingsPageCountsWalletsOnce(t *testing.T) {
+	l := NewLedger()
+	now := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC) // a Thursday
+	l.now = func() time.Time { return now }
+	opened(l, "0xaaa", "direction", "MON")
+	closed(l, "0xaaa", "direction", "MON", 5)
+	opened(l, "0xaaa", "ma-cross", "MON")
+	closed(l, "0xaaa", "ma-cross", "MON", 2)
+	opened(l, "0xbbb", "direction", "MON")
+	closed(l, "0xbbb", "direction", "MON", 3)
+
+	rows, players, err := l.StandingsPage("week", "", 10, 0)
+	if err != nil || players != 2 {
+		t.Fatalf("players = %d, err %v", players, err)
+	}
+	if len(rows) != 2 || rows[0].Wallet != "0xaaa" || rows[0].PnL != fixed.FromInt(7) || rows[0].Trades != 2 {
+		t.Fatalf("standings = %+v", rows)
+	}
+	// One board of its own, and a page past the end.
+	rows, players, _ = l.StandingsPage("week", "ma-cross", 10, 0)
+	if players != 1 || len(rows) != 1 || rows[0].PnL != fixed.FromInt(2) {
+		t.Fatalf("ma-cross standings = %+v (%d players)", rows, players)
+	}
+	if rows, _, _ := l.StandingsPage("week", "", 10, 5); len(rows) != 0 {
+		t.Fatalf("page past the end = %+v", rows)
 	}
 }
