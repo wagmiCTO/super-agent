@@ -742,6 +742,8 @@ export interface paths {
                     strategy?: string;
                     limit?: number;
                     cursor?: string;
+                    /** @description Leaves out the position that is still open. History asks for it; the chart's marks want the open one too, so it is not the default. */
+                    closed?: "1" | "true";
                 };
                 header?: never;
                 path?: never;

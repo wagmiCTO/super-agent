@@ -42,14 +42,29 @@ test('history, account and the invite link, on one account', async ({ page, cont
   await expect(page.getByTestId('notice').last()).toHaveText(/^Filled/, { timeout: 40_000 });
   await toLobby(page);
 
-  // --- History, with a position open: it is on the list before it closes.
+  // --- History with the position open: it is on the list, saying so, and
+  // it leads nowhere — there is nothing to report until it closes.
+  await page.getByTestId('history-link').last().click({ force: true });
+  const running = page.getByTestId('trade-row').last();
+  await expect(running).toContainText('open now', { timeout: 20_000 });
+  await expect(running).toContainText('open');
+  await running.click();
+  await expect(page.getByTestId('trade-title')).toHaveCount(0);
+
+  await toLobby(page);
+
+  // Close it, and then it is history.
+  await page.getByTestId('strategy-direction').last().click({ force: true });
+  await page.getByTestId('close-position').last().click({ timeout: 30_000 });
+  await expect(page.getByTestId('notice').last()).toHaveText(/^Closed/, { timeout: 40_000 });
+  await toLobby(page);
+
   await page.getByTestId('history-link').last().click({ force: true });
   const position = page.getByTestId('trade-row').last();
-  await expect(position).toContainText(/Direction · Up @ [\d.]+/, { timeout: 20_000 });
-  await expect(position).toContainText('open now');
+  await expect(position).toContainText(/Direction · Up @ [\d.]+ → [\d.]+/, { timeout: 20_000 });
   await expect(page.getByTestId('history-totals').last()).toContainText(/trade/);
 
-  // The same round trip read as orders: the opening order, with its fee.
+  // The same round trip read as orders: both sides, each with its fee.
   await page.getByTestId('tab-orders').last().click();
   await expect(page.getByTestId('order-row').last()).toContainText(/Open Up · @ [\d.]+/);
   await expect(page.getByTestId('order-row').last()).toContainText(/fee \d+\.\d\d/);

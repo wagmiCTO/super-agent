@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { asReturningUser } from './onboarded';
+import { asReturningUser, toBottom } from './onboarded';
 
 /**
  * The lobby lists every strategy with this week's board, straight from the
@@ -105,9 +105,9 @@ test('the leaderboard shows the on-chain prize pools from the indexer', async ({
   const line = await page.getByTestId('board-pool').textContent();
   const players = Number(/(\d+) player/.exec(line ?? '')?.[1] ?? 0);
   const first = await page.getByTestId('board-row').count();
-  expect(first).toBeLessThanOrEqual(25);
-  if (players > 25) {
-    await page.mouse.wheel(0, 4000);
+  expect(first).toBeLessThanOrEqual(10);
+  if (players > 10) {
+    await toBottom(page);
     await expect
       .poll(() => page.getByTestId('board-row').count(), { timeout: 20_000 })
       .toBeGreaterThan(first);

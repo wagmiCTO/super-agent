@@ -77,14 +77,19 @@ export default function TradeScreen() {
                 <Row label="Price" value={`${trim((order === 'close' ? trade.exit_price : trade.entry_price) ?? '0')} · market`} />
                 <Row label="Fee" value={`${Number((order === 'close' ? trade.exit_fee : trade.entry_fee) ?? 0).toFixed(2)} AUSD`} />
                 <Row label="Filled" value={when((order === 'close' ? trade.closed_at : trade.opened_at) ?? '')} />
-                <Text
-                  variant="small"
-                  testID="to-trade"
-                  onPress={() => router.replace({ pathname: '/trade/[id]', params: { id: String(id), strategy: trade.strategy } })}
-                  style={{ color: theme.color.accent, paddingTop: theme.space.s1 }}
-                >
-                  {`The trade · ${trade.closed_at ? `closed ${when(trade.closed_at)} · ${money(Number(trade.pnl ?? 0))}` : 'still open'} ›`}
-                </Text>
+                {/* The way to the round trip, once there is one to show.
+                    While the position is open there is no trade to report,
+                    so the order is the whole of it. */}
+                {trade.closed_at ? (
+                  <Text
+                    variant="small"
+                    testID="to-trade"
+                    onPress={() => router.replace({ pathname: '/trade/[id]', params: { id: String(id), strategy: trade.strategy } })}
+                    style={{ color: theme.color.accent, paddingTop: theme.space.s1 }}
+                  >
+                    {`The trade · closed ${when(trade.closed_at)} · ${money(Number(trade.pnl ?? 0))} ›`}
+                  </Text>
+                ) : null}
               </Card>
             ) : (
               <Card style={{ gap: theme.space.s1 }} testID="trade-report">

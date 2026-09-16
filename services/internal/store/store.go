@@ -473,8 +473,19 @@ const tradeColumns = `id, wallet, strategy, symbol, open_order_id, coalesce(clos
 		leverage::text, collateral::text, stop_pnl::text, worst_pnl::text, best_pnl::text`
 
 func (s *Store) Trades(ctx context.Context, wallet, symbol, strategy string, limit int) ([]ClosedTrade, error) {
-	out, _, err := s.TradesPage(ctx, wallet, symbol, strategy, limit, TradeCursor{})
+	out, _, err := s.TradesPage(ctx, TradeQuery{Wallet: wallet, Symbol: symbol, Strategy: strategy, Limit: limit})
 	return out, err
+}
+
+// TradeQuery is what a page of history asks for.
+type TradeQuery struct {
+	Wallet, Symbol, Strategy string
+	// ClosedOnly leaves out the position that is still open. History is a
+	// record of what happened; what is happening is on the strategy's own
+	// screen, with a countdown and a way to close it.
+	ClosedOnly bool
+	Limit      int
+	After      TradeCursor
 }
 
 // TradeCursor is where a page of history left off. Keyed on the opening
@@ -490,13 +501,14 @@ func (c TradeCursor) IsZero() bool { return c.ID == 0 && c.OpenedAt.IsZero() }
 // TradesPage reads one page of a wallet's round trips, newest first, and
 // says where the next one starts. An empty cursor starts at the newest; a
 // zero cursor comes back when the page is the last.
-func (s *Store) TradesPage(ctx context.Context, wallet, symbol, strategy string, limit int, after TradeCursor) ([]ClosedTrade, TradeCursor, error) {
+func (s *Store) TradesPage(ctx context.Context, q TradeQuery) ([]ClosedTrade, TradeCursor, error) {
 	rows, err := s.pool.Query(ctx, `select `+tradeColumns+`
 		from trades
 		where wallet = $1 and ($2 = '' or symbol = $2) and ($3 = '' or strategy = $3)
 		  and ($5::timestamptz is null or (opened_at, id) < ($5::timestamptz, $6::bigint))
+		  and (not $7::bool or closed_at is not null)
 		order by opened_at desc, id desc limit $4`,
-		wallet, symbol, strategy, limit, nullableTime(after.OpenedAt), after.ID)
+		q.Wallet, q.Symbol, q.Strategy, q.Limit, nullableTime(q.After.OpenedAt), q.After.ID, q.ClosedOnly)
 	if err != nil {
 		return nil, TradeCursor{}, err
 	}
@@ -515,7 +527,7 @@ func (s *Store) TradesPage(ctx context.Context, wallet, symbol, strategy string,
 	// A full page may or may not be the last; the next read settles it,
 	// which costs one empty page and never a missing trade.
 	var next TradeCursor
-	if len(out) == limit && limit > 0 {
+	if len(out) == q.Limit && q.Limit > 0 {
 		last := out[len(out)-1]
 		next = TradeCursor{OpenedAt: last.OpenedAt, ID: last.ID}
 	}

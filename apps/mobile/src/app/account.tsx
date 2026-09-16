@@ -102,10 +102,11 @@ export default function AccountScreen() {
             <View style={{ flex: 1 }}>
               <Chip label="Testnet" on={testnet} center testID="network-testnet" />
             </View>
-            {/* Mainnet is drawn, not offered: the app trades testnet only, and
-                a switch that silently does nothing is worse than a dim one. */}
-            <View style={{ flex: 1, opacity: 0.4 }}>
-              <Chip label="Mainnet" on={!testnet} center testID="network-mainnet" onPress={() => router.push('/mainnet')} />
+            {/* Mainnet is not a choice yet, but it is not dead either: dimmed
+                to nothing it read as a disabled control nobody would press,
+                and what is behind it is the screen that says when it opens. */}
+            <View style={{ flex: 1 }}>
+              <Chip label="Mainnet · soon" center testID="network-mainnet" onPress={() => router.push('/mainnet')} />
             </View>
           </View>
           {/* Both in one line each: which money it is, and whose it is. */}
@@ -113,7 +114,7 @@ export default function AccountScreen() {
             Testnet · practice money on Monad, nothing to lose.
           </Text>
           <Text variant="small" style={{ fontSize: theme.type.t2xs }}>
-            Mainnet · your own money, its own account and balance. Not open yet.
+            Mainnet · your own money, its own account and balance. Not open yet — tap to see what changes.
           </Text>
         </Card>
 

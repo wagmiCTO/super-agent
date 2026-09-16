@@ -96,3 +96,20 @@ export async function openExchangeAccount(page: Page): Promise<void> {
   await page.waitForURL((url) => !url.pathname.includes('enable'), { timeout: 120_000 });
   await expect(lobby).toBeVisible({ timeout: 30_000 });
 }
+
+/**
+ * Scrolls the screen's own list to the end.
+ *
+ * A wheel event at the mouse's resting corner does not move a React Native
+ * Web ScrollView — it is a div with its own overflow, not the document — so
+ * a spec that waits for the next page after one waits for ever. This scrolls
+ * the container itself, which is what a thumb does.
+ */
+export async function toBottom(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const list = [...document.querySelectorAll('div')].find(
+      (d) => d.scrollHeight > d.clientHeight + 50 && getComputedStyle(d).overflowY !== 'visible',
+    );
+    if (list) list.scrollTop = list.scrollHeight;
+  });
+}

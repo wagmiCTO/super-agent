@@ -158,10 +158,15 @@ function Row({ onPress, testID, children }: { onPress?: () => void; testID: stri
 /** One round trip: where it went in, where it came out, and who closed it. */
 function PositionRow({ t }: { t: Trade }) {
   const theme = useTheme();
+  // A position still running has no card of its own: there is nothing to
+  // report until it closes, so the row says what it is and leads nowhere.
   const open = t.closed_at === undefined;
   const pnl = Number(t.pnl ?? 0);
   return (
-    <Row testID="trade-row" onPress={t.id ? () => router.push({ pathname: '/trade/[id]', params: { id: t.id!, strategy: t.strategy } }) : undefined}>
+    <Row
+      testID="trade-row"
+      onPress={t.id && !open ? () => router.push({ pathname: '/trade/[id]', params: { id: t.id!, strategy: t.strategy } }) : undefined}
+    >
       <View style={{ gap: 2, flexShrink: 1 }}>
         <Text variant="body" numberOfLines={1} style={{ fontSize: theme.type.tSm, color: theme.color.ink }}>
           {`${STRATEGY_NAMES[t.strategy] ?? t.strategy} · ${t.side === 'long' ? 'Up' : 'Down'} @ ${trim(t.entry_price)}${t.exit_price ? ` → ${trim(t.exit_price)}` : ''}`}
@@ -171,8 +176,14 @@ function PositionRow({ t }: { t: Trade }) {
         </Text>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s2 }}>
-        {open ? <Text variant="small" style={{ fontSize: theme.type.tSm }}>open</Text> : <Text variant="num" signOf={pnl} style={{ fontSize: theme.type.tSm }}>{money(pnl)}</Text>}
-        <Text variant="small" style={{ fontSize: theme.type.t2xs }}>›</Text>
+        {open ? (
+          <Text variant="small" style={{ fontSize: theme.type.tSm }}>open</Text>
+        ) : (
+          <>
+            <Text variant="num" signOf={pnl} style={{ fontSize: theme.type.tSm }}>{money(pnl)}</Text>
+            <Text variant="small" style={{ fontSize: theme.type.t2xs }}>›</Text>
+          </>
+        )}
       </View>
     </Row>
   );
@@ -252,7 +263,7 @@ function useHistory(ready: boolean, filter: string) {
     async (after?: string) => {
       const strategy = filter === 'all' ? 'direction' : filter;
       try {
-        return await api.tradesPage(strategy, after, 25);
+        return await api.tradesPage(strategy, after);
       } catch (e) {
         // A strategy this wallet never enabled has no trades under it, which
         // is an answer, not a failure. Anything else is worth saying.

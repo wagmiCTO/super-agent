@@ -593,11 +593,13 @@ func (s *Service) Trades(ctx context.Context, symbol, strategyID string, limit i
 
 // TradesPage is Trades one page at a time, newest first, with where the
 // next page starts.
-func (s *Service) TradesPage(ctx context.Context, symbol, strategyID string, limit int, after store.TradeCursor) ([]store.ClosedTrade, store.TradeCursor, error) {
+func (s *Service) TradesPage(ctx context.Context, q store.TradeQuery) ([]store.ClosedTrade, store.TradeCursor, error) {
 	if s.ledger == nil {
 		return nil, store.TradeCursor{}, nil
 	}
-	return s.ledger.TradesPage(ctx, s.wallet, strings.ToUpper(strings.TrimSpace(symbol)), strings.TrimSpace(strategyID), limit, after)
+	q.Wallet = s.wallet
+	q.Symbol, q.Strategy = strings.ToUpper(strings.TrimSpace(q.Symbol)), strings.TrimSpace(q.Strategy)
+	return s.ledger.TradesPage(ctx, q)
 }
 
 // Trade reads one of this wallet's round trips by its id.

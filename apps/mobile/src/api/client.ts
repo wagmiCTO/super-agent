@@ -11,7 +11,7 @@
 import { sha256 } from '@noble/hashes/sha2.js';
 
 import type { components, paths } from './schema';
-import { API_URL } from '@/config';
+import { API_URL, PAGE_SIZE } from '@/config';
 
 export type Market = components['schemas']['Market'];
 export type State = components['schemas']['State'];
@@ -199,11 +199,14 @@ export const api = {
   trades: (symbol: string, strategy: string) =>
     request<TradesPage>(`/v1/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&limit=50`, undefined, { strategy }).then((p) => p.trades),
   /**
-   * One page of history. `cursor` comes from the page before it; absent
-   * starts at the newest. Routed by the strategy whose key signs for the
-   * wallet, and answered for the wallet, not the strategy.
+   * One page of history, the position still running included — it is on the
+   * list, it just has no card of its own until there is a result to report.
+   *
+   * `cursor` comes from the page before it; absent starts at the newest.
+   * Routed by the strategy whose key signs for the wallet, and answered for
+   * the wallet, not the strategy.
    */
-  tradesPage: (strategy: string, cursor?: string, limit = 25) =>
+  tradesPage: (strategy: string, cursor?: string, limit = PAGE_SIZE) =>
     request<TradesPage>(
       `/v1/trades?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
       undefined,
@@ -212,7 +215,7 @@ export const api = {
   /** One round trip of this wallet's, by id. */
   trade: (id: string, strategy: string) => request<Trade>(`/v1/trades/${encodeURIComponent(id)}`, undefined, { strategy }),
   /** One page of a board, and how many wallets are on it altogether. */
-  standings: (strategy: string, period: 'week' | 'all', offset = 0, limit = 25) =>
+  standings: (strategy: string, period: 'week' | 'all', offset = 0, limit = PAGE_SIZE) =>
     request<Standings>(`/v1/leaderboard/standings?strategy=${encodeURIComponent(strategy)}&period=${period}&limit=${limit}&offset=${offset}`),
   rsi: (symbol: string) => request<RSISignal>(`/v1/signals/rsi?symbol=${encodeURIComponent(symbol)}`),
   /** The boards, by result: this week's, or every trade on record. */

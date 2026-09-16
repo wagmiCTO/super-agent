@@ -164,13 +164,13 @@ func TestTradesPageAndTradeByIDWithoutAJournal(t *testing.T) {
 	opened(l, "0xaaa", "direction", "MON")
 	closed(l, "0xaaa", "direction", "MON", 2)
 
-	rows, next, err := l.TradesPage(context.Background(), "0xaaa", "MON", "direction", 10, store.TradeCursor{})
+	rows, next, err := l.TradesPage(context.Background(), store.TradeQuery{Wallet: "0xaaa", Symbol: "MON", Strategy: "direction", Limit: 10})
 	if err != nil || len(rows) != 1 || !next.IsZero() {
 		t.Fatalf("page = %d rows, next %+v, err %v", len(rows), next, err)
 	}
 	// A second page of a memory ledger is empty rather than the first one
 	// again: repeating a page is worse than ending early.
-	rows, _, err = l.TradesPage(context.Background(), "0xaaa", "MON", "direction", 10, store.TradeCursor{ID: 7, OpenedAt: now})
+	rows, _, err = l.TradesPage(context.Background(), store.TradeQuery{Wallet: "0xaaa", Symbol: "MON", Strategy: "direction", Limit: 10, After: store.TradeCursor{ID: 7, OpenedAt: now}})
 	if err != nil || len(rows) != 0 {
 		t.Fatalf("second page = %d rows, err %v", len(rows), err)
 	}

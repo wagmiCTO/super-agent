@@ -157,14 +157,23 @@ func (l *Ledger) Closed(account, wallet, symbol string, pnl fixed.D, closeOrderI
 // TradesPage is Trades one page at a time. Memory has no pages: it holds
 // what this process has seen, which is one screen's worth at most, so it
 // answers the first page and says there is no next.
-func (l *Ledger) TradesPage(ctx context.Context, wallet, symbol, strategyID string, limit int, after store.TradeCursor) ([]store.ClosedTrade, store.TradeCursor, error) {
+func (l *Ledger) TradesPage(ctx context.Context, q store.TradeQuery) ([]store.ClosedTrade, store.TradeCursor, error) {
 	if l.journal != nil {
-		return l.journal.TradesPage(ctx, wallet, symbol, strategyID, limit, after)
+		return l.journal.TradesPage(ctx, q)
 	}
-	if !after.IsZero() {
+	if !q.After.IsZero() {
 		return nil, store.TradeCursor{}, nil
 	}
-	out, err := l.Trades(ctx, wallet, symbol, strategyID, limit)
+	out, err := l.Trades(ctx, q.Wallet, q.Symbol, q.Strategy, q.Limit)
+	if q.ClosedOnly {
+		kept := out[:0]
+		for _, t := range out {
+			if !t.ClosedAt.IsZero() {
+				kept = append(kept, t)
+			}
+		}
+		out = kept
+	}
 	return out, store.TradeCursor{}, err
 }
 

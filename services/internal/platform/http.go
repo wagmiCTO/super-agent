@@ -1171,7 +1171,13 @@ func (h *handler) trades(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, err)
 		return
 	}
-	list, next, err := svc.TradesPage(r.Context(), r.URL.Query().Get("symbol"), r.URL.Query().Get("strategy"), limit, after)
+	// History leaves out the position that is still open; the chart's marks
+	// want it, so this is asked for rather than assumed.
+	closedOnly := r.URL.Query().Get("closed") == "1" || r.URL.Query().Get("closed") == "true"
+	list, next, err := svc.TradesPage(r.Context(), store.TradeQuery{
+		Symbol: r.URL.Query().Get("symbol"), Strategy: r.URL.Query().Get("strategy"),
+		ClosedOnly: closedOnly, Limit: limit, After: after,
+	})
 	if err != nil {
 		h.fail(w, err)
 		return

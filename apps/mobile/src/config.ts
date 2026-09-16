@@ -45,6 +45,14 @@ export const SIGNAL_POLL_MS = 5000;
 /** How often a strategy screen re-reads the market context card, in milliseconds. */
 export const CONTEXT_POLL_MS = 5 * 60_000;
 
+/**
+ * How many rows a list asks for at a time — history and the boards.
+ *
+ * Small on purpose: the first screen arrives at once, and the next page is
+ * already on its way by the time the reader gets to the bottom of it.
+ */
+export const PAGE_SIZE = 10;
+
 /** How often the lobby re-reads the leaderboard, in milliseconds. */
 export const LEADERBOARD_POLL_MS = 10_000;
 

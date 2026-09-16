@@ -373,6 +373,12 @@ paths:
         - in: query
           name: cursor
           schema: { type: string }
+        - in: query
+          name: closed
+          schema: { type: string, enum: ["1", "true"] }
+          description: >-
+            Leaves out the position that is still open. History asks for it;
+            the chart's marks want the open one too, so it is not the default.
       responses:
         "200":
           content:
