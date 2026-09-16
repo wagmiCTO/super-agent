@@ -74,7 +74,7 @@ export function Badge({ children, strong }: { children: string; strong?: boolean
 }
 
 /** `small` is the tab-sized chip: a row of four has to fit a phone. */
-export function Chip({ label, on, small, onPress, testID }: { label: string; on?: boolean; small?: boolean; onPress?: () => void; testID?: string }) {
+export function Chip({ label, on, small, center, onPress, testID }: { label: string; on?: boolean; small?: boolean; center?: boolean; onPress?: () => void; testID?: string }) {
   const theme = useTheme();
   return (
     <Pressable
@@ -89,6 +89,7 @@ export function Chip({ label, on, small, onPress, testID }: { label: string; on?
         borderWidth: theme.size.bw,
         borderColor: on ? theme.color.accent : theme.color.line,
         backgroundColor: on ? theme.color.accent : 'transparent',
+        alignItems: center ? 'center' : 'flex-start',
         opacity: pressed ? 0.7 : 1,
       })}
     >

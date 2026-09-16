@@ -20,11 +20,13 @@ export type ButtonProps = {
   variant?: Variant;
   busy?: boolean;
   disabled?: boolean;
+  /** Two buttons on one row: the label is a size down and never wraps. */
+  small?: boolean;
   testID?: string;
   style?: ViewStyle;
 };
 
-export function Button({ title, onPress, variant = 'primary', busy, disabled, testID, style }: ButtonProps) {
+export function Button({ title, onPress, variant = 'primary', busy, disabled, small, testID, style }: ButtonProps) {
   const theme = useTheme();
   const off = disabled || busy;
   const { bg, fg, border } = skin(theme, variant, Boolean(off));
@@ -37,7 +39,7 @@ export function Button({ title, onPress, variant = 'primary', busy, disabled, te
       onPress={off ? undefined : onPress}
       style={({ pressed }) => [
         {
-          height: theme.size.btnH,
+          height: small ? 44 : theme.size.btnH,
           borderRadius: theme.radius.rLg,
           backgroundColor: bg,
           borderWidth: variant === 'outline' ? 1 : 0,
@@ -53,9 +55,10 @@ export function Button({ title, onPress, variant = 'primary', busy, disabled, te
     >
       {busy ? <ActivityIndicator color={fg} /> : null}
       <Text
+        numberOfLines={1}
         style={{
           fontFamily: face(theme, 'display', 700),
-          fontSize: theme.type.tLg,
+          fontSize: small ? theme.type.tMd : theme.type.tLg,
           color: fg,
         }}
       >

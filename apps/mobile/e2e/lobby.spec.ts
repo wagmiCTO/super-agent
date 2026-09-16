@@ -34,19 +34,20 @@ test('the lobby links open the screens the design names', async ({ page, context
   const lobby = page.getByText('Choose a strategy');
   await expect(lobby).toBeVisible({ timeout: 30_000 });
 
-  const stubs: [string, string][] = [
-    ['leaderboard-link', 'Leaderboard'],
-    ['invite-link', 'Invite friends'],
-    ['history-link', 'History'],
-    ['account-link', 'Account'],
-    ['own-link', 'Your strategy'],
+  // Each screen says its own name; only "your strategy" is still a stub.
+  const screens: [string, string, string][] = [
+    ['leaderboard-link', 'leaderboard-title', 'Leaderboard'],
+    ['invite-link', 'invite-title', 'Invite friends'],
+    ['history-link', 'history-title', 'History'],
+    ['account-link', 'account-title', 'Account'],
+    ['own-link', 'stub-title', 'Your strategy'],
   ];
-  for (const [link, title] of stubs) {
+  for (const [link, titleID, title] of screens) {
     await page.getByTestId(link).click({ force: true });
-    await expect(page.getByTestId('stub-title')).toHaveText(title, { timeout: 20_000 });
-    // The stub sits on top of the lobby in the stack: the last link is its own.
+    await expect(page.getByTestId(titleID)).toHaveText(title, { timeout: 20_000 });
+    // The screen sits on top of the lobby in the stack: the last link is its own.
     await page.getByTestId('lobby-link').last().click();
-    await expect(page.getByTestId('stub-title')).toBeHidden();
+    await expect(page.getByTestId(titleID)).toBeHidden();
     await expect(lobby).toBeVisible();
   }
 
