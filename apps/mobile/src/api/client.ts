@@ -276,7 +276,7 @@ export function describeError(e: unknown): string {
     case 'own_account_disabled':
       return 'Sign in with your passkey first';
     case 'no_key':
-      return 'Enable this strategy first — it trades with its own key';
+      return 'Connect the exchange first — open your account';
     case 'unauthenticated':
       return 'Sign in again — the platform could not verify this request';
     case 'kill_switch':

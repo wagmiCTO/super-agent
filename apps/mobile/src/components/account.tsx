@@ -1,5 +1,5 @@
 /**
- * The account layer on a strategy screen: the passkey row, the strategy's
+ * The account layer on a strategy screen: the passkey row, the wallet's
  * key, and the activation card for a wallet whose exchange account does
  * not exist yet. Identical on every screen; the lobby shows it without a
  * strategy.
@@ -14,8 +14,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/legacy-theme';
 import { formatCollateral, formatNative, STEP_LABEL } from '@/exchange/activate';
 import { useActivation, type PendingStatus } from '@/exchange/useActivation';
-import { useEnabledStrategies, useStrategyKey } from '@/exchange/useStrategyKey';
-import { STRATEGY_NAMES } from '@/config';
+import { useExchangeKey } from '@/exchange/useExchangeKey';
 import { useTheme } from '@/hooks/use-theme';
 import { SmallButton, styles as trading } from './trading';
 
@@ -53,9 +52,7 @@ export function AccountSection({
   return (
     <>
       <AccountRow account={account} keysVersion={keysVersion} />
-      {strategy && account.state.status === 'unlocked' ? (
-        <StrategyKeyCard keys={account.state.keys} strategy={strategy} onChange={onKeysChange} />
-      ) : null}
+      {account.state.status === 'unlocked' ? <ExchangeKeyCard keys={account.state.keys} onChange={onKeysChange} /> : null}
       {state && state.account.status !== 'active' ? (
         <ThemedText type="small" themeColor="textSecondary" testID="account-status">
           {ACCOUNT_STATUS_HINT[state.account.status]}
@@ -77,7 +74,6 @@ function AccountRow({ account, keysVersion }: { account: ReturnType<typeof useAc
   const theme = useTheme();
   const { state, busy, error } = account;
   const address = state.status === 'unlocked' || state.status === 'remembered' ? state.stored.address : null;
-  const enabled = useEnabledStrategies(state.status === 'unlocked' ? state.wallet.address : null, keysVersion);
   return (
     <View style={[styles.accountRow, { backgroundColor: theme.backgroundElement }]}>
       <View style={{ flex: 1, gap: 2 }}>
@@ -96,13 +92,6 @@ function AccountRow({ account, keysVersion }: { account: ReturnType<typeof useAc
             {error}
           </ThemedText>
         ) : null}
-        {state.status === 'unlocked' && enabled ? (
-          <ThemedText type="small" themeColor="textSecondary" testID="enabled-strategies">
-            {enabled.length === 0
-              ? 'No strategy keys yet — one passkey, a key per strategy'
-              : `Keys: ${enabled.map((k) => (k.strategy ? STRATEGY_NAMES[k.strategy] ?? k.strategy : 'all strategies')).join(' · ')}`}
-          </ThemedText>
-        ) : null}
       </View>
       <View style={{ gap: Spacing.one }}>
         {state.status === 'none' || state.status === 'loading' ? (
@@ -119,41 +108,41 @@ function AccountRow({ account, keysVersion }: { account: ReturnType<typeof useAc
 }
 
 /**
- * The strategy's own key: enrolled, or one tap from it. The tap enrolls the
- * key the passkey derived for this strategy, labelled after it on the
- * venue's key page, under this strategy's limits.
+ * The wallet's exchange key: enrolled, or one tap from it. One key serves
+ * every strategy (ADR 0007); the tap enrolls the key the passkey derived,
+ * with the platform's builder terms, and the strategies are all open from
+ * then on.
  */
-function StrategyKeyCard({ keys, strategy, onChange }: { keys: KeyFamily; strategy: string; onChange: () => void }) {
+function ExchangeKeyCard({ keys, onChange }: { keys: KeyFamily; onChange: () => void }) {
   const theme = useTheme();
-  const k = useStrategyKey(keys, strategy);
+  const k = useExchangeKey(keys);
   const status = k.state.status;
-  // The platform now routes this strategy to its own key: re-read state at once.
+  // The platform now serves this wallet: re-read state at once.
   useEffect(() => {
     if (status !== 'unknown') onChange();
   }, [status]);
-  const name = STRATEGY_NAMES[strategy] ?? strategy;
   if (status === 'unknown') return null;
   if (status === 'enabled') {
     return (
-      <ThemedText type="small" themeColor="textSecondary" testID="strategy-key-status">
-        {name} key enrolled · builder {k.state.key.builder_id} · fee up to {k.state.key.max_builder_fee_pct}
+      <ThemedText type="small" themeColor="textSecondary" testID="exchange-key-status">
+        Exchange key enrolled · builder {k.state.key.builder_id} · fee up to {k.state.key.max_builder_fee_pct}
         {k.state.key.derived ? ' · derived from your passkey' : ''}
       </ThemedText>
     );
   }
   return (
-    <View style={[styles.activation, { backgroundColor: theme.backgroundElement }]} testID="strategy-key">
-      <ThemedText type="smallBold">Enable {name}</ThemedText>
+    <View style={[styles.activation, { backgroundColor: theme.backgroundElement }]} testID="exchange-key">
+      <ThemedText type="smallBold">Connect the exchange</ThemedText>
       <ThemedText type="small" themeColor="textSecondary">
-        {name} trades with its own exchange key, derived from your passkey and enrolled with the platform&apos;s builder terms. Revoke it on the
-        exchange any time; the other strategies keep theirs.
+        Every strategy trades with one exchange key, derived from your passkey and enrolled with the platform&apos;s builder terms. It can never
+        withdraw; revoke it on the exchange any time.
       </ThemedText>
       {k.error ? (
-        <ThemedText type="small" style={{ color: '#991b1b' }} testID="strategy-key-error">
+        <ThemedText type="small" style={{ color: '#991b1b' }} testID="exchange-key-error">
           {k.error}
         </ThemedText>
       ) : null}
-      <SmallButton label={`Enable ${name}`} onPress={() => void k.enable()} busy={k.busy} />
+      <SmallButton label="Connect the exchange" onPress={() => void k.enable()} busy={k.busy} />
     </View>
   );
 }

@@ -1,15 +1,16 @@
 /**
- * Connecting a passkey wallet to the exchange, one strategy at a time.
+ * Connecting a passkey wallet to the exchange, once.
  *
- * Each strategy trades with its own exchange API key, derived on the device
- * from the passkey (see account/derive.ts). Enabling a strategy enrolls that
- * key: the platform asks the venue for an EIP-712 document binding the key
- * to this wallet and to the platform's builder terms; the wallet — never
- * leaving the device — signs it, and that signature is the user's consent
- * to the fee they read in `statement`. The key itself goes to the platform
- * with the enrollment, because the exit is the platform's job (it closes
- * positions on their horizon while the phone is in a pocket); it can never
- * withdraw, and revoking it on the venue's key page stops one strategy.
+ * A wallet trades every strategy with one exchange API key, derived on the
+ * device from the passkey (see account/derive.ts; ADR 0007). Opening the
+ * account enrolls that key: the platform asks the venue for an EIP-712
+ * document binding the key to this wallet and to the platform's builder
+ * terms; the wallet — never leaving the device — signs it, and that
+ * signature is the user's consent to the fee they read in `statement`. The
+ * key itself goes to the platform with the enrollment, because the exit is
+ * the platform's job (it closes positions on their horizon while the phone
+ * is in a pocket); it can never withdraw, and revoking it on the venue's
+ * key page stops the wallet's trading.
  *
  * The request-signing key is the other half: registered once with the
  * wallet's signature, it signs every request the app makes for the wallet.
@@ -21,7 +22,7 @@ import type { KeyFamily, StrategyKey, Wallet } from '@/account/derive';
 import { toHex } from '@/account/hex';
 import { ApiError, request } from '@/api/client';
 import type { components } from '@/api/schema';
-import { STRATEGY_KEY_INDEX } from '@/config';
+import { EXCHANGE_KEY_INDEX } from '@/config';
 
 export type EnrollPayload = components['schemas']['EnrollPayload'];
 export type EnrolledKey = components['schemas']['EnrolledKey'];
@@ -35,18 +36,17 @@ type TypedDataDocument = {
 };
 
 export const exchangeApi = {
-  payload: (address: string, strategy: string, publicKey: string) =>
+  payload: (address: string, publicKey: string) =>
     request<EnrollPayload>('/v1/exchange/enroll/payload', {
       method: 'POST',
-      body: JSON.stringify({ address, strategy, public_key: publicKey }),
+      body: JSON.stringify({ address, public_key: publicKey }),
     }),
   enroll: (handle: string, signInSignature: string, signature: string, privateKey: string) =>
     request<EnrolledKey>('/v1/exchange/enroll', {
       method: 'POST',
       body: JSON.stringify({ handle, sign_in_signature: signInSignature, signature, private_key: privateKey }),
     }),
-  key: (address: string, strategy: string) =>
-    request<EnrolledKey>(`/v1/exchange/key?address=${encodeURIComponent(address)}&strategy=${encodeURIComponent(strategy)}`),
+  key: (address: string) => request<EnrolledKey>(`/v1/exchange/key?address=${encodeURIComponent(address)}`),
   keys: (address: string) => request<EnrolledKey[]>(`/v1/exchange/keys?address=${encodeURIComponent(address)}`),
   registerAuthKey: (address: string, publicKey: string, issuedAt: string, signature: string) =>
     request<{ address: string; public_key: string }>('/v1/auth/keys', {
@@ -79,17 +79,15 @@ export async function signEnrollment(wallet: Wallet, doc: TypedDataDocument): Pr
   });
 }
 
-/** The strategy key for a strategy id, from the family. */
-export function strategyKeyFor(keys: KeyFamily, strategy: string): StrategyKey {
-  const index = STRATEGY_KEY_INDEX[strategy];
-  if (index === undefined) throw new Error(`no key index for strategy ${strategy}`);
-  return keys.strategy(index);
+/** The wallet's exchange key, from the family. */
+export function exchangeKeyFor(keys: KeyFamily): StrategyKey {
+  return keys.strategy(EXCHANGE_KEY_INDEX);
 }
 
 /**
- * Enables a strategy: enrolls its derived key. The wallet makes two
- * signatures, neither of which prompts the user — the session key signs
- * silently once the passkey has unlocked it:
+ * Connects the wallet to the exchange: enrolls its derived key. The wallet
+ * makes two signatures, neither of which prompts the user — the session
+ * key signs silently once the passkey has unlocked it:
  *
  * - the venue's sign-in message, as a personal message — this is the user
  *   accepting the venue's terms and, on first contact, becoming a profile;
@@ -103,13 +101,13 @@ export function strategyKeyFor(keys: KeyFamily, strategy: string): StrategyKey {
  * wallet signs a new one on each refusal. Silent, and five draws leave
  * under one percent of users without a key.
  */
-export async function enableStrategy(keys: KeyFamily, strategy: string): Promise<EnrolledKey> {
+export async function enrollExchangeKey(keys: KeyFamily): Promise<EnrolledKey> {
   const wallet = keys.wallet;
-  const key = strategyKeyFor(keys, strategy);
+  const key = exchangeKeyFor(keys);
   const account = toViemAccount(wallet.session);
   let last: unknown;
   for (let attempt = 0; attempt < MAX_ENROLL_ATTEMPTS; attempt++) {
-    const payload = await exchangeApi.payload(wallet.address, strategy, toHex(key.publicKey));
+    const payload = await exchangeApi.payload(wallet.address, toHex(key.publicKey));
     const signature = await signEnrollment(wallet, payload.typed_data as unknown as TypedDataDocument);
     const signInSignature = await account.signMessage({ message: payload.sign_in_message });
     try {
@@ -127,10 +125,10 @@ export async function enableStrategy(keys: KeyFamily, strategy: string): Promise
 /** Bound on fresh payloads per attempt: (2/5)^5 < 1% left without a key. */
 const MAX_ENROLL_ATTEMPTS = 5;
 
-/** The key enrolled for a strategy; null when the platform has none. */
-export async function strategyKey(address: string, strategy: string): Promise<EnrolledKey | null> {
+/** The wallet's enrolled key; null when the platform has none. */
+export async function exchangeKey(address: string): Promise<EnrolledKey | null> {
   try {
-    return await exchangeApi.key(address, strategy);
+    return await exchangeApi.key(address);
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) return null;
     throw e;

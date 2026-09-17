@@ -99,11 +99,12 @@ export function horizonSeconds(h: Horizon, now = new Date()): number {
 }
 
 /**
- * Each strategy's slot in the key family the passkey derives (ADR 0005 in
- * the repository docs): its exchange API key is HMAC(seed, domain ‖ index).
- * Part of the derivation — never renumber; the platform's catalog agrees.
+ * The slot in the key family the passkey derives (ADR 0005, amended by
+ * ADR 0007) that holds the wallet's one exchange key: slot 0, the slot the
+ * Direction key had, so a wallet from before keeps its key. Part of the
+ * derivation — never change.
  */
-export const STRATEGY_KEY_INDEX: Record<string, number> = { direction: 0, 'ma-cross': 1, rsi: 2 };
+export const EXCHANGE_KEY_INDEX = 0;
 
 /** The strategies' names as the lobby shows them, by id. */
 export const STRATEGY_NAMES: Record<string, string> = { direction: 'Direction', 'ma-cross': 'MA Cross', rsi: 'RSI Bounce' };

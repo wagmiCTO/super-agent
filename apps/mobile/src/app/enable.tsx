@@ -21,7 +21,7 @@ import { View } from 'react-native';
 import { useAccount } from '@/account/useAccount';
 import { formatCollateral, formatNative } from '@/exchange/activate';
 import { useActivation } from '@/exchange/useActivation';
-import { useStrategyKey } from '@/exchange/useStrategyKey';
+import { useExchangeKey } from '@/exchange/useExchangeKey';
 import { useTrading } from '@/trading/useTrading';
 import { Button } from '@/ui/button';
 import { Card, Progress, Screen } from '@/ui/surface';
@@ -47,7 +47,7 @@ export default function EnableScreen() {
   const status = heard ? t.state!.account.status : null;
   const pending = status === 'no_exchange_account' || status === 'forwarding_disabled' ? status : null;
 
-  const key = useStrategyKey(keys, 'direction');
+  const key = useExchangeKey(keys);
   const { network, funding, funded, progress, busy, error, activate } = useActivation(wallet, pending);
 
   const hasKey = key.state.status === 'enabled';

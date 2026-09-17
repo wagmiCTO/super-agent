@@ -6,8 +6,9 @@
  * - The **wallet** is the EVM account at BIP-44 index 0. It is the owner of
  *   the exchange account, signs the enrollment of API keys, and is the key a
  *   standard wallet app would derive from the same recovery phrase.
- * - A **strategy key** is an Ed25519 key derived per strategy. Perpl API keys
- *   are Ed25519 pairs, so each strategy gets its own API key, enrolled by the
+ * - A **strategy key** is an Ed25519 key derived at an index. Perpl API keys
+ *   are Ed25519 pairs; since ADR 0007 the wallet enrolls the one at slot 0
+ *   as its exchange key for every strategy. It is enrolled by the
  *   wallet with our builder code and its own fee ceiling, and run under its
  *   own policy limits on the server. The wallet never leaves the device; a
  *   strategy key can never withdraw — the venue forbids it for any API key.
