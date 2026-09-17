@@ -85,31 +85,40 @@ export type DirectionKeysProps = {
   /** Direction is a call you make, so both keys stay filled there. */
   alwaysArmed?: boolean;
   disabled?: boolean;
+  /**
+   * The side a tap is opening right now. That key fills and shows the
+   * order on its way — the venue takes a few seconds, and a key that only
+   * greyed out read as a tap that did not land. The other key steps back.
+   */
+  busy?: Side | null;
 };
 
-export function DirectionKeys({ onPress, recommended = null, alwaysArmed = false, disabled }: DirectionKeysProps) {
+export function DirectionKeys({ onPress, recommended = null, alwaysArmed = false, disabled, busy = null }: DirectionKeysProps) {
   const theme = useTheme();
   return (
-    <View style={{ flexDirection: 'row', gap: theme.space.s3, opacity: disabled ? 0.4 : 1 }}>
+    <View style={{ flexDirection: 'row', gap: theme.space.s3, opacity: disabled && !busy ? 0.4 : 1 }}>
       {(['up', 'down'] as const).map((side) => (
         <DirectionKey
           key={side}
           side={side}
-          filled={alwaysArmed || recommended === side}
+          filled={busy ? busy === side : alwaysArmed || recommended === side}
+          dimmed={busy !== null && busy !== side}
+          busy={busy === side}
           caption={
-            recommended === side ? 'take the signal'
+            busy === side ? 'opening…'
+            : recommended === side ? 'take the signal'
             : recommended ? 'against the signal'
             : side === 'up' ? 'it rises'
             : 'it falls'
           }
-          onPress={disabled ? undefined : () => onPress(side)}
+          onPress={disabled || busy ? undefined : () => onPress(side)}
         />
       ))}
     </View>
   );
 }
 
-function DirectionKey({ side, filled, caption, onPress }: { side: Side; filled: boolean; caption: string; onPress?: () => void }) {
+function DirectionKey({ side, filled, dimmed, busy, caption, onPress }: { side: Side; filled: boolean; dimmed?: boolean; busy?: boolean; caption: string; onPress?: () => void }) {
   const theme = useTheme();
   const tint = side === 'up' ? theme.color.up : theme.color.down;
   const on = side === 'up' ? theme.color.onUp : theme.color.onDown;
@@ -120,6 +129,7 @@ function DirectionKey({ side, filled, caption, onPress }: { side: Side; filled: 
       testID={`key-${side}`}
       accessibilityRole="button"
       accessibilityLabel={side === 'up' ? 'Up' : 'Down'}
+      accessibilityState={{ busy: Boolean(busy), disabled: !onPress }}
       onPress={onPress}
       style={({ pressed }) => ({
         flex: 1,
@@ -131,12 +141,21 @@ function DirectionKey({ side, filled, caption, onPress }: { side: Side; filled: 
         alignItems: 'center',
         justifyContent: 'center',
         gap: 2,
-        opacity: pressed ? 0.7 : 1,
+        opacity: pressed ? 0.7 : dimmed ? 0.35 : 1,
       })}
     >
-      <Text style={{ fontFamily: face(theme, 'display', 700), fontSize: theme.type.tXl, color: fg }}>
-        {side === 'up' ? 'Up' : 'Down'}
-      </Text>
+      {busy ? (
+        <View testID={`key-${side}-busy`} style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s2 }}>
+          <ActivityIndicator color={fg} />
+          <Text style={{ fontFamily: face(theme, 'display', 700), fontSize: theme.type.tXl, color: fg }}>
+            {side === 'up' ? 'Up' : 'Down'}
+          </Text>
+        </View>
+      ) : (
+        <Text style={{ fontFamily: face(theme, 'display', 700), fontSize: theme.type.tXl, color: fg }}>
+          {side === 'up' ? 'Up' : 'Down'}
+        </Text>
+      )}
       <Text style={{ fontFamily: face(theme, 'display', 400), fontSize: theme.type.tXs, color: fg, opacity: 0.7 }}>
         {caption}
       </Text>

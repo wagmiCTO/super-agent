@@ -8,7 +8,13 @@
 export type PositionSettings = {
   /** Position size in collateral, before leverage. */
   size: number;
+  /** The leverage a market gets when none is set for it below. */
   leverage: number;
+  /**
+   * Leverage by market. Every market has its own ceiling — 3x on MON, 15x
+   * on BTC — so one number for all of them was the smallest one's.
+   */
+  leverageBySymbol?: Record<string, number>;
   stopOn: boolean;
   /** Share of your own stake the stop gives up. */
   stopPercent: number;

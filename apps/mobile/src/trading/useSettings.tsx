@@ -46,14 +46,32 @@ export type PositionBounds = {
   maxNotional: number;
   /** Free collateral in the exchange account: what a position can be backed with. */
   balance: number;
+  /** The policy's ceiling on leverage, across every market it allows. */
   maxLeverage: number;
+  /** Each market's own ceiling, by symbol: what the venue accepts there. */
+  marketMaxLeverage: Record<string, number>;
   /** The fee the venue takes off the collateral when a position opens, as a fraction of its value. */
   openFee: number;
   /** True once the platform has said what it actually allows. */
   known: boolean;
 };
 
-const FALLBACK_BOUNDS: PositionBounds = { minSize: 5, maxNotional: 50, balance: 0, maxLeverage: 3, openFee: 0, known: false };
+const FALLBACK_BOUNDS: PositionBounds = { minSize: 5, maxNotional: 50, balance: 0, maxLeverage: 3, marketMaxLeverage: {}, openFee: 0, known: false };
+
+/** The most leverage a market allows: its own ceiling, under the policy's. */
+export function maxLeverageFor(bounds: PositionBounds, symbol: string): number {
+  const own = bounds.marketMaxLeverage[symbol.toUpperCase()];
+  return Math.max(1, Math.min(bounds.maxLeverage, own && own > 0 ? own : bounds.maxLeverage));
+}
+
+/**
+ * The leverage a tap on this market opens at: the one set for the market,
+ * else the standard one, never above what the market allows.
+ */
+export function leverageFor(s: PositionSettings, bounds: PositionBounds, symbol: string): number {
+  const set = s.leverageBySymbol?.[symbol.toUpperCase()] ?? s.leverage;
+  return Math.min(maxLeverageFor(bounds, symbol), Math.max(1, set));
+}
 
 /**
  * The room left for the fill to land a little worse than the quote, and for
@@ -83,9 +101,13 @@ export function maxSizeFor(bounds: PositionBounds, leverage: number): number {
   return Math.max(bounds.minSize, Math.floor(cap));
 }
 
-/** The standard position the app proposes once it knows what is allowed. */
+/**
+ * The standard position the app proposes once it knows what is allowed:
+ * sized for the home market, at the most leverage that market allows. The
+ * other markets start at the same leverage and go up from there by hand.
+ */
 function standardPosition(bounds: PositionBounds): Pick<PositionSettings, 'size' | 'leverage'> {
-  const leverage = bounds.maxLeverage;
+  const leverage = maxLeverageFor(bounds, DEFAULT_SYMBOL);
   return { leverage, size: Math.min(maxSizeFor(bounds, leverage), DEFAULT_STAKE * leverage) };
 }
 
@@ -94,6 +116,10 @@ type SettingsState = {
   settings: PositionSettings;
   bounds: PositionBounds;
   update: (change: Partial<PositionSettings>) => void;
+  /** The settings as a tap on this market reads them: its own leverage in place of the standard one. */
+  forMarket: (symbol: string) => PositionSettings;
+  /** The leverage for one market; the size stays the same for every market. */
+  setLeverage: (symbol: string, leverage: number) => void;
   /** Re-read the limits and the balance; the form does it as it opens. */
   refresh: () => void;
 };
@@ -129,10 +155,15 @@ export function PositionSettingsProvider({ children }: { children: ReactNode }) 
       .then(([s, markets]) => {
         const home = markets.find((m) => m.symbol === DEFAULT_SYMBOL);
         const fees = home?.fees;
-        // The policy's ceiling spans every market it allows; the standard
-        // position is sized for the home market, whose own ceiling is lower.
-        // A screen on a bigger market caps at the same number, never above.
-        const maxLeverage = Math.min(Number(s.limits.max_leverage), home ? Number(home.max_leverage) : Number(s.limits.max_leverage));
+        // The policy's ceiling spans every market it allows; each market's
+        // own is what the venue accepts there, and the slider on a market
+        // runs to that market's number.
+        const maxLeverage = Number(s.limits.max_leverage);
+        const marketMaxLeverage: Record<string, number> = {};
+        for (const m of markets) {
+          const own = Number(m.max_leverage);
+          if (Number.isFinite(own) && own > 0) marketMaxLeverage[m.symbol.toUpperCase()] = own;
+        }
         // On a venue that charges the whole round trip at the open, the
         // open is what the balance has to cover.
         const openFee = fees ? Number(fees.charged_on === 'open-only' ? fees.round_trip_taker : fees.taker_rate) + Number(fees.builder_rate) : 0;
@@ -140,7 +171,8 @@ export function PositionSettingsProvider({ children }: { children: ReactNode }) 
           minSize: Number(s.limits.min_notional),
           maxNotional: Number(s.limits.max_notional),
           balance: Number(s.account.balance),
-          maxLeverage: Number.isFinite(maxLeverage) && maxLeverage > 0 ? maxLeverage : Number(s.limits.max_leverage),
+          maxLeverage: Number.isFinite(maxLeverage) && maxLeverage > 0 ? maxLeverage : FALLBACK_BOUNDS.maxLeverage,
+          marketMaxLeverage,
           openFee: Number.isFinite(openFee) ? openFee : 0,
           known: true,
         });
@@ -165,6 +197,21 @@ export function PositionSettingsProvider({ children }: { children: ReactNode }) 
     [bounds],
   );
 
+  const forMarket = useCallback((symbol: string): PositionSettings => ({ ...settings, leverage: leverageFor(settings, bounds, symbol) }), [settings, bounds]);
+
+  const setLeverage = useCallback(
+    (symbol: string, leverage: number) => {
+      setSettings((current) => {
+        const key = symbol.toUpperCase();
+        const lev = Math.min(maxLeverageFor(bounds, key), Math.max(1, Math.round(leverage)));
+        const next = clamp({ ...current, leverageBySymbol: { ...current.leverageBySymbol, [key]: lev } }, bounds);
+        void saveSettings(next);
+        return next;
+      });
+    },
+    [bounds],
+  );
+
   // A wallet that has never set a position gets the standard one as soon as
   // the limits arrive; a stored position from before they were known is
   // brought inside them rather than left to be refused at the tap.
@@ -179,18 +226,25 @@ export function PositionSettingsProvider({ children }: { children: ReactNode }) 
     if (unset) setUnset(false);
   }, [ready, bounds, unset]);
 
-  const value = useMemo(() => ({ ready, settings, bounds, update, refresh }), [ready, settings, bounds, update, refresh]);
+  const value = useMemo(() => ({ ready, settings, bounds, update, forMarket, setLeverage, refresh }), [ready, settings, bounds, update, forMarket, setLeverage, refresh]);
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
 }
 
 function clamp(s: PositionSettings, b: PositionBounds): PositionSettings {
-  const leverage = Math.min(b.maxLeverage, Math.max(1, s.leverage));
+  const leverage = Math.min(maxLeverageFor(b, DEFAULT_SYMBOL), Math.max(1, s.leverage));
+  const bySymbol: Record<string, number> = {};
+  for (const [sym, lev] of Object.entries(s.leverageBySymbol ?? {})) {
+    if (Number.isFinite(lev) && lev > 0) bySymbol[sym.toUpperCase()] = Math.min(maxLeverageFor(b, sym), Math.max(1, lev));
+  }
+  // The size is one number for every market, so it is bounded by the most
+  // any of them can back. A market at less leverage may not back all of
+  // it; the trading screen says so before the tap and offers what fits.
+  const most = Math.max(leverage, ...Object.values(bySymbol));
   return {
     ...s,
     leverage,
-    // The ceiling follows the leverage: less leverage is less the wallet can
-    // back, so a size set at 3x has to come down when the slider does.
-    size: Math.min(maxSizeFor(b, leverage), Math.max(b.minSize, s.size)),
+    leverageBySymbol: bySymbol,
+    size: Math.min(maxSizeFor(b, most), Math.max(b.minSize, s.size)),
   };
 }
 

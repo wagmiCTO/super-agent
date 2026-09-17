@@ -13,21 +13,25 @@
 import { expect, type BrowserContext, type Page } from '@playwright/test';
 
 const KEY = 'tradeagent.onboarding';
+/** The day's analysis sheet, shown once a day on a strategy screen; a returning user has seen today's. */
+const ANALYSIS_KEY = 'tradeagent.analysis';
 
 /** Call before `page.goto('/')` in any spec that wants the app, not the promo. */
 export async function skipOnboarding(page: Page, network: 'testnet' | 'mainnet' = 'testnet'): Promise<void> {
   await page.addInitScript(
-    ([key, value]) => {
+    ([key, value, analysisKey, analysisValue]) => {
       try {
         window.localStorage.setItem(key, value);
+        window.localStorage.setItem(analysisKey, analysisValue);
       } catch {
         // Blocked storage: the spec will land on the promo and say so loudly.
       }
     },
     // Taught, too: a returning user has met the strategies, and the lobby
     // sends anyone who has not to the lesson first — which is correct, and
-    // not what a spec about the app is asking about.
-    [KEY, JSON.stringify({ network, introSeen: true, lessonSeen: true, taught: ['direction', 'ma-cross', 'rsi'] })] as const,
+    // not what a spec about the app is asking about. And today's analysis
+    // sheet has been read, so it does not sit over the keys.
+    [KEY, JSON.stringify({ network, introSeen: true, lessonSeen: true, taught: ['direction', 'ma-cross', 'rsi'] }), ANALYSIS_KEY, JSON.stringify({ day: new Date().toISOString().slice(0, 10) })] as const,
   );
 }
 

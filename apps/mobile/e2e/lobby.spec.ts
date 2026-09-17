@@ -34,13 +34,13 @@ test('the lobby links open the screens the design names', async ({ page, context
   const lobby = page.getByText('Choose a strategy');
   await expect(lobby).toBeVisible({ timeout: 30_000 });
 
-  // Each screen says its own name; only "your strategy" is still a stub.
+  // Each screen says its own name.
   const screens: [string, string, string][] = [
     ['leaderboard-link', 'leaderboard-title', 'Leaderboard'],
     ['invite-link', 'invite-title', 'Invite friends'],
     ['history-link', 'history-title', 'History'],
     ['account-link', 'account-title', 'Account'],
-    ['own-link', 'stub-title', 'Your strategy'],
+    ['own-link', 'own-title', 'Your strategy'],
   ];
   for (const [link, titleID, title] of screens) {
     await page.getByTestId(link).click({ force: true });

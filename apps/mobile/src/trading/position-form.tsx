@@ -14,7 +14,8 @@
 import { useEffect } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 
-import { atRisk, maxSizeFor, ownStake, possibleWin, usePositionSettings } from '@/trading/useSettings';
+import { DEFAULT_SYMBOL } from '@/config';
+import { atRisk, maxLeverageFor, maxSizeFor, ownStake, possibleWin, usePositionSettings } from '@/trading/useSettings';
 import { Slider } from '@/ui/slider';
 import { Card, Chip, Toggle } from '@/ui/surface';
 import { Text, grouped } from '@/ui/text';
@@ -30,9 +31,16 @@ function ticksTo(maxLeverage: number): number[] {
   return [...new Set(wanted.map((v) => Math.min(maxLeverage, Math.max(1, v))))];
 }
 
-export function PositionForm({ compact = false }: { compact?: boolean }) {
+/**
+ * `symbol` is the market the form is opened for: the leverage slider runs
+ * to that market's own ceiling and sets that market's leverage. The size
+ * and the two rules are the same for every market.
+ */
+export function PositionForm({ compact = false, symbol = DEFAULT_SYMBOL }: { compact?: boolean; symbol?: string }) {
   const theme = useTheme();
-  const { settings, update, bounds, refresh } = usePositionSettings();
+  const { update, bounds, refresh, forMarket, setLeverage } = usePositionSettings();
+  const settings = forMarket(symbol);
+  const maxLeverage = maxLeverageFor(bounds, symbol);
   // The ceiling is the balance's, so it is only as good as the last read of
   // it: a round trip or a deposit between two visits moves it.
   useEffect(refresh, [refresh]);
@@ -109,10 +117,13 @@ export function PositionForm({ compact = false }: { compact?: boolean }) {
         <Text variant="small">{`${ownStake(settings).toFixed(0)} AUSD of yours at ${settings.leverage}x`}</Text>
       </View>
 
-      {/* Leverage */}
+      {/* Leverage: this market's own. */}
       <View style={{ gap: theme.space.s2 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Text variant="caps">Leverage</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: theme.space.s2 }}>
+            <Text variant="caps">Leverage</Text>
+            <Text variant="small" testID="settings-leverage-market" style={{ fontSize: theme.type.tXs }}>{`${symbol} · up to ${maxLeverage}x`}</Text>
+          </View>
           <Text variant="num" style={{ fontSize: theme.type.tLg, fontFamily: face(theme, 'num', 700) }}>
             {`${settings.leverage}x`}
           </Text>
@@ -121,11 +132,11 @@ export function PositionForm({ compact = false }: { compact?: boolean }) {
           testID="settings-leverage"
           value={settings.leverage}
           min={1}
-          max={bounds.maxLeverage}
-          onChange={(leverage) => update({ leverage })}
+          max={maxLeverage}
+          onChange={(leverage) => setLeverage(symbol, leverage)}
         />
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-          {ticksTo(bounds.maxLeverage).map((v) => (
+          {ticksTo(maxLeverage).map((v) => (
             <Text
               key={v}
               variant="num"
@@ -133,7 +144,7 @@ export function PositionForm({ compact = false }: { compact?: boolean }) {
                 fontSize: theme.type.t2xs,
                 color: settings.leverage === v ? theme.color.accent : theme.color.dim,
               }}
-              onPress={() => update({ leverage: v })}
+              onPress={() => setLeverage(symbol, v)}
             >
               {`${v}x`}
             </Text>
@@ -169,9 +180,10 @@ export function PositionForm({ compact = false }: { compact?: boolean }) {
 }
 
 /** The two numbers the form exists for: what a tap can win, what it can lose. */
-export function PossibleOutcomes() {
+export function PossibleOutcomes({ symbol = DEFAULT_SYMBOL }: { symbol?: string }) {
   const theme = useTheme();
-  const { settings } = usePositionSettings();
+  const { forMarket } = usePositionSettings();
+  const settings = forMarket(symbol);
   const win = possibleWin(settings);
   return (
     <View style={{ flexDirection: 'row', gap: theme.space.s2 }} testID="possible">
@@ -243,18 +255,14 @@ function Outcome({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * The standard position as one line on a trading screen: what a tap opens,
- * and the number it can cost. Tapping it opens the form.
+ * The standard position as one line on a trading screen: what a tap opens
+ * on this market, and the number it can cost. Tapping it opens the form for
+ * the market.
  */
-/**
- * The standard position in one line. `maxLeverage` is the market's own
- * ceiling: a position set at 3x on the home market is still 3x here, and
- * one set above what this market allows is shown at what it will get.
- */
-export function SettingsChip({ onPress, maxLeverage }: { onPress: () => void; maxLeverage?: number }) {
+export function SettingsChip({ onPress, symbol }: { onPress: () => void; symbol: string }) {
   const theme = useTheme();
-  const { settings: stored } = usePositionSettings();
-  const settings = maxLeverage && maxLeverage > 0 && stored.leverage > maxLeverage ? { ...stored, leverage: maxLeverage } : stored;
+  const { forMarket } = usePositionSettings();
+  const settings = forMarket(symbol);
   return (
     <Pressable onPress={onPress} testID="settings-chip">
       <View

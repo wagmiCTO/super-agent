@@ -127,7 +127,7 @@ export default function LessonScreen() {
 function Art({ id, kind }: { id: StrategyId; kind: Step['art'] }) {
   if (kind === 'setup') return <PositionForm compact />;
   if (kind === 'ready') return <ReadyArt />;
-  if (kind === 'run') return <RunArt />;
+  if (kind === 'run') return <RunArt kind={id === 'direction' ? 'direction' : 'signal'} />;
   if (kind === 'shown') {
     if (id === 'ma-cross') return <CrossArt shown />;
     if (id === 'rsi') return <RsiArt />;

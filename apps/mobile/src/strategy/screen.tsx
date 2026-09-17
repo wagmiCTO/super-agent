@@ -20,12 +20,16 @@
 
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { PanResponder, Pressable, ScrollView, Vibration, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, PanResponder, Pressable, ScrollView, Vibration, View, useWindowDimensions } from 'react-native';
 
 import { api, type Position, type State, type Trade } from '@/api/client';
 import { INTERVALS, INTERVAL_LABELS, type ChartPosition, type ChartTick, type Interval } from '@/chart/page';
 import { Pager, slice } from '@/ui/pager';
 import { ConfirmSheet } from '@/ui/sheet';
+import { ExitsSheet, type ExitsChange } from '@/trading/exits-sheet';
+import { AnalysisSheet } from '@/strategy/analysis-sheet';
+import { loadAnalysisDay, saveAnalysisDay } from '@/strategy/analysis-store';
+import { todayKey } from '@/strategy/today';
 import { useRiskReport } from '@/trading/useRiskReport';
 import { trim } from '@/components/format';
 import { TVChart } from '@/components/TVChart';
@@ -38,7 +42,7 @@ import { shareTrade } from '@/trading/share';
 import { clearSignalEntry, markSignalEntry, wasSignalEntry } from '@/trading/signal-entry';
 import { maxLossFraction, maxSizeFor, takeProfitFraction, usePositionSettings } from '@/trading/useSettings';
 import { useSymbol } from '@/trading/useSymbol';
-import { useTrading } from '@/trading/useTrading';
+import { useTrading, type Busy } from '@/trading/useTrading';
 import { Button, DirectionKeys } from '@/ui/button';
 import { useCountdown } from '@/ui/countdown';
 import { useTop } from '@/ui/inset';
@@ -93,7 +97,9 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
   // the same lines the chart draws.
   const [interval, setInterval] = useState<Interval>('1');
   const signal = useSignal(id, symbol, interval);
-  const { settings, bounds, update } = usePositionSettings();
+  const { bounds, update, forMarket } = usePositionSettings();
+  // The standard position as this market reads it: its own leverage.
+  const settings = forMarket(symbol);
 
   const allowed = t.state?.limits.allowed_symbols ?? null;
   // The majors first, in the order the design names them, then whatever
@@ -140,8 +146,9 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
     if (Date.now() - new Date(signal.openedAt).getTime() < FRESH_MS) buzz('signal');
   }, [signal?.openedAt, lit, symbol, interval]);
 
-  // Never above what this market allows: the standard position is one
-  // number for every market, and the venue refuses a leverage it does not offer.
+  // Never above what this market allows: the settings already cap each
+  // market at its own ceiling, and the venue refuses a leverage it does
+  // not offer, so the market's own number is the last word.
   const marketMax = t.market ? Number(t.market.max_leverage) : 0;
   const leverage = marketMax > 0 ? Math.min(settings.leverage, marketMax) : settings.leverage;
   // What the tap needs from the free balance — the margin and the opening
@@ -182,9 +189,14 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
   // round trip is looked up by the order that closed it, or, when the
   // platform closed it, as the newest one closed since the position opened.
   const leaving = useRef(false);
+  // The moment between the close and the result: the position is gone
+  // and the round trip is being looked up. The screen says so rather
+  // than showing the keys for a second and then leaving.
+  const [settling, setSettling] = useState(false);
   const goToResult = async (closeOrderID: string | null, openedAfter: string | null) => {
     if (leaving.current) return;
     leaving.current = true;
+    setSettling(true);
     for (let attempt = 0; attempt < 6; attempt++) {
       try {
         const trades = await api.trades(symbol, id);
@@ -201,21 +213,47 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
       await new Promise((r) => setTimeout(r, 1000));
     }
     leaving.current = false;
+    setSettling(false);
   };
   const closeNow = async () => {
     const order = await t.close();
     if (order) void goToResult(order.venue_id, null);
   };
+  // Reversing is a close and an open in one; the moment in between is
+  // not a round trip to report, so it does not lead to the result.
+  const [reversing, setReversing] = useState<Position | null>(null);
+  const reverse = async () => {
+    setReversing(null);
+    clearSignalEntry(id);
+    await t.reverse();
+  };
   const was = useRef<Position | null>(null);
   useEffect(() => {
     const before = was.current;
     was.current = t.position;
-    if (before && !t.position && t.state) {
+    if (before && !t.position && t.state && t.busy !== 'reverse') {
       clearSignalEntry(id);
       void goToResult(null, before.opened_at ?? null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [t.position]);
+
+  // The day's analysis, once a day, on the first strategy screen opened:
+  // asked for on arrival, and remembered as read the moment it is closed.
+  const [analysis, setAnalysis] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    loadAnalysisDay().then((day) => {
+      if (alive && day !== todayKey()) setAnalysis(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const closeAnalysis = () => {
+    setAnalysis(false);
+    void saveAnalysisDay(todayKey());
+  };
 
   // One screen minus a peek of what is below: the fold is a promise that
   // everything needed to tap is above it, and a hint that more is under it.
@@ -257,11 +295,24 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
           {t.position ? (
             <OpenPosition
               position={t.position}
-              busy={t.busy === 'close'}
+              busy={t.busy}
               onClose={() => void closeNow()}
+              onReverse={() => setReversing(t.position)}
+              onAmend={t.amend}
               strategy={id}
               onSignal={!armed && wasSignalEntry(id, t.position.symbol)}
             />
+          ) : settling || t.busy === 'reverse' ? (
+            // Between two states of the account: the position has just
+            // gone and the next thing — the result, or the other side —
+            // is on its way. Said in words, with the keys kept back.
+            <Card testID="settling" style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s3, paddingVertical: theme.space.s4 }}>
+              <ActivityIndicator color={theme.color.accent} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text variant="bodyStrong">{t.busy === 'reverse' ? 'Reversing' : 'Closed'}</Text>
+                <Text variant="small">{t.busy === 'reverse' ? 'Closed at market; opening the other side in a moment…' : 'Looking up the result…'}</Text>
+              </View>
+            </Card>
           ) : (
             // The keys and what a tap opens, on a rule that runs edge to edge:
             // the line under them is where the screen's promise ends.
@@ -281,6 +332,7 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
                 recommended={lit === 'long' ? 'up' : lit === 'short' ? 'down' : null}
                 alwaysArmed={armed}
                 disabled={t.busy !== null || t.state === null || taken || short}
+                busy={t.busy === 'up' || t.busy === 'down' ? t.busy : null}
               />
               {short ? (
                 <Card testID="short-balance" style={{ paddingVertical: theme.space.s3, gap: theme.space.s2, backgroundColor: theme.color.dangerSoft, borderColor: 'transparent' }}>
@@ -300,7 +352,7 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
                   )}
                 </Card>
               ) : null}
-              <SettingsChip onPress={() => router.push('/settings')} maxLeverage={marketMax} />
+              <SettingsChip onPress={() => router.push({ pathname: '/settings', params: { symbol } })} symbol={symbol} />
             </View>
           )}
 
@@ -317,6 +369,19 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
             }}
             onCancel={() => setAsking(null)}
             testID="no-signal"
+          />
+
+          <AnalysisSheet open={analysis} symbol={symbol} current={id} onClose={closeAnalysis} />
+
+          <ConfirmSheet
+            open={reversing !== null}
+            title={`Reverse to ${reversing?.side === 'long' ? 'Down' : 'Up'}?`}
+            body={`Closes this ${reversing?.side === 'long' ? 'Up' : 'Down'} at market and, a moment later, opens ${reversing?.side === 'long' ? 'Down' : 'Up'} on ${symbol}: ${Number(reversing?.notional ?? 0).toFixed(0)} AUSD at ${Number(reversing?.leverage ?? 1)}x, with the same stop, target and time limit.`}
+            confirm={`Reverse to ${reversing?.side === 'long' ? 'Down' : 'Up'}`}
+            cancel="Keep it"
+            onConfirm={() => void reverse()}
+            onCancel={() => setReversing(null)}
+            testID="reverse"
           />
         </View>
 
@@ -772,9 +837,26 @@ function Says({ id, symbol, signal }: { id: StrategyId; symbol: string; signal: 
  * The design replaces the entry screen with this: the one number, what it is
  * doing, when it ends by itself, and the only button that matters.
  */
-function OpenPosition({ position, busy, onClose, strategy, onSignal }: { position: Position; busy: boolean; onClose: () => void; strategy: string; onSignal?: boolean }) {
+function OpenPosition({
+  position,
+  busy,
+  onClose,
+  onReverse,
+  onAmend,
+  strategy,
+  onSignal,
+}: {
+  position: Position;
+  busy: Busy;
+  onClose: () => void;
+  onReverse: () => void;
+  onAmend: (change: ExitsChange) => Promise<boolean>;
+  strategy: string;
+  onSignal?: boolean;
+}) {
   const theme = useTheme();
   const left = useCountdown(position.closes_at ?? null);
+  const [exits, setExits] = useState(false);
   const pnl = Number(position.unrealized_pnl);
   const colour = pnl > 0.005 ? theme.color.up : pnl < -0.005 ? theme.color.down : theme.color.ink;
   const run = elapsedShare(position);
@@ -863,10 +945,23 @@ function OpenPosition({ position, busy, onClose, strategy, onSignal }: { positio
         }${position.tp_pnl !== undefined ? ` Takes profit at ${money(Number(position.tp_pnl))}.` : ''} Liquidation is ${(100 / Math.max(1, Number(position.leverage))).toFixed(1)}% away.`}
       </Text>
 
-      <Button testID="close-position" title="Close now" variant="outline" busy={busy} disabled={busy} onPress={onClose} />
-      <Text variant="body" testID="share-position" style={{ textAlign: 'center', paddingVertical: theme.space.s1 }} onPress={() => void share()}>
-        {shared ?? 'Share this trade'}
-      </Text>
+      {/* The two ways out of the trade side by side, and everything that can
+          still be changed about it one line further down, behind a sheet:
+          the screen stays one number and its buttons. */}
+      <View style={{ flexDirection: 'row', gap: theme.space.s3 }}>
+        <Button testID="close-position" title="Close now" variant="outline" small busy={busy === 'close'} disabled={busy !== null} onPress={onClose} style={{ flex: 1 }} />
+        <Button testID="reverse-position" title="Reverse" variant="outline" small busy={busy === 'reverse'} disabled={busy !== null} onPress={onReverse} style={{ flex: 1 }} />
+      </View>
+      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: theme.space.s4 }}>
+        <Text variant="body" testID="position-exits" style={{ paddingVertical: theme.space.s1 }} onPress={() => setExits(true)}>
+          Stop · target · time ›
+        </Text>
+        <Text variant="body" testID="share-position" style={{ paddingVertical: theme.space.s1 }} onPress={() => void share()}>
+          {shared ?? 'Share'}
+        </Text>
+      </View>
+
+      <ExitsSheet open={exits} position={position} busy={busy === 'amend'} onApply={onAmend} onClose={() => setExits(false)} />
     </View>
   );
 }

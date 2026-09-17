@@ -121,7 +121,7 @@ export default function EnableScreen() {
               {STEPS.map((step, i) => (
                 <Step
                   key={step}
-                  label={i === 1 && network ? `Test money arriving: 10 000 ${network.collateral_symbol}` : step}
+                  label={i === 1 && network && funding ? `Test money arriving: ${formatCollateral(network, funding.collateral)} ${network.collateral_symbol}` : step}
                   state={i < at ? 'done' : i === at ? 'now' : 'todo'}
                 />
               ))}

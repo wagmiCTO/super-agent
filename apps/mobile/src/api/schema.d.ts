@@ -221,6 +221,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/orders/amend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change a running position's exits
+         * @description Re-arms the stop, the target and the horizon of an open position
+         *     without touching the position itself. Nothing is placed at the
+         *     venue: the stop and the target are the platform's watch on the
+         *     venue's mark, the horizon its timer. A field that is absent keeps
+         *     that exit as it is; `"0"` disarms it. The horizon can only be
+         *     pushed out, never brought in — a manual close is the way to end
+         *     a position sooner.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AmendRequest"];
+                };
+            };
+            responses: {
+                /** @description The exits as they now stand. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Amended"];
+                    };
+                };
+                400: components["responses"]["Invalid"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/exchange/enroll/payload": {
         parameters: {
             query?: never;
@@ -2088,6 +2139,27 @@ export interface components {
             symbol: string;
             /** @description Which strategy's key closes; defaults to the X-Strategy header. */
             strategy?: string;
+        };
+        AmendRequest: {
+            symbol: string;
+            /** @description Which strategy's position; defaults to the X-Strategy header. */
+            strategy?: string;
+            /** @description The stop to arm, as the fraction of collateral (0..1) the position may lose. Absent keeps the current one; 0 disarms it. */
+            max_loss?: components["schemas"]["Decimal"];
+            /** @description The target to arm, as the fraction of collateral the position may make. Absent keeps the current one; 0 disarms it. */
+            take_profit?: components["schemas"]["Decimal"];
+            /** @description Pushes the horizon this many seconds further out; a position without one gets one this long from now. The position may not run more than 24 h from now in total. 0 or absent leaves the timer alone. */
+            extend_seconds?: number;
+        };
+        Amended: {
+            symbol: string;
+            /**
+             * Format: date-time
+             * @description When the horizon closes the position; absent without one.
+             */
+            closes_at?: string;
+            max_loss?: components["schemas"]["Decimal"];
+            take_profit?: components["schemas"]["Decimal"];
         };
         Order: {
             /** @description The idempotency key the service generated. */

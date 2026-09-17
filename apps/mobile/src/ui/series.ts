@@ -81,8 +81,48 @@ export function scale(bars: Bar[], top: number, height: number) {
   return (value: number) => top + height - ((value - min) / (max - min)) * height;
 }
 
+/**
+ * A walk in legs: each leg has its own drift and volatility, so a chart can
+ * be made to tell a story — a slide, a turn, a run — while every bar in it
+ * is still a bar and not a drawing of one.
+ */
+export function ohlcLegs(seed: number, legs: { n: number; drift: number; vol?: number }[]): Bar[] {
+  const r = rnd(seed);
+  const out: Bar[] = [];
+  let price = 100;
+  for (const leg of legs) {
+    const vol = leg.vol ?? 1;
+    for (let i = 0; i < leg.n; i++) {
+      const o = price;
+      const c = o + (r() - 0.5) * 3.4 * vol + leg.drift;
+      out.push({ o, c, h: Math.max(o, c) + r() * 1.5 * vol, l: Math.min(o, c) - r() * 1.5 * vol });
+      price = c;
+    }
+  }
+  return out;
+}
+
 /** The walk every illustration shares, so the lessons discuss one market. */
 export const BARS = ohlc(46, 7, 0.12, 1);
 
 /** A stretch that finishes oversold, for the screen that talks about it. */
 export const COLD_BARS = ohlc(46, 23, -0.78, 1.15);
+
+/** A slide and a turn: the shape a moving-average cross is about. */
+export const TREND_BARS = ohlcLegs(11, [
+  { n: 20, drift: -0.62, vol: 0.9 },
+  { n: 26, drift: 0.78, vol: 1.05 },
+]);
+
+/**
+ * Swings, then a sharp slide into oversold: the shape the thermometer is
+ * about. Sixty bars, so the index has a full window behind it before the
+ * first bar a chart draws.
+ */
+export const SWING_BARS = ohlcLegs(29, [
+  { n: 14, drift: 0.5, vol: 0.9 },
+  { n: 12, drift: -0.62, vol: 1 },
+  { n: 14, drift: 0.58, vol: 0.95 },
+  { n: 10, drift: -0.45, vol: 1.1 },
+  { n: 10, drift: -0.35, vol: 1.3 },
+]);

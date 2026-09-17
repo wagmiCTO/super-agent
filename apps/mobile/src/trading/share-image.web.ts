@@ -44,22 +44,25 @@ export async function renderShareCard(t: ShareTrade, link: string, theme: Theme)
   g.fill();
 
   // The mark and the name, first: the card is the app's before it is the
-  // trade's, and a stranger's chat is where the name is read.
-  const MARK = 104;
+  // trade's, and a stranger's chat is where the name is read. The mark is
+  // the size of a thumb on a phone's preview — it has to be recognised at
+  // the size a chat shows the card, not at the size it is drawn.
+  const MARK = 176;
   drawMark(g, PAD, PAD, MARK, c.onFill, c.accent);
+  const NAME_X = PAD + MARK + 36;
   g.fillStyle = c.onFill;
-  g.font = `700 76px ${display(700)}`;
+  g.font = `700 92px ${display(700)}`;
   g.textBaseline = 'top';
-  g.fillText(APP_NAME, PAD + MARK + 28, PAD + 6);
+  g.fillText(APP_NAME, NAME_X, PAD + 22);
   // Kicker under the name, and the state at the right.
   g.fillStyle = c.onAccentDim;
-  g.font = `600 30px ${display(600)}`;
-  g.fillText((STRATEGY_NAMES[t.strategy] ?? t.strategy).toUpperCase(), PAD + MARK + 28, PAD + 6 + 82);
+  g.font = `600 34px ${display(600)}`;
+  g.fillText((STRATEGY_NAMES[t.strategy] ?? t.strategy).toUpperCase(), NAME_X, PAD + 22 + 104);
   g.textAlign = 'right';
-  g.fillText(t.kind === 'live' ? 'LIVE' : 'CLOSED', SIZE - PAD, PAD + 6 + 82);
+  g.fillText(t.kind === 'live' ? 'LIVE' : 'CLOSED', SIZE - PAD, PAD + 22 + 104);
   g.textAlign = 'left';
 
-  const TOP = PAD + MARK + 60;
+  const TOP = PAD + MARK + 56;
 
   // What it is.
   g.fillStyle = c.onFill;
@@ -71,7 +74,7 @@ export async function renderShareCard(t: ShareTrade, link: string, theme: Theme)
   // says the rest.
   g.font = `700 220px ${num(700)}`;
   g.fillStyle = c.onFill;
-  g.fillText(money(t.pnl), PAD - 8, TOP + 90);
+  g.fillText(money(t.pnl), PAD - 8, TOP + 76);
 
   g.fillStyle = c.onAccentDim;
   g.font = `400 36px ${display(400)}`;
@@ -79,9 +82,9 @@ export async function renderShareCard(t: ShareTrade, link: string, theme: Theme)
     t.kind === 'live'
       ? `AUSD so far${t.closesIn ? ` · closes in ${t.closesIn} · follow live` : ''}`
       : `AUSD · ${t.symbol} ${t.movePct !== undefined ? `${t.movePct >= 0 ? 'up' : 'down'} ${Math.abs(t.movePct).toFixed(2)}%` : ''}${t.reason ? ` · ${t.reason}` : ''}`;
-  g.fillText(line, PAD, TOP + 360);
-  if (t.rank) g.fillText(`#${t.rank.place} of ${t.rank.of} this week`, PAD, TOP + 412);
-  else g.fillText(won ? 'Called it.' : lost ? 'Next one.' : 'Flat.', PAD, TOP + 412);
+  g.fillText(line, PAD, TOP + 336);
+  if (t.rank) g.fillText(`#${t.rank.place} of ${t.rank.of} this week`, PAD, TOP + 388);
+  else g.fillText(won ? 'Called it.' : lost ? 'Next one.' : 'Flat.', PAD, TOP + 388);
 
   // The foot: the invite, on its own rule.
   g.strokeStyle = c.onAccentDim;

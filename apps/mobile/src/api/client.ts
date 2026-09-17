@@ -19,6 +19,8 @@ export type Position = components['schemas']['Position'];
 export type Order = components['schemas']['Order'];
 export type OpenRequest = components['schemas']['OpenRequest'];
 export type CloseRequest = components['schemas']['CloseRequest'];
+export type AmendRequest = components['schemas']['AmendRequest'];
+export type Amended = components['schemas']['Amended'];
 export type ErrorBody = components['schemas']['Error'];
 export type Side = components['schemas']['Side'];
 export type MACrossSignal = components['schemas']['MACrossSignal'];
@@ -194,6 +196,9 @@ export const api = {
     request<Order>('/v1/orders/open', { method: 'POST', body: JSON.stringify(body) }, { strategy: body.strategy }),
   close: (body: CloseRequest) =>
     request<Order>('/v1/orders/close', { method: 'POST', body: JSON.stringify(body) }, { strategy: body.strategy }),
+  /** Re-arms a running position's stop, target and horizon; nothing is placed. */
+  amend: (body: AmendRequest) =>
+    request<Amended>('/v1/orders/amend', { method: 'POST', body: JSON.stringify(body) }, { strategy: body.strategy }),
   maCross: (symbol: string, periodSeconds = 60) => request<MACrossSignal>(`/v1/signals/ma-cross?symbol=${encodeURIComponent(symbol)}&period_seconds=${periodSeconds}`),
   /** A strategy's round trips in one market — the chart's marks, one page. */
   trades: (symbol: string, strategy: string) =>

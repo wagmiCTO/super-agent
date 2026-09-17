@@ -10,12 +10,17 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { api, ApiError, currentAccountAddress, describeError, type Market, type Order, type Position, type State, type Trade } from '@/api/client';
+import { api, ApiError, currentAccountAddress, describeError, type AmendRequest, type Market, type Order, type Position, type State, type Trade } from '@/api/client';
 import { DEFAULT_LEVERAGE, STATE_POLL_MS } from '@/config';
 import { refreshRiskReport } from '@/trading/useRiskReport';
 
 export type Notice = { text: string; kind: 'error' | 'info' };
-export type Busy = 'up' | 'down' | 'close' | null;
+export type Busy = 'up' | 'down' | 'close' | 'reverse' | 'amend' | null;
+
+/** How long a reversal waits between the close and the opposite open. */
+const REVERSE_PAUSE_MS = 2000;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export function useTrading(symbol: string, strategy: string) {
   const [state, setState] = useState<State | null>(null);
@@ -127,5 +132,80 @@ export function useTrading(symbol: string, strategy: string) {
     }
   }, [refresh, symbol, strategy]);
 
-  return { state, stateFor, market, position, positions, trades, busy, notice, offline, locked, refresh, open, close };
+  /**
+   * Re-arms the position's exits: the stop, the target, more time. The
+   * platform answers with the exits as they stand; the state is re-read
+   * for the rest. False when it refused.
+   */
+  const amend = useCallback(
+    async (change: Omit<AmendRequest, 'symbol' | 'strategy'>): Promise<boolean> => {
+      setBusy('amend');
+      setNotice(null);
+      try {
+        await api.amend({ symbol, strategy, ...change });
+        await refresh();
+        refreshRiskReport();
+        return true;
+      } catch (e) {
+        setNotice({ text: describeError(e), kind: 'error' });
+        return false;
+      } finally {
+        setBusy(null);
+      }
+    },
+    [refresh, symbol, strategy],
+  );
+
+  /**
+   * Closes the position and, a moment later, opens the other side with the
+   * same terms: the same value and leverage, the same stop and target, and
+   * a horizon as long as the one just ended. Two taps' worth of orders,
+   * each through the platform's one path; a refusal of the second — the
+   * cooldown, say — is waited out once and then reported, and the account
+   * is simply flat.
+   */
+  const reverse = useCallback(async (): Promise<void> => {
+    const p = position;
+    if (!p) return;
+    setBusy('reverse');
+    setNotice(null);
+    try {
+      await api.close({ symbol: p.symbol, strategy });
+      const horizon = p.closes_at && p.opened_at ? Math.max(0, Math.round((new Date(p.closes_at).getTime() - new Date(p.opened_at).getTime()) / 1000)) : 0;
+      const body = {
+        symbol: p.symbol,
+        side: (p.side === 'long' ? 'short' : 'long') as 'long' | 'short',
+        notional: String(Number(p.notional).toFixed(2)),
+        leverage: String(Number(p.leverage)),
+        horizon_seconds: horizon,
+        strategy,
+        ...(p.max_loss && Number(p.max_loss) > 0 ? { max_loss: p.max_loss } : {}),
+        ...(p.take_profit && Number(p.take_profit) > 0 ? { take_profit: p.take_profit } : {}),
+      };
+      await sleep(REVERSE_PAUSE_MS);
+      let order: Order;
+      try {
+        order = await api.open(body);
+      } catch (e) {
+        if (e instanceof ApiError && e.code === 'cooldown' && e.retryAfterSeconds) {
+          await sleep(Math.ceil(e.retryAfterSeconds) * 1000 + 250);
+          order = await api.open(body);
+        } else {
+          throw e;
+        }
+      }
+      if (order.status === 'failed') {
+        setNotice({ text: `Closed, but the exchange refused the other side: ${order.rejection?.code ?? 'unknown'}`, kind: 'error' });
+      }
+      await refresh();
+      refreshRiskReport();
+    } catch (e) {
+      setNotice({ text: describeError(e), kind: 'error' });
+      await refresh();
+    } finally {
+      setBusy(null);
+    }
+  }, [position, refresh, strategy]);
+
+  return { state, stateFor, market, position, positions, trades, busy, notice, offline, locked, refresh, open, close, amend, reverse };
 }
