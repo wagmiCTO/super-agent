@@ -113,7 +113,7 @@ function LobbyScreen() {
   const t = useTrading('MON', 'direction');
   const lb = useLeaderboard();
   const boards = lb?.boards ?? null;
-  const open = (id: string) => t.state?.positions.find(() => id === 'direction') ?? null;
+  const open = (id: string) => t.positions.find((p) => p.strategy === id) ?? null;
   const address = account.state.status === 'unlocked' || account.state.status === 'remembered' ? account.state.stored.address.toLowerCase() : null;
   // Only a real prize: the banner leads to a claim, and a banner over
   // nothing to claim is a promise the leaderboard cannot keep.

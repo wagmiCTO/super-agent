@@ -23,6 +23,8 @@
   // The two averages MA Cross reads; 0 draws none.
   var FAST = Number(params.get('fast') || 0), SLOW = Number(params.get('slow') || 0);
   var STUDY = params.get('study') || '';
+  // The share of the box the study's pane takes; 0 leaves the split to the library.
+  var PANE = Math.max(0, Math.min(0.6, Number(params.get('pane') || 0)));
   var BG = params.get('bg') || (THEME === 'dark' ? '#212225' : '#F0F0F3');
   var UP = params.get('up') || '#16a34a', DOWN = params.get('down') || '#dc2626', MA = params.get('accent') || '#2563eb';
   var TEXT = params.get('text') || (THEME === 'dark' ? '#9ca3af' : '#6b7280');
@@ -129,22 +131,38 @@
     getBars: function (_symbol, resolution, range, onResult, onError) {
       var period = PERIODS[resolution] || 60;
       log('getBars', resolution, range.from, range.to);
-      fetchBars(period, range.from, range.to).then(function (bars) {
-        bars.sort(function (a, b) { return a.time - b.time; });
-        bars.forEach(saw);
-        // The chart refuses a live bar older than the last one history gave it.
-        if (bars.length && bars[bars.length - 1].time > (newest[resolution] || 0)) newest[resolution] = bars[bars.length - 1].time;
-        log('getBars: bars', bars.length);
-        onResult(bars, { noData: bars.length === 0 });
-        tell();
-      }).catch(function (e) { log('getBars: failed', e && e.message); onError(String(e)); });
+      // A history that fails is a blank pane until the user scrolls, so it
+      // is asked for again, twice, before the library is told.
+      var attempt = 0;
+      (function ask() {
+        attempt++;
+        fetchBars(period, range.from, range.to).then(function (bars) {
+          bars.sort(function (a, b) { return a.time - b.time; });
+          bars.forEach(saw);
+          // The chart refuses a live bar older than the last one history gave it.
+          if (bars.length && bars[bars.length - 1].time > (newest[resolution] || 0)) newest[resolution] = bars[bars.length - 1].time;
+          log('getBars: bars', bars.length);
+          onResult(bars, { noData: bars.length === 0 });
+          tell();
+        }).catch(function (e) {
+          log('getBars: failed', attempt, e && e.message);
+          if (attempt < 3) setTimeout(ask, 1500 * attempt);
+          else onError(String(e));
+        });
+      })();
     },
     subscribeBars: function (_symbol, resolution, onTick, uid) {
       var period = PERIODS[resolution] || 60;
       log('subscribeBars', resolution, uid);
+      // The range is aligned to the poll — the bar boundary behind, the
+      // three-second tick ahead — so every chart open on this market asks
+      // the platform the same question at the same moment, and it asks the
+      // venue once for all of them.
       var timer = setInterval(function () {
         var now = Math.floor(Date.now() / 1000);
-        fetchBars(period, now - 3 * period, now).then(function (bars) {
+        var to = now - (now % 3);
+        var from = Math.floor(to / period) * period - 2 * period;
+        fetchBars(period, from, to).then(function (bars) {
           bars.sort(function (a, b) { return a.time - b.time; });
           for (var i = 0; i < bars.length; i++) {
             if (bars[i].time >= (newest[resolution] || 0)) { onTick(bars[i]); newest[resolution] = bars[i].time; saw(bars[i]); }
@@ -318,6 +336,21 @@
       chart.createStudy('Relative Strength Index', false, false, { length: 14 }, {
         'plot.color': LINE, 'plot.linewidth': 2, 'upper band.color': DOWN, 'lower band.color': UP, 'upper band.value': 70, 'lower band.value': 30,
         'upper band.linestyle': 2, 'lower band.linestyle': 2, 'hlines background.color': GRID, 'hlines background.transparency': 70,
+      }).then(function () {
+        // The lower pane at the design's share of the box, and kept there
+        // when the box changes size.
+        function split() {
+          if (!PANE) return;
+          try {
+            var panes = chart.getPanes();
+            if (panes.length < 2) return;
+            var total = document.getElementById('tv').clientHeight;
+            panes[1].setHeight(Math.round(total * PANE));
+            panes[0].setHeight(Math.round(total * (1 - PANE)));
+          } catch (e) { log('rsi pane', e && e.message); }
+        }
+        split();
+        window.addEventListener('resize', split);
       }).catch(function (e) { console.warn('tv: rsi study', e && e.message); });
     }
     if (!FAST || !SLOW) { post({ type: 'ready' }); return; }

@@ -67,6 +67,8 @@ export type TVChartProps = {
   cross?: ChartCross | null;
   /** An extra study in its own pane: the RSI for the counter-trend screen. */
   study?: 'rsi';
+  /** The share of the box the study's pane takes, 0..1; the library's own split when absent. */
+  studyShare?: number;
   box?: Box | null;
   trades?: ChartTrade[];
   position?: ChartPosition | null;
@@ -75,7 +77,7 @@ export type TVChartProps = {
 };
 
 /** Where the chart page lives, with the platform, the market and the colours in the query. */
-export function chartPageUrl({ symbol, theme, colours, averages, study }: Pick<TVChartProps, 'symbol' | 'theme' | 'colours' | 'averages' | 'study'>): string {
+export function chartPageUrl({ symbol, theme, colours, averages, study, studyShare }: Pick<TVChartProps, 'symbol' | 'theme' | 'colours' | 'averages' | 'study' | 'studyShare'>): string {
   const q = new URLSearchParams({
     api: API_URL,
     symbol,
@@ -90,6 +92,7 @@ export function chartPageUrl({ symbol, theme, colours, averages, study }: Pick<T
     fast: String(averages?.fast ?? 0),
     slow: String(averages?.slow ?? 0),
     study: study ?? '',
+    pane: studyShare ? String(studyShare) : '',
   });
   return `${WEB_URL}/tv.html?${q.toString()}`;
 }

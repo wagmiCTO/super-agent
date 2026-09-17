@@ -27,6 +27,8 @@ export type Signal = {
   /** When the last one was, in words. */
   last: string | null;
   ready: boolean;
+  /** RSI only: the index right now, 0..100, for the thermometer on the pane. */
+  value?: number;
   /** MA Cross only: the two averages the chart draws, which is on top, and where they last crossed. */
   averages?: { fast: number; slow: number; trend: 'up' | 'down' | 'flat'; lastCross: { at: string; side: Side } | null };
 };
@@ -75,6 +77,7 @@ function fromRsi(s: RSISignal): Signal {
     quiet: s.ready ? `waiting for a zone` : 'warming up',
     last: s.ready ? `RSI ${value}` : null,
     ready: s.ready,
+    value: s.ready && Number.isFinite(value) ? value : undefined,
   };
 }
 

@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { api, ApiError, currentAccountAddress, describeError, type Market, type Order, type Position, type State, type Trade } from '@/api/client';
 import { DEFAULT_LEVERAGE, STATE_POLL_MS } from '@/config';
+import { refreshRiskReport } from '@/trading/useRiskReport';
 
 export type Notice = { text: string; kind: 'error' | 'info' };
 export type Busy = 'up' | 'down' | 'close' | null;
@@ -70,7 +71,13 @@ export function useTrading(symbol: string, strategy: string) {
     };
   }, [refresh, symbol]);
 
-  const position: Position | null = state?.positions.find((p) => p.symbol === symbol) ?? null;
+  // The account holds one position per market whatever the strategy, and
+  // the platform says which strategy's tap opened each. This strategy's
+  // own is the one it opened, wherever the screen's market menu is; a
+  // position the platform cannot place (opened outside it) counts as this
+  // market's while the screen is on that market.
+  const positions: Position[] = state?.positions ?? [];
+  const position: Position | null = positions.find((p) => p.strategy === strategy) ?? positions.find((p) => !p.strategy && p.symbol === symbol) ?? null;
 
   // A fill is not announced in words: the screen becomes the position, which
   // is the answer to the tap. Only a refusal needs saying.
@@ -93,6 +100,7 @@ export function useTrading(symbol: string, strategy: string) {
           setNotice({ text: `The exchange refused: ${order.rejection?.code ?? 'unknown'}`, kind: 'error' });
         }
         await refresh();
+        refreshRiskReport();
       } catch (e) {
         setNotice({ text: describeError(e), kind: 'error' });
       } finally {
@@ -109,6 +117,7 @@ export function useTrading(symbol: string, strategy: string) {
     try {
       const order = await api.close({ symbol, strategy });
       await refresh();
+      refreshRiskReport();
       return order;
     } catch (e) {
       setNotice({ text: describeError(e), kind: 'error' });
@@ -118,5 +127,5 @@ export function useTrading(symbol: string, strategy: string) {
     }
   }, [refresh, symbol, strategy]);
 
-  return { state, stateFor, market, position, trades, busy, notice, offline, locked, refresh, open, close };
+  return { state, stateFor, market, position, positions, trades, busy, notice, offline, locked, refresh, open, close };
 }

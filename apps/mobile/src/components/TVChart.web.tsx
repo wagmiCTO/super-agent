@@ -12,7 +12,7 @@ const neverChanges = () => () => undefined;
 const onClient = () => true;
 const onServer = () => false;
 
-export function TVChart({ symbol, theme, colours, chartType, interval, trend, averages, cross, study, box, trades, position, onTick }: TVChartProps) {
+export function TVChart({ symbol, theme, colours, chartType, interval, trend, averages, cross, study, studyShare, box, trades, position, onTick }: TVChartProps) {
   const frame = useRef<HTMLIFrameElement | null>(null);
 
   // The page is exported statically, with no window to read an origin from,
@@ -21,7 +21,7 @@ export function TVChart({ symbol, theme, colours, chartType, interval, trend, av
   // that address for ever. Mounting the frame after the first paint is what
   // makes its src the browser's answer rather than the build's.
   const mounted = useSyncExternalStore(neverChanges, onClient, onServer);
-  const url = mounted ? chartPageUrl({ symbol, theme, colours, averages, study }) : null;
+  const url = mounted ? chartPageUrl({ symbol, theme, colours, averages, study, studyShare }) : null;
   const boxKey = JSON.stringify(box ?? null);
   const tradesKey = JSON.stringify(trades ?? []);
   const positionKey = JSON.stringify(position ?? null);
