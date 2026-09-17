@@ -975,6 +975,22 @@ type signalPointDTO struct {
 	Slow  string `json:"slow,omitempty"`
 }
 
+// signalPeriodOf reads the timeframe a signal is asked on: period_seconds,
+// one of the chart's bar sizes, the minute by default. ok is false when
+// the response has been written.
+func signalPeriodOf(w http.ResponseWriter, r *http.Request) (time.Duration, bool) {
+	q := strings.TrimSpace(r.URL.Query().Get("period_seconds"))
+	if q == "" {
+		return time.Minute, true
+	}
+	n, err := strconv.Atoi(q)
+	if err != nil || !SignalPeriod(time.Duration(n)*time.Second) {
+		writeJSON(w, http.StatusBadRequest, errorDTO{Error: "invalid", Message: "period_seconds must be one of 60, 300, 900, 1800, 3600"})
+		return 0, false
+	}
+	return time.Duration(n) * time.Second, true
+}
+
 type signalWindowDTO struct {
 	Side      string `json:"side"`
 	OpenedAt  string `json:"opened_at"`
@@ -1033,7 +1049,11 @@ func (h *handler) rsi(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	symbol := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("symbol")))
-	st, ok := h.signals.RSI(symbol)
+	period, ok := signalPeriodOf(w, r)
+	if !ok {
+		return
+	}
+	st, ok := h.signals.RSIAt(symbol, period)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, errorDTO{Error: "unknown_market", Message: "no signal for this market"})
 		return
@@ -1067,7 +1087,11 @@ func (h *handler) maCross(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	symbol := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("symbol")))
-	st, ok := h.signals.MACross(symbol)
+	period, ok := signalPeriodOf(w, r)
+	if !ok {
+		return
+	}
+	st, ok := h.signals.MACrossAt(symbol, period)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, errorDTO{Error: "unknown_market", Message: "no signal for this market"})
 		return

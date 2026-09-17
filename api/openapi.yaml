@@ -281,6 +281,15 @@ paths:
           name: symbol
           required: true
           schema: { type: string, example: MON }
+        - in: query
+          name: period_seconds
+          required: false
+          schema: { type: integer, enum: [60, 300, 900, 1800, 3600], default: 60 }
+          description: >-
+            The chart's bar size the signal is read on. The signal is the
+            same rule on every timeframe, and its window lasts three bars
+            of it: three minutes on the minute chart, three hours on the
+            hourly.
       responses:
         "200":
           content:
@@ -303,6 +312,15 @@ paths:
           name: symbol
           required: true
           schema: { type: string, example: MON }
+        - in: query
+          name: period_seconds
+          required: false
+          schema: { type: integer, enum: [60, 300, 900, 1800, 3600], default: 60 }
+          description: >-
+            The chart's bar size the signal is read on. The signal is the
+            same rule on every timeframe, and its window lasts three bars
+            of it: three minutes on the minute chart, three hours on the
+            hourly.
       responses:
         "200":
           content:

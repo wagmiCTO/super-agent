@@ -86,9 +86,10 @@ export interface paths {
         };
         /**
          * Account balance, open positions, limits in force and how much of them is used
-         * @description Per-wallet requests carry `X-Account-Address` and `X-Strategy`: the
-         *     strategy picks the wallet's key for it and the limits that key trades
-         *     under (one key per strategy, derived from the passkey). A wallet that
+         * @description Per-wallet requests carry `X-Account-Address` and, for reads about
+         *     one strategy, `X-Strategy`. A wallet has one exchange key and every
+         *     strategy trades through it (ADR 0007); the header names what the
+         *     request is about, it no longer selects a key. A wallet that
          *     registered a request-signing key (POST /v1/auth/keys) must also sign
          *     every request: `X-Auth-Key` (Ed25519 public key, hex), `X-Auth-Time`
          *     (unix seconds) and `X-Auth-Signature` (hex) over
@@ -98,7 +99,7 @@ export interface paths {
             parameters: {
                 query?: never;
                 header?: {
-                    /** @description Which strategy's key and limits the request is for. */
+                    /** @description Which strategy the request is about. Every strategy is served by the wallet's one key. */
                     "X-Strategy"?: string;
                 };
                 path?: never;
@@ -351,12 +352,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The enrolled key for a wallet and strategy, without secrets */
+        /** The wallet's exchange key, without secrets */
         get: {
             parameters: {
                 query: {
                     address: string;
-                    /** @description The strategy's key; empty for the wallet-wide key. */
+                    /** @description Ignored since ADR 0007; kept for older clients. The wallet has one key. */
                     strategy?: string;
                 };
                 header?: never;
@@ -391,7 +392,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Every key enrolled for a wallet — which strategies are enabled */
+        /** Every key enrolled for a wallet (one since ADR 0007; older wallets may list one per strategy) */
         get: {
             parameters: {
                 query: {
@@ -554,6 +555,8 @@ export interface paths {
             parameters: {
                 query: {
                     symbol: string;
+                    /** @description The chart's bar size the signal is read on. The signal is the same rule on every timeframe, and its window lasts three bars of it: three minutes on the minute chart, three hours on the hourly. */
+                    period_seconds?: 60 | 300 | 900 | 1800 | 3600;
                 };
                 header?: never;
                 path?: never;
@@ -604,6 +607,8 @@ export interface paths {
             parameters: {
                 query: {
                     symbol: string;
+                    /** @description The chart's bar size the signal is read on. The signal is the same rule on every timeframe, and its window lasts three bars of it: three minutes on the minute chart, three hours on the hourly. */
+                    period_seconds?: 60 | 300 | 900 | 1800 | 3600;
                 };
                 header?: never;
                 path?: never;
