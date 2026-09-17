@@ -19,18 +19,21 @@ import { View } from 'react-native';
 import { useAccount } from '@/account/useAccount';
 import { api, ApiError, type Standings, type Trade } from '@/api/client';
 import { STRATEGY_NAMES } from '@/config';
+import { trim } from '@/components/format';
 import { shareTrade } from '@/trading/share';
 import { useRiskReport } from '@/trading/useRiskReport';
 import { Bone } from '@/ui/anim';
 import { Button } from '@/ui/button';
 import { Card, Row, Screen } from '@/ui/surface';
 import { Text, money } from '@/ui/text';
+import { useTop } from '@/ui/inset';
 import { useTheme } from '@/theme';
 
 const ROUTES = { direction: '/direction', 'ma-cross': '/ma-cross', rsi: '/rsi' } as const;
 
 export default function ResultScreen() {
   const theme = useTheme();
+  const top = useTop(16);
   const { id, strategy: raw } = useLocalSearchParams<{ id: string; strategy?: string }>();
   const strategy = raw ?? 'direction';
   const knows = useAccount().state.status !== 'loading';
@@ -68,7 +71,7 @@ export default function ResultScreen() {
 
   return (
     <Screen testID="result">
-      <View style={{ flex: 1, paddingTop: 56, paddingBottom: theme.space.s6, justifyContent: 'space-between', gap: theme.space.s4 }}>
+      <View style={{ flex: 1, paddingTop: top, paddingBottom: theme.space.s6, justifyContent: 'space-between', gap: theme.space.s4 }}>
         <View style={{ gap: theme.space.s5 }}>
           {trade === null ? (
             <View style={{ gap: theme.space.s3 }}>
@@ -113,14 +116,18 @@ export default function ResultScreen() {
                   </Text>
                 ) : null}
               </View>
-              <Card>
-                <Row
-                  label="Your week"
-                  value={week ? `${week.trades} ${week.trades === 1 ? 'trade' : 'trades'} · ${money(Number(week.pnl))} AUSD` : '…'}
-                  tone={week ? Number(week.pnl) : undefined}
-                />
-                <Row label="Leaderboard" value={standing ? (standing.you ? `#${standing.you.rank} of ${standing.players}` : `${standing.players} on the board`) : '…'} />
-                <Row label="Pool closes" value="Sunday" />
+              {/* The trade, and nothing else: what it was, where it went in
+                  and out, how long it ran, what it cost, who ended it. The
+                  week and the board have their own screens. */}
+              <Card testID="result-facts">
+                <Row label="Trade" value={`${trade.side === 'long' ? 'Up' : 'Down'} on ${trade.symbol} · ${sized(trade)} AUSD${trade.leverage ? ` at ${Number(trade.leverage)}x` : ''}`} />
+                <Row label="In → out" value={`${trim(trade.entry_price)} → ${trade.exit_price ? trim(trade.exit_price) : '—'}`} />
+                <Row label="Held" value={duration(trade)} />
+                <Row label="Fees" value={`${fees(trade).toFixed(4)} AUSD`} />
+                {trade.best_pnl !== undefined || trade.worst_pnl !== undefined ? (
+                  <Row label="Best · worst" value={`${money(Number(trade.best_pnl ?? 0))} · ${money(Number(trade.worst_pnl ?? 0))}`} />
+                ) : null}
+                <Row label="Closed by" value={closedBy(trade)} />
               </Card>
               <Text variant="body" style={{ color: theme.color.body }}>{moral(trade, won)}</Text>
             </>
@@ -128,19 +135,42 @@ export default function ResultScreen() {
         </View>
 
         <View style={{ gap: theme.space.s3 }}>
-          <Button testID="result-lobby" title="Back to lobby" onPress={() => router.replace('/')} />
-          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: theme.space.s6 }}>
-            <Text variant="body" testID="result-share" style={{ paddingVertical: theme.space.s2 }} onPress={() => void share()}>
-              {shared ?? 'Share'}
-            </Text>
-            <Text variant="body" testID="result-again" style={{ paddingVertical: theme.space.s2 }} onPress={() => router.replace(ROUTES[strategy as keyof typeof ROUTES] ?? '/direction')}>
-              Tap again
-            </Text>
+          {/* Two equal ways on: the lobby, or straight back to the strategy. */}
+          <View style={{ flexDirection: 'row', gap: theme.space.s3 }}>
+            <View style={{ flex: 1 }}>
+              <Button testID="result-lobby" title="Back to lobby" variant="outline" onPress={() => router.replace('/')} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Button testID="result-again" title="Tap again" onPress={() => router.replace(ROUTES[strategy as keyof typeof ROUTES] ?? '/direction')} />
+            </View>
           </View>
+          <Text variant="body" testID="result-share" style={{ textAlign: 'center', paddingVertical: theme.space.s2 }} onPress={() => void share()}>
+            {shared ?? 'Share'}
+          </Text>
         </View>
       </View>
     </Screen>
   );
+}
+
+/** Who ended it, in words for the facts card. */
+function closedBy(t: Trade): string {
+  switch (t.close_reason) {
+    case 'horizon':
+      return 'the timer';
+    case 'stop':
+      return 'the stop';
+    case 'take_profit':
+      return 'the target';
+    default:
+      return 'you';
+  }
+}
+
+/** The position's value, as it was opened. */
+function sized(t: Trade): string {
+  const n = t.notional ? Number(t.notional) : Number(t.size) * Number(t.entry_price);
+  return n.toFixed(2);
 }
 
 /** Who ended it, in the design's capitals. */

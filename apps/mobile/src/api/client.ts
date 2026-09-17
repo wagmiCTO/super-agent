@@ -194,7 +194,7 @@ export const api = {
     request<Order>('/v1/orders/open', { method: 'POST', body: JSON.stringify(body) }, { strategy: body.strategy }),
   close: (body: CloseRequest) =>
     request<Order>('/v1/orders/close', { method: 'POST', body: JSON.stringify(body) }, { strategy: body.strategy }),
-  maCross: (symbol: string) => request<MACrossSignal>(`/v1/signals/ma-cross?symbol=${encodeURIComponent(symbol)}`),
+  maCross: (symbol: string, periodSeconds = 60) => request<MACrossSignal>(`/v1/signals/ma-cross?symbol=${encodeURIComponent(symbol)}&period_seconds=${periodSeconds}`),
   /** A strategy's round trips in one market — the chart's marks, one page. */
   trades: (symbol: string, strategy: string) =>
     request<TradesPage>(`/v1/trades?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&limit=50`, undefined, { strategy }).then((p) => p.trades),
@@ -217,7 +217,7 @@ export const api = {
   /** One page of a board, and how many wallets are on it altogether. */
   standings: (strategy: string, period: 'week' | 'all', offset = 0, limit = PAGE_SIZE) =>
     request<Standings>(`/v1/leaderboard/standings?strategy=${encodeURIComponent(strategy)}&period=${period}&limit=${limit}&offset=${offset}`),
-  rsi: (symbol: string) => request<RSISignal>(`/v1/signals/rsi?symbol=${encodeURIComponent(symbol)}`),
+  rsi: (symbol: string, periodSeconds = 60) => request<RSISignal>(`/v1/signals/rsi?symbol=${encodeURIComponent(symbol)}&period_seconds=${periodSeconds}`),
   /** The boards, by result: this week's, or every trade on record. */
   leaderboard: (period: 'week' | 'all' = 'week') => request<Leaderboard>(`/v1/leaderboard?period=${period}`),
   context: (symbol: string) => request<MarketContext>(`/v1/context?symbol=${encodeURIComponent(symbol)}`),

@@ -19,6 +19,8 @@ export type StrategyId = 'direction' | 'ma-cross' | 'rsi';
 export type Signal = {
   /** The side on offer right now, or null while nothing is lit. */
   side: Side | null;
+  /** When the window opened and when it closes; null while nothing is lit. */
+  openedAt: string | null;
   expiresAt: string | null;
   /** The line under the headline: what the signal saw. */
   detail: string;
@@ -31,17 +33,29 @@ export type Signal = {
   value?: number;
   /** MA Cross only: the two averages the chart draws, which is on top, and where they last crossed. */
   averages?: { fast: number; slow: number; trend: 'up' | 'down' | 'flat'; lastCross: { at: string; side: Side } | null };
+  /** RSI only: when the index last entered a zone. */
+  lastAt?: string | null;
 };
 
-export function useSignal(id: StrategyId, symbol: string): Signal | null {
-  const [signal, setSignal] = useState<Signal | null>(null);
+/**
+ * The signal on the chart's own timeframe: the platform runs the same rule
+ * on every bar size, so what the screen shows for a timeframe is what the
+ * lines on that chart did. `interval` is the chart's, in minutes.
+ */
+export function useSignal(id: StrategyId, symbol: string, interval = '1'): Signal | null {
+  const periodSeconds = Math.max(60, Number(interval) * 60 || 60);
+  // The answer is kept with what it answers: a timeframe's own signal, not
+  // the last one's — the window and the last cross differ by timeframe,
+  // and a stale one would light the keys.
+  const key = `${id}:${symbol}:${periodSeconds}`;
+  const [got, setGot] = useState<{ key: string; signal: Signal } | null>(null);
 
   useEffect(() => {
     if (id === 'direction') return;
     let alive = true;
     const read = () =>
-      (id === 'ma-cross' ? api.maCross(symbol).then(fromCross) : api.rsi(symbol).then(fromRsi))
-        .then((s) => alive && setSignal(s))
+      (id === 'ma-cross' ? api.maCross(symbol, periodSeconds).then(fromCross) : api.rsi(symbol, periodSeconds).then(fromRsi))
+        .then((s) => alive && setGot({ key, signal: s }))
         .catch(() => undefined);
     void read();
     const timer = setInterval(read, SIGNAL_POLL_MS);
@@ -49,15 +63,16 @@ export function useSignal(id: StrategyId, symbol: string): Signal | null {
       alive = false;
       clearInterval(timer);
     };
-  }, [id, symbol]);
+  }, [id, symbol, periodSeconds, key]);
 
-  return id === 'direction' ? null : signal;
+  return id === 'direction' || got?.key !== key ? null : got.signal;
 }
 
 function fromCross(s: MACrossSignal): Signal {
   const side = s.window?.side ?? null;
   return {
     side,
+    openedAt: s.window?.opened_at ?? null,
     expiresAt: s.window?.expires_at ?? null,
     detail: side === 'long' ? 'cross up' : side === 'short' ? 'cross down' : `trend ${s.trend}`,
     quiet: s.ready ? 'waiting for a cross' : 'warming up',
@@ -72,12 +87,14 @@ function fromRsi(s: RSISignal): Signal {
   const value = Math.round(Number(s.value));
   return {
     side,
+    openedAt: s.window?.opened_at ?? null,
     expiresAt: s.window?.expires_at ?? null,
     detail: `RSI ${value}${side === 'long' ? ' · oversold' : side === 'short' ? ' · overbought' : ''}`,
     quiet: s.ready ? `waiting for a zone` : 'warming up',
     last: s.ready ? `RSI ${value}` : null,
     ready: s.ready,
     value: s.ready && Number.isFinite(value) ? value : undefined,
+    lastAt: s.last_cross?.at ?? null,
   };
 }
 

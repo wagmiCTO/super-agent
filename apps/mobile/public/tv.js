@@ -284,7 +284,10 @@
       var when = Date.parse(drawn.cross.at);
       // The bar the cross closed on, at the chart's own resolution.
       var period = (PERIODS[chart.resolution()] || 60) * 1000;
-      var at = Math.floor(when / period) * period;
+      // The platform dates a cross by the close of the bar that made it,
+      // which is the next bar's open to the minute: a hair before it is
+      // the bar itself, not the one forming after it.
+      var at = Math.floor((when - 1) / period) * period;
       var bar = bars[at];
       if (bar) {
         // As the design draws it: a dot where the lines crossed and a

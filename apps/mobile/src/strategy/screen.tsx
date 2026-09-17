@@ -4,7 +4,7 @@
  * One screen for all three strategies, because they differ in exactly two
  * places: what the line above the keys says, and whether a side is named for
  * you. Direction asks a question and both keys stay filled — the call is
- * yours. MA Cross and RSI light up for a few minutes and name a side; until
+ * yours. MA Cross and RSI light up for a few bars and name a side; until
  * then the keys are outlines. They never move or resize, so the screen does
  * not jump under a finger that is already reaching for it.
  *
@@ -19,8 +19,8 @@
  */
 
 import { router } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { PanResponder, Pressable, ScrollView, Vibration, View, useWindowDimensions } from 'react-native';
 
 import { api, type Position, type State, type Trade } from '@/api/client';
 import { INTERVALS, INTERVAL_LABELS, type ChartPosition, type ChartTick, type Interval } from '@/chart/page';
@@ -32,29 +32,48 @@ import { TVChart } from '@/components/TVChart';
 import { STRATEGY_NAMES, SYMBOLS } from '@/config';
 import { ContextPanel } from '@/strategy/context';
 import { riskPercent, riskPercentOf } from '@/strategy/risk';
-import { useSignal, type StrategyId } from '@/strategy/useSignal';
+import { useSignal, type Signal, type StrategyId } from '@/strategy/useSignal';
 import { SettingsChip } from '@/trading/position-form';
 import { shareTrade } from '@/trading/share';
-import { maxLossFraction, takeProfitFraction, usePositionSettings } from '@/trading/useSettings';
+import { clearSignalEntry, markSignalEntry, wasSignalEntry } from '@/trading/signal-entry';
+import { maxLossFraction, maxSizeFor, takeProfitFraction, usePositionSettings } from '@/trading/useSettings';
 import { useSymbol } from '@/trading/useSymbol';
 import { useTrading } from '@/trading/useTrading';
 import { Button, DirectionKeys } from '@/ui/button';
 import { useCountdown } from '@/ui/countdown';
+import { useTop } from '@/ui/inset';
 import { RiskDial } from '@/ui/mark';
 import { Badge, Card, Chip, Screen } from '@/ui/surface';
 import { Text, money } from '@/ui/text';
 import { face, useTheme, useThemeControls } from '@/theme';
 
 /** The design's own numbers for this screen, not tokens: they are the same in every skin. */
-const TOP = 52; // where the header sits, under the status bar
 const PEEK = 44; // how much of what is below the fold shows above it
 const CHART_MIN = 260;
 /** RSI only: the share of the chart box the lower pane takes, as the design draws it. */
 const RSI_PANE = 0.27;
 
+/**
+ * The phone says it in the hand: a signal lighting up, and an entry taken
+ * on one. Two patterns, so the second is recognisably the answer to the
+ * first. Not every phone can — a browser on iOS has no vibration — and
+ * then it says nothing, quietly.
+ */
+function buzz(kind: 'signal' | 'entry') {
+  try {
+    Vibration.vibrate(kind === 'signal' ? [0, 90, 70, 90] : [0, 40, 40, 40, 40, 160]);
+  } catch {
+    // no vibration here
+  }
+}
+
+/** A window that opened this recently is news; an older one was already on the screen. */
+const FRESH_MS = 20_000;
+
 export function StrategyScreen({ id }: { id: StrategyId }) {
   const theme = useTheme();
   const { height } = useWindowDimensions();
+  const TOP = useTop();
 
   // The market this screen is on: the one its position is in while one
   // runs, the one last chosen otherwise. One account holds one position per
@@ -70,8 +89,11 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
   useEffect(() => {
     if (t.position && t.position.symbol !== chosen) chooseSymbol(t.position.symbol);
   }, [t.position, chosen, chooseSymbol]);
-  const signal = useSignal(id, symbol);
-  const { settings } = usePositionSettings();
+  // The chart's bar size, which is also the signal's: the strategy reads
+  // the same lines the chart draws.
+  const [interval, setInterval] = useState<Interval>('1');
+  const signal = useSignal(id, symbol, interval);
+  const { settings, bounds, update } = usePositionSettings();
 
   const allowed = t.state?.limits.allowed_symbols ?? null;
   // The majors first, in the order the design names them, then whatever
@@ -93,14 +115,52 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
     if (free && free !== symbol) chooseSymbol(free);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taken, symbol, t.positions]);
+  // A swipe across the top of the chart is the next free market, or the
+  // one before; a market another strategy holds is skipped, as the menu
+  // greys it out. Never with a position open: that market is settled.
+  const swipe = (dir: 1 | -1) => {
+    if (t.position) return;
+    const free = offered.filter((s) => heldBy(s) === null || s === symbol);
+    const at = free.indexOf(symbol);
+    if (free.length < 2) return;
+    chooseSymbol(free[(at + dir + free.length) % free.length]);
+  };
 
   const lit = signal?.side ?? null;
   const armed = id === 'direction';
+  // A window that has just opened is announced in the hand. One that was
+  // already open when the screen arrived, or that another timeframe shows,
+  // was news then, not now.
+  const announced = useRef<string | null>(null);
+  useEffect(() => {
+    if (!signal?.openedAt || !lit) return;
+    const key = `${symbol}:${interval}:${signal.openedAt}`;
+    if (announced.current === key) return;
+    announced.current = key;
+    if (Date.now() - new Date(signal.openedAt).getTime() < FRESH_MS) buzz('signal');
+  }, [signal?.openedAt, lit, symbol, interval]);
+
   // Never above what this market allows: the standard position is one
   // number for every market, and the venue refuses a leverage it does not offer.
   const marketMax = t.market ? Number(t.market.max_leverage) : 0;
   const leverage = marketMax > 0 ? Math.min(settings.leverage, marketMax) : settings.leverage;
+  // What the tap needs from the free balance — the margin and the opening
+  // fee — against what is there, so a tap that the venue would refuse is
+  // never offered: the screen says so first, and offers the size that fits.
+  const free = t.state ? Number(t.state.account.balance) : bounds.balance;
+  const need = settings.size / Math.max(1, leverage) + settings.size * bounds.openFee;
+  const short = t.state !== null && !t.position && need > free + 0.005;
+  const fits = Math.floor(maxSizeFor({ ...bounds, balance: free }, leverage));
+
   const open = (side: 'up' | 'down') => {
+    // A tap on a lit signal is remembered as such: the position card says
+    // it caught the signal, and the hand is told.
+    if (lit !== null) {
+      markSignalEntry(id, symbol);
+      buzz('entry');
+    } else {
+      clearSignalEntry(id);
+    }
     void t.open(
       side === 'up' ? 'long' : 'short',
       String(settings.size),
@@ -150,7 +210,10 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
   useEffect(() => {
     const before = was.current;
     was.current = t.position;
-    if (before && !t.position && t.state) void goToResult(null, before.opened_at ?? null);
+    if (before && !t.position && t.state) {
+      clearSignalEntry(id);
+      void goToResult(null, before.opened_at ?? null);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [t.position]);
 
@@ -167,7 +230,9 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
           <ChartBox
             id={id}
             symbol={symbol}
-            markets={t.position ? null : { offered, heldBy, choose: chooseSymbol }}
+            markets={t.position ? null : { offered, heldBy, choose: chooseSymbol, swipe }}
+            interval={interval}
+            onInterval={setInterval}
             lit={lit !== null}
             trades={t.trades}
             position={t.position}
@@ -190,7 +255,13 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
           ) : null}
 
           {t.position ? (
-            <OpenPosition position={t.position} busy={t.busy === 'close'} onClose={() => void closeNow()} strategy={id} />
+            <OpenPosition
+              position={t.position}
+              busy={t.busy === 'close'}
+              onClose={() => void closeNow()}
+              strategy={id}
+              onSignal={!armed && wasSignalEntry(id, t.position.symbol)}
+            />
           ) : (
             // The keys and what a tap opens, on a rule that runs edge to edge:
             // the line under them is where the screen's promise ends.
@@ -209,8 +280,26 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
                 onPress={tap}
                 recommended={lit === 'long' ? 'up' : lit === 'short' ? 'down' : null}
                 alwaysArmed={armed}
-                disabled={t.busy !== null || t.state === null || taken}
+                disabled={t.busy !== null || t.state === null || taken || short}
               />
+              {short ? (
+                <Card testID="short-balance" style={{ paddingVertical: theme.space.s3, gap: theme.space.s2, backgroundColor: theme.color.dangerSoft, borderColor: 'transparent' }}>
+                  <Text variant="small" style={{ color: theme.color.danger }}>
+                    {`Not enough free balance: ${settings.size} AUSD at ${leverage}x needs ${need.toFixed(2)}, and ${free.toFixed(2)} is free.`}
+                  </Text>
+                  {fits >= bounds.minSize ? (
+                    <Button
+                      testID="short-balance-fix"
+                      title={`Open up to ${fits} AUSD instead`}
+                      variant="outline"
+                      small
+                      onPress={() => update({ size: fits })}
+                    />
+                  ) : (
+                    <Text variant="small" style={{ color: theme.color.danger }}>Close a position or add funds to open another.</Text>
+                  )}
+                </Card>
+              ) : null}
               <SettingsChip onPress={() => router.push('/settings')} maxLeverage={marketMax} />
             </View>
           )}
@@ -286,20 +375,76 @@ function Header({ id, state, offline, locked, symbol }: { id: StrategyId; state:
 }
 
 /**
- * The chart, with the price on it and the two controls the datafeed can
- * honour: the bar size, and candles or a line. It fills whatever the fold
- * leaves after the keys and the header, and never less than a readable pane.
+ * The chart, with the price on it and the controls the datafeed can honour:
+ * the market, the bar size, and candles or a line. It fills whatever the
+ * fold leaves after the keys and the header, and never less than a
+ * readable pane.
+ *
+ * The top band of the pane is the app's: one row of keys — the market on
+ * the left, the bar sizes and the shape of the series on the right — and
+ * under it the price and how the day has treated it. A swipe across the
+ * band turns the market.
  */
-type Markets = { offered: string[]; heldBy: (s: string) => string | null; choose: (s: string) => void };
+type Markets = { offered: string[]; heldBy: (s: string) => string | null; choose: (s: string) => void; swipe: (dir: 1 | -1) => void };
 
-function ChartBox({ id, symbol, markets, lit, trades, position, signal }: { id: StrategyId; symbol: string; markets: Markets | null; lit: boolean; trades: Trade[]; position: Position | null; signal: ReturnType<typeof useSignal> }) {
+/** How far a finger travels before it is a swipe and not a press. */
+const SWIPE = 44;
+
+/** The band's gesture: a clear sideways swipe turns the market of the moment. */
+function swipeResponder(markets: Markets | null, onSwiped: () => void) {
+  return PanResponder.create({
+    onMoveShouldSetPanResponder: (_e, g) => markets !== null && Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+    onPanResponderRelease: (_e, g) => {
+      if (Math.abs(g.dx) < SWIPE) return;
+      markets?.swipe(g.dx < 0 ? 1 : -1);
+      onSwiped();
+    },
+  });
+}
+
+function ChartBox({
+  id,
+  symbol,
+  markets,
+  interval,
+  onInterval,
+  lit,
+  trades,
+  position,
+  signal,
+}: {
+  id: StrategyId;
+  symbol: string;
+  markets: Markets | null;
+  interval: Interval;
+  onInterval: (i: Interval) => void;
+  lit: boolean;
+  trades: Trade[];
+  position: Position | null;
+  signal: Signal | null;
+}) {
   const theme = useTheme();
   const [picking, setPicking] = useState(false);
   const averages = id === 'ma-cross' ? signal?.averages ?? { fast: 5, slow: 20, trend: 'flat' as const, lastCross: null } : null;
   const { name } = useThemeControls();
   const [line, setLine] = useState(false);
-  const [interval, setInterval] = useState<Interval>('1');
   const [tick, setTick] = useState<ChartTick | null>(null);
+  const left = useCountdown(signal?.expiresAt ?? null);
+
+  // The swipe claims the gesture only once it is clearly sideways, so the
+  // keys on the band still take their presses; it is a no-op without
+  // markets to turn, which is what a position makes of it. The responder
+  // is made once and reads the markets of the moment from a box the
+  // effect keeps current.
+  // Remade only when what a swipe could turn to changes: the markets, who
+  // holds which, and where the screen is. The handlers keep across renders
+  // in between, so a gesture under way is not dropped.
+  const turnable = markets ? `${markets.offered.join(',')}|${markets.offered.map(markets.heldBy).join(',')}|${symbol}` : '';
+  const pan = useMemo(
+    () => swipeResponder(markets, () => setPicking(false)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [turnable],
+  );
 
   const glass = {
     backgroundColor: theme.color.glass,
@@ -344,20 +489,9 @@ function ChartBox({ id, symbol, markets, lit, trades, position, signal }: { id: 
         onTick={setTick}
       />
 
-      {/* Top-left: the price, and how the day has treated it. Under it the
-          market's name on a key of its own — a thing to press, with the
-          chevron that says there are others — which opens the list on the
-          pane, where the timeframes are, rather than taking a row of its own.
-          With a position running the market is settled and the key is a label. */}
-      <View style={{ position: 'absolute', top: 12, left: 14, gap: 6 }}>
-        <Text
-          variant="num"
-          testID="chart-price"
-          style={{ fontSize: theme.type.t2xl, lineHeight: theme.type.t2xl, fontFamily: face(theme, 'num', 700), letterSpacing: theme.type.t2xl * -0.01 }}
-        >
-          {tick ? trim(tick.price) : ' '}
-        </Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s2 }}>
+      {/* The band: the row of keys, and the price under it. */}
+      <View {...pan.panHandlers} testID="chart-band" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 96 }}>
+        <View style={{ position: 'absolute', top: 10, left: 10, right: 10, flexDirection: 'row', alignItems: 'center', gap: theme.space.s2 }}>
           <Pressable
             testID="symbol-picker"
             accessibilityRole="button"
@@ -369,7 +503,7 @@ function ChartBox({ id, symbol, markets, lit, trades, position, signal }: { id: 
               flexDirection: 'row',
               alignItems: 'center',
               gap: 6,
-              paddingVertical: 5,
+              height: 30,
               paddingLeft: 10,
               paddingRight: markets ? 8 : 10,
               borderRadius: theme.radius.rMd,
@@ -383,64 +517,113 @@ function ChartBox({ id, symbol, markets, lit, trades, position, signal }: { id: 
               <Text style={{ fontFamily: face(theme, 'display', 700), fontSize: theme.type.tXs, lineHeight: theme.type.tXs * 1.2, color: theme.color.accent }}>{picking ? '▴' : '▾'}</Text>
             ) : null}
           </Pressable>
-          <Text variant="small" style={{ fontSize: theme.type.tXs }}>
-            {tick?.change === null || tick?.change === undefined ? '' : `${money(tick.change, 1)}% today`}
-          </Text>
-        </View>
-        {markets && picking ? (
-          <View
-            testID="symbol-menu"
-            style={{ padding: 6, borderRadius: theme.radius.rMd, gap: 4, maxWidth: 236, ...glass, ...(theme.shadow.lift ? { boxShadow: theme.shadow.lift } : null) }}
-          >
-            <Text variant="small" style={{ fontSize: theme.type.t2xs, letterSpacing: 0.6, paddingHorizontal: 4, paddingTop: 2 }}>MARKET</Text>
-            {/* A grid of keys rather than a column: the venue lists seven
-                markets and the chart box is the height it is, so a column
-                would run off its bottom edge. */}
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
-              {markets.offered.map((s) => {
-                const holder = markets.heldBy(s);
-                const on = s === symbol;
-                return (
-                  <Pressable
-                    key={s}
-                    testID={`symbol-${s}`}
-                    accessibilityRole="button"
-                    accessibilityLabel={holder ? `${s}, in ${holder}` : s}
-                    accessibilityState={{ selected: on, disabled: holder !== null }}
-                    disabled={holder !== null}
-                    onPress={() => {
-                      markets.choose(s);
-                      setPicking(false);
+          <View style={{ flex: 1 }} />
+          <View style={{ flexDirection: 'row', gap: 2, padding: 3, borderRadius: theme.radius.rMd, ...glass }}>
+            {INTERVALS.map((tf) => {
+              const on = tf === interval;
+              return (
+                <Pressable
+                  key={tf}
+                  testID={`chart-tf-${INTERVAL_LABELS[tf]}`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                  onPress={() => onInterval(tf)}
+                  style={{ paddingVertical: 3, paddingHorizontal: 5, borderRadius: theme.radius.rSm, backgroundColor: on ? theme.color.accent : 'transparent' }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: face(theme, 'display', 600),
+                      fontSize: theme.type.t2xs,
+                      lineHeight: theme.type.t2xs * 1.3,
+                      color: on ? theme.color.onAccent : theme.color.body,
                     }}
-                    style={({ pressed }) => ({
-                      minWidth: 68,
-                      paddingVertical: 6,
-                      paddingHorizontal: 10,
-                      borderRadius: theme.radius.rSm,
-                      borderWidth: theme.size.bw,
-                      borderColor: on ? theme.color.accent : theme.color.line,
-                      backgroundColor: on ? theme.color.accent : 'transparent',
-                      opacity: holder ? 0.45 : pressed ? 0.7 : 1,
-                    })}
                   >
-                    <Text style={{ fontFamily: face(theme, 'display', 700), fontSize: theme.type.tSm, lineHeight: theme.type.tSm * 1.2, color: on ? theme.color.onAccent : theme.color.ink }}>
-                      {on ? `${s} ✓` : s}
-                    </Text>
-                    {holder ? (
-                      <Text variant="small" numberOfLines={1} style={{ fontSize: theme.type.t2xs, lineHeight: theme.type.t2xs * 1.3 }}>{`in ${holder}`}</Text>
-                    ) : null}
-                  </Pressable>
-                );
-              })}
-            </View>
+                    {INTERVAL_LABELS[tf]}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
-        ) : null}
+          <Pressable
+            testID="chart-mode"
+            accessibilityRole="button"
+            accessibilityLabel={line ? 'Show candles' : 'Show a line'}
+            onPress={() => setLine((v) => !v)}
+            style={{ width: 30, height: 30, borderRadius: theme.radius.rMd, alignItems: 'center', justifyContent: 'center', ...glass }}
+          >
+            <Text style={{ fontFamily: face(theme, 'display', 700), fontSize: theme.type.tXs, color: theme.color.body }}>{line ? '∿' : '▮'}</Text>
+          </Pressable>
+        </View>
+
+        {picking ? null : (
+          <View pointerEvents="none" style={{ position: 'absolute', top: 50, left: 14, flexDirection: 'row', alignItems: 'baseline', gap: theme.space.s2 }}>
+            <Text
+              variant="num"
+              testID="chart-price"
+              style={{ fontSize: theme.type.t2xl, lineHeight: theme.type.t2xl, fontFamily: face(theme, 'num', 700), letterSpacing: theme.type.t2xl * -0.01 }}
+            >
+              {tick ? trim(tick.price) : ' '}
+            </Text>
+            <Text variant="small" style={{ fontSize: theme.type.tXs }}>
+              {tick?.change === null || tick?.change === undefined ? '' : `${money(tick.change, 1)}% today`}
+            </Text>
+          </View>
+        )}
       </View>
+
+      {/* The market menu, under its key. A grid of keys rather than a column:
+          the venue lists seven markets and the chart box is the height it is,
+          so a column would run off its bottom edge. */}
+      {markets && picking ? (
+        <View
+          testID="symbol-menu"
+          style={{ position: 'absolute', top: 46, left: 10, padding: 6, borderRadius: theme.radius.rMd, gap: 4, maxWidth: 236, ...glass, ...(theme.shadow.lift ? { boxShadow: theme.shadow.lift } : null) }}
+        >
+          <Text variant="small" style={{ fontSize: theme.type.t2xs, letterSpacing: 0.6, paddingHorizontal: 4, paddingTop: 2 }}>MARKET · swipe to turn</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+            {markets.offered.map((s) => {
+              const holder = markets.heldBy(s);
+              const on = s === symbol;
+              return (
+                <Pressable
+                  key={s}
+                  testID={`symbol-${s}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={holder ? `${s}, in ${holder}` : s}
+                  accessibilityState={{ selected: on, disabled: holder !== null }}
+                  disabled={holder !== null}
+                  onPress={() => {
+                    markets.choose(s);
+                    setPicking(false);
+                  }}
+                  style={({ pressed }) => ({
+                    minWidth: 68,
+                    paddingVertical: 6,
+                    paddingHorizontal: 10,
+                    borderRadius: theme.radius.rSm,
+                    borderWidth: theme.size.bw,
+                    borderColor: on ? theme.color.accent : theme.color.line,
+                    backgroundColor: on ? theme.color.accent : 'transparent',
+                    opacity: holder ? 0.45 : pressed ? 0.7 : 1,
+                  })}
+                >
+                  <Text style={{ fontFamily: face(theme, 'display', 700), fontSize: theme.type.tSm, lineHeight: theme.type.tSm * 1.2, color: on ? theme.color.onAccent : theme.color.ink }}>
+                    {on ? `${s} ✓` : s}
+                  </Text>
+                  {holder ? (
+                    <Text variant="small" numberOfLines={1} style={{ fontSize: theme.type.t2xs, lineHeight: theme.type.t2xs * 1.3 }}>{`in ${holder}`}</Text>
+                  ) : null}
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
 
       {/* RSI only, as the design draws it: the crowd thermometer down the
           left of the price pane — 70 at the top, 30 at the bottom, the
           zones shaded, the index as a mark — and the lower pane's name at
-          its top edge. The pane itself is the library's, at RSI_PANE of the box. */}
+          its top edge, with the zone and the window while one is lit. */}
       {id === 'rsi' && !picking ? (
         <>
           <View pointerEvents="none" testID="rsi-thermometer" style={{ position: 'absolute', left: 14, top: 98, bottom: `${RSI_PANE * 100 + 4}%`, width: 40, alignItems: 'center', gap: theme.space.s1 }}>
@@ -460,64 +643,30 @@ function ChartBox({ id, symbol, markets, lit, trades, position, signal }: { id: 
           <View
             pointerEvents="none"
             testID="chart-legend"
-            style={{ position: 'absolute', top: `${(1 - RSI_PANE) * 100}%`, marginTop: 6, left: 10, paddingVertical: 3, paddingHorizontal: 8, borderRadius: theme.radius.rSm, ...glass }}
+            style={{ position: 'absolute', top: `${(1 - RSI_PANE) * 100}%`, marginTop: 6, left: 10, paddingVertical: 3, paddingHorizontal: 8, borderRadius: theme.radius.rSm, ...glass, ...(lit ? { borderColor: theme.color.accent } : null) }}
           >
-            <Text variant="small" style={{ fontSize: theme.type.tXs, lineHeight: theme.type.tXs * 1.3, fontFamily: face(theme, 'display', 600), letterSpacing: 0.4 }}>RSI 14 · 1m</Text>
+            <Text variant="small" style={{ fontSize: theme.type.tXs, lineHeight: theme.type.tXs * 1.3, fontFamily: face(theme, 'display', 600), letterSpacing: 0.4 }}>
+              {`RSI 14 · ${INTERVAL_LABELS[interval]}${lit && signal?.lastAt ? ` · zone ${hm(signal.lastAt)}${left ? ` · ${left} left` : ''}` : ''}`}
+            </Text>
           </View>
         </>
       ) : null}
 
-      {/* Bottom-left, MA Cross only: which lines these are, and what they say. */}
+      {/* Bottom-left, MA Cross only: which lines these are, and what they say —
+          the trend, or the cross and how long its window has left. */}
       {averages && !picking ? (
         <View
           pointerEvents="none"
           testID="chart-legend"
-          style={{ position: 'absolute', bottom: 36, left: 10, paddingVertical: 3, paddingHorizontal: 8, borderRadius: theme.radius.rSm, ...glass }}
+          style={{ position: 'absolute', bottom: 36, left: 10, paddingVertical: 3, paddingHorizontal: 8, borderRadius: theme.radius.rSm, ...glass, ...(lit ? { borderColor: theme.color.accent } : null) }}
         >
           <Text variant="small" style={{ fontSize: theme.type.tXs, lineHeight: theme.type.tXs * 1.3 }}>
-            {`MA ${averages.fast} · MA ${averages.slow} · ${lit ? 'cross just now' : `trend ${averages.trend}`}`}
+            {`MA ${averages.fast} · MA ${averages.slow} · ${INTERVAL_LABELS[interval]} · ${
+              lit && averages.lastCross ? `cross ${hm(averages.lastCross.at)}${left ? ` · ${left} left` : ''}` : `trend ${averages.trend}`
+            }`}
           </Text>
         </View>
       ) : null}
-
-      {/* Top-right: the bar size, and the shape of the series. */}
-      <View style={{ position: 'absolute', top: 10, right: 10, flexDirection: 'row', alignItems: 'center', gap: theme.space.s2 }}>
-        <View style={{ flexDirection: 'row', gap: 2, padding: 3, borderRadius: theme.radius.rMd, ...glass }}>
-          {INTERVALS.map((tf) => {
-            const on = tf === interval;
-            return (
-              <Pressable
-                key={tf}
-                testID={`chart-tf-${INTERVAL_LABELS[tf]}`}
-                accessibilityRole="button"
-                accessibilityState={{ selected: on }}
-                onPress={() => setInterval(tf)}
-                style={{ paddingVertical: 3, paddingHorizontal: 5, borderRadius: theme.radius.rSm, backgroundColor: on ? theme.color.accent : 'transparent' }}
-              >
-                <Text
-                  style={{
-                    fontFamily: face(theme, 'display', 600),
-                    fontSize: theme.type.t2xs,
-                    lineHeight: theme.type.t2xs * 1.3,
-                    color: on ? theme.color.onAccent : theme.color.body,
-                  }}
-                >
-                  {INTERVAL_LABELS[tf]}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-        <Pressable
-          testID="chart-mode"
-          accessibilityRole="button"
-          accessibilityLabel={line ? 'Show candles' : 'Show a line'}
-          onPress={() => setLine((v) => !v)}
-          style={{ width: 30, height: 30, borderRadius: theme.radius.rMd, alignItems: 'center', justifyContent: 'center', ...glass }}
-        >
-          <Text style={{ fontFamily: face(theme, 'display', 700), fontSize: theme.type.tXs, color: theme.color.body }}>{line ? '∿' : '▮'}</Text>
-        </Pressable>
-      </View>
     </View>
   );
 }
@@ -623,7 +772,7 @@ function Says({ id, symbol, signal }: { id: StrategyId; symbol: string; signal: 
  * The design replaces the entry screen with this: the one number, what it is
  * doing, when it ends by itself, and the only button that matters.
  */
-function OpenPosition({ position, busy, onClose, strategy }: { position: Position; busy: boolean; onClose: () => void; strategy: string }) {
+function OpenPosition({ position, busy, onClose, strategy, onSignal }: { position: Position; busy: boolean; onClose: () => void; strategy: string; onSignal?: boolean }) {
   const theme = useTheme();
   const left = useCountdown(position.closes_at ?? null);
   const pnl = Number(position.unrealized_pnl);
@@ -658,10 +807,17 @@ function OpenPosition({ position, busy, onClose, strategy }: { position: Positio
           justifyContent: 'space-between',
           padding: theme.space.s4,
           borderRadius: theme.radius.rXl,
-          backgroundColor: theme.color.soft,
+          // Taken on the signal: the card wears the accent, as the lit
+          // chart did, so the screen says "you caught it" without a word.
+          backgroundColor: onSignal ? theme.color.accent + '1F' : theme.color.soft,
+          borderWidth: onSignal ? 2 : 0,
+          borderColor: onSignal ? theme.color.accent : 'transparent',
         }}
       >
         <View style={{ gap: theme.space.s1, flex: 1 }}>
+          {onSignal ? (
+            <Text variant="caps" testID="on-signal" style={{ color: theme.color.accent }}>On the signal</Text>
+          ) : null}
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: theme.space.s2, flexWrap: 'wrap' }}>
             <Text variant="bodyStrong" style={{ fontSize: theme.type.tMd, color: position.side === 'long' ? theme.color.up : theme.color.down }}>
               {position.side === 'long' ? 'Up' : 'Down'}

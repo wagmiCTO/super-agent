@@ -5,6 +5,8 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { Platform } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AccountProvider } from '@/account/useAccount';
 import { FONT_FACES } from '@/constants/theme';
@@ -26,18 +28,31 @@ export default function RootLayout() {
     if (fontsLoaded || fontError) SplashScreen.hideAsync().catch(() => {});
   }, [fontsLoaded, fontError]);
 
+  // On the web the page is asked to reach under the notch, so the safe-area
+  // insets say where the status bar is on a phone that added the site to
+  // its home screen — and say zero in a browser tab, whose chrome is its own.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const meta = document.querySelector('meta[name="viewport"]');
+    if (meta && !/viewport-fit/.test(meta.getAttribute('content') ?? '')) {
+      meta.setAttribute('content', `${meta.getAttribute('content')}, viewport-fit=cover`);
+    }
+  }, []);
+
   if (!fontsLoaded && !fontError) return null;
 
   return (
-    <ThemeProvider>
-      <AccountProvider>
-        <OnboardingProvider>
-          <PositionSettingsProvider>
-            <Shell />
-          </PositionSettingsProvider>
-        </OnboardingProvider>
-      </AccountProvider>
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <AccountProvider>
+          <OnboardingProvider>
+            <PositionSettingsProvider>
+              <Shell />
+            </PositionSettingsProvider>
+          </OnboardingProvider>
+        </AccountProvider>
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }
 

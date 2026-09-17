@@ -17,10 +17,12 @@ import { Mark } from '@/ui/mark';
 import { Splash } from '@/ui/splash';
 import { Card, Screen } from '@/ui/surface';
 import { Text } from '@/ui/text';
+import { useTop } from '@/ui/inset';
 import { useTheme } from '@/theme';
 
 export default function PasskeyScreen() {
   const theme = useTheme();
+  const top = useTop(32);
   const { state, error, create, signIn } = useAccount();
   const { markReturning } = useOnboarding();
   const signedIn = state.status === 'unlocked' || state.status === 'remembered';
@@ -67,7 +69,7 @@ export default function PasskeyScreen() {
 
   return (
     <Screen>
-      <View style={{ flex: 1, paddingTop: 72, paddingBottom: theme.space.s6, gap: theme.space.s5 }}>
+      <View style={{ flex: 1, paddingTop: top, paddingBottom: theme.space.s6, gap: theme.space.s5 }}>
         <Mark size={64} />
 
         <View style={{ gap: theme.space.s3 }}>

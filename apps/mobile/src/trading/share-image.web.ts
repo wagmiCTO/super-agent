@@ -28,7 +28,7 @@ export async function renderShareCard(t: ShareTrade, link: string, theme: Theme)
   const num = (weight: 400 | 700) => `"${face(theme, 'num', weight)}"`;
   // The faces are loaded for the page; the canvas only sees them once they are.
   try {
-    await Promise.all([document.fonts.load(`700 60px ${num(700)}`), document.fonts.load(`600 44px ${display(600)}`), document.fonts.load(`400 32px ${display(400)}`)]);
+    await Promise.all([document.fonts.load(`700 60px ${num(700)}`), document.fonts.load(`700 44px ${display(700)}`), document.fonts.load(`600 44px ${display(600)}`), document.fonts.load(`400 32px ${display(400)}`)]);
   } catch {
     // system fonts then
   }
@@ -43,26 +43,35 @@ export async function renderShareCard(t: ShareTrade, link: string, theme: Theme)
   roundRect(g, 0, 0, SIZE, SIZE, 0);
   g.fill();
 
-  // Kicker, and the state at the right.
+  // The mark and the name, first: the card is the app's before it is the
+  // trade's, and a stranger's chat is where the name is read.
+  const MARK = 104;
+  drawMark(g, PAD, PAD, MARK, c.onFill, c.accent);
+  g.fillStyle = c.onFill;
+  g.font = `700 76px ${display(700)}`;
+  g.textBaseline = 'top';
+  g.fillText(APP_NAME, PAD + MARK + 28, PAD + 6);
+  // Kicker under the name, and the state at the right.
   g.fillStyle = c.onAccentDim;
   g.font = `600 30px ${display(600)}`;
-  g.textBaseline = 'top';
-  g.fillText(`${APP_NAME.toUpperCase()} · ${(STRATEGY_NAMES[t.strategy] ?? t.strategy).toUpperCase()}`, PAD, PAD);
+  g.fillText((STRATEGY_NAMES[t.strategy] ?? t.strategy).toUpperCase(), PAD + MARK + 28, PAD + 6 + 82);
   g.textAlign = 'right';
-  g.fillText(t.kind === 'live' ? 'LIVE' : 'CLOSED', SIZE - PAD, PAD);
+  g.fillText(t.kind === 'live' ? 'LIVE' : 'CLOSED', SIZE - PAD, PAD + 6 + 82);
   g.textAlign = 'left';
+
+  const TOP = PAD + MARK + 60;
 
   // What it is.
   g.fillStyle = c.onFill;
   g.font = `600 48px ${display(600)}`;
-  g.fillText(`${side} on ${t.symbol} · ${t.notional.toFixed(0)} AUSD at ${t.leverage}x`, PAD, PAD + 110);
+  g.fillText(`${side} on ${t.symbol} · ${t.notional.toFixed(0)} AUSD at ${t.leverage}x`, PAD, TOP);
 
   // The number. Won: the up colour would vanish on the fill in Paper (both
   // are strong), so the number stays in the panel's own ink and the state
   // says the rest.
-  g.font = `700 240px ${num(700)}`;
+  g.font = `700 220px ${num(700)}`;
   g.fillStyle = c.onFill;
-  g.fillText(money(t.pnl), PAD - 8, PAD + 250);
+  g.fillText(money(t.pnl), PAD - 8, TOP + 90);
 
   g.fillStyle = c.onAccentDim;
   g.font = `400 36px ${display(400)}`;
@@ -70,9 +79,9 @@ export async function renderShareCard(t: ShareTrade, link: string, theme: Theme)
     t.kind === 'live'
       ? `AUSD so far${t.closesIn ? ` · closes in ${t.closesIn} · follow live` : ''}`
       : `AUSD · ${t.symbol} ${t.movePct !== undefined ? `${t.movePct >= 0 ? 'up' : 'down'} ${Math.abs(t.movePct).toFixed(2)}%` : ''}${t.reason ? ` · ${t.reason}` : ''}`;
-  g.fillText(line, PAD, PAD + 540);
-  if (t.rank) g.fillText(`#${t.rank.place} of ${t.rank.of} this week`, PAD, PAD + 592);
-  else g.fillText(won ? 'Called it.' : lost ? 'Next one.' : 'Flat.', PAD, PAD + 592);
+  g.fillText(line, PAD, TOP + 360);
+  if (t.rank) g.fillText(`#${t.rank.place} of ${t.rank.of} this week`, PAD, TOP + 412);
+  else g.fillText(won ? 'Called it.' : lost ? 'Next one.' : 'Flat.', PAD, TOP + 412);
 
   // The foot: the invite, on its own rule.
   g.strokeStyle = c.onAccentDim;
@@ -93,6 +102,34 @@ export async function renderShareCard(t: ShareTrade, link: string, theme: Theme)
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (!blob) return null;
   return new File([blob], `${APP_NAME.toLowerCase().replace(/\s+/g, '-')}-${t.symbol.toLowerCase()}-${side.toLowerCase()}.png`, { type: 'image/png' });
+}
+
+/**
+ * The Tap Trader mark, as ui/mark.tsx draws it, at `size` px with its top
+ * left at (x, y): the barrel in the accent, the bull in the panel's ink.
+ */
+function drawMark(g: CanvasRenderingContext2D, x: number, y: number, size: number, ink: string, accent: string) {
+  g.save();
+  g.translate(x, y);
+  g.scale(size / 64, size / 64);
+  g.strokeStyle = accent;
+  g.lineCap = 'round';
+  g.lineWidth = 3;
+  g.beginPath();
+  g.arc(32, 32, 26.5, 0, Math.PI * 2);
+  g.stroke();
+  g.lineWidth = 2.1;
+  g.stroke(new Path2D('M32 5.5v4.4M58.5 32h-4.4M32 58.5v-4.4M5.5 32h4.4'));
+  g.translate(11.5, 10.5);
+  g.scale(0.64, 0.64);
+  g.fillStyle = ink;
+  g.fill(new Path2D('M18.4 24.6C13 23 8 19.6 5.4 13.4c5.6 3 10.2 6 14.2 8Z'));
+  g.fill(new Path2D('M45.6 24.6c5.4-1.6 10.4-5 13-11.2-5.6 3-10.2 6-14.2 8Z'));
+  g.fill(new Path2D('M18 26c0-5 3.5-8 8-8.5h12c4.5.5 8 3.5 8 8.5v6c0 9-5.5 15.5-14 18-8.5-2.5-14-9-14-18Z'));
+  g.fillStyle = accent;
+  g.fill(new Path2D('M20.5 29 43.5 27.4l.5 5.1c-4 4-8 5-10.4 2.3-1-1-2.2-1-3.2 0-2.4 2.7-6.4 1.7-10.4-2.3Z'));
+  g.fill(new Path2D('M32 51.2 24.5 56v-7.4L32 51.4l7.5-2.8V56Z'));
+  g.restore();
 }
 
 function roundRect(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {

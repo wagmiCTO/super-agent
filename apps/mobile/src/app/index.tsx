@@ -28,6 +28,7 @@ import { Splash } from '@/ui/splash';
 import { Badge, Screen } from '@/ui/surface';
 import { riskPercent, riskPercentOf } from '@/strategy/risk';
 import { Text, money } from '@/ui/text';
+import { useTop } from '@/ui/inset';
 import { face, useTheme } from '@/theme';
 
 const ROUTES: Record<string, Href> = { direction: '/direction', 'ma-cross': '/ma-cross', rsi: '/rsi' };
@@ -101,13 +102,13 @@ export default function Entry() {
   return <LobbyScreen />;
 }
 
-/** Where the header row sits, so the menu can hang under its badge. */
-const HEADER_TOP = 52;
 
 function LobbyScreen() {
   const account = useAccount();
   const { taught } = useOnboarding();
   const theme = useTheme();
+  // Where the header row sits, so the menu can hang under its badge.
+  const HEADER_TOP = useTop();
   // The lobby trades nothing itself; it reads the state for the balance, the
   // risk dial and whether a strategy has a position open right now.
   const t = useTrading('MON', 'direction');
@@ -237,7 +238,7 @@ function LobbyScreen() {
           screen the way to everything else must not need a scroll to find. */}
       <Footer />
 
-      {menu ? <NetworkMenu onClose={() => setMenu(false)} /> : null}
+      {menu ? <NetworkMenu onClose={() => setMenu(false)} top={HEADER_TOP} /> : null}
     </Screen>
   );
 }
@@ -274,7 +275,7 @@ function Footer() {
  * where the app lives; the other entry says what mainnet would mean and leads
  * to the screen that says it is not here yet. A tap anywhere else closes it.
  */
-function NetworkMenu({ onClose }: { onClose: () => void }) {
+function NetworkMenu({ onClose, top }: { onClose: () => void; top: number }) {
   const theme = useTheme();
   const entry = (name: string, note: string, current: boolean, onPress: (() => void) | null, testID: string) => (
     <Pressable
@@ -306,7 +307,7 @@ function NetworkMenu({ onClose }: { onClose: () => void }) {
         testID="network-menu"
         style={{
           position: 'absolute',
-          top: HEADER_TOP + 36,
+          top: top + 36,
           left: theme.space.s5 + 38,
           width: 250,
           borderRadius: theme.radius.rLg,
