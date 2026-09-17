@@ -44,9 +44,10 @@ paths:
     get:
       summary: Account balance, open positions, limits in force and how much of them is used
       description: |
-        Per-wallet requests carry `X-Account-Address` and `X-Strategy`: the
-        strategy picks the wallet's key for it and the limits that key trades
-        under (one key per strategy, derived from the passkey). A wallet that
+        Per-wallet requests carry `X-Account-Address` and, for reads about
+        one strategy, `X-Strategy`. A wallet has one exchange key and every
+        strategy trades through it (ADR 0007); the header names what the
+        request is about, it no longer selects a key. A wallet that
         registered a request-signing key (POST /v1/auth/keys) must also sign
         every request: `X-Auth-Key` (Ed25519 public key, hex), `X-Auth-Time`
         (unix seconds) and `X-Auth-Signature` (hex) over
@@ -56,7 +57,7 @@ paths:
           name: X-Strategy
           required: false
           schema: { type: string }
-          description: Which strategy's key and limits the request is for.
+          description: Which strategy the request is about. Every strategy is served by the wallet's one key.
       responses:
         "200":
           content:
@@ -177,7 +178,7 @@ paths:
 
   /v1/exchange/key:
     get:
-      summary: The enrolled key for a wallet and strategy, without secrets
+      summary: The wallet's exchange key, without secrets
       parameters:
         - in: query
           name: address
@@ -187,7 +188,7 @@ paths:
           name: strategy
           required: false
           schema: { type: string }
-          description: The strategy's key; empty for the wallet-wide key.
+          description: Ignored since ADR 0007; kept for older clients. The wallet has one key.
       responses:
         "200":
           content:
@@ -197,7 +198,7 @@ paths:
 
   /v1/exchange/keys:
     get:
-      summary: Every key enrolled for a wallet — which strategies are enabled
+      summary: Every key enrolled for a wallet (one since ADR 0007; older wallets may list one per strategy)
       parameters:
         - in: query
           name: address

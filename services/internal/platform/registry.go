@@ -24,13 +24,12 @@ var ErrNoKey = errors.New("platform: no exchange key enrolled for this wallet")
 // so the registry can be tested without a network.
 type VenueFactory func(ctx context.Context, k keys.Key) (venue.Adapter, error)
 
-// Registry holds one Service per enrolled key, built lazily.
+// Registry holds one Service per wallet, built lazily.
 //
-// A key is a wallet and a strategy (ADR 0005): each gets its own venue
-// connection, authenticated with its own API key, and its own policy limits
-// under the account "<wallet>/<strategy>". A wallet-wide key from before
-// per-strategy keys serves every strategy through one shared service under
-// the wallet's address. Nothing is shared between wallets except the process.
+// A wallet has one exchange key and every strategy trades through it (ADR
+// 0007): one venue connection, one service, one policy account under the
+// wallet's address. A key enrolled for a strategy under ADR 0005 is that
+// wallet's key. Nothing is shared between wallets except the process.
 type Registry struct {
 	// ctx outlives any request: a wallet's venue connection is built on it,
 	// not on the request that happened to be first. Close cancels it.
@@ -78,10 +77,11 @@ func NewRegistry(store *keys.Store, build VenueFactory, limits policy.Limits, le
 	}
 }
 
-// Get returns the service that trades strategyID for a wallet, connecting
-// to the venue on first use. Concurrent first calls for the same key wait
-// for one connection rather than opening several: the venue allows one
-// session per key.
+// Get returns the wallet's service, connecting to the venue on first use.
+// strategyID is checked against the catalog and otherwise only names what
+// the request is about; every strategy is the same service. Concurrent
+// first calls for the same wallet wait for one connection rather than
+// opening several: the venue allows one session per key.
 func (r *Registry) Get(ctx context.Context, address, strategyID string) (*Service, error) {
 	addr := strings.ToLower(strings.TrimSpace(address))
 	if addr == "" {
@@ -145,17 +145,20 @@ func (r *Registry) SetAllowedSymbols(symbols []string) {
 	r.mu.Unlock()
 }
 
-// PolicyAccount names the policy engine's account for a key: the wallet
-// for a wallet-wide key, "<wallet>/<strategy>" for a strategy's own key.
+// PolicyAccount names the policy engine's account for a key: the wallet's
+// address, whatever strategy the key was enrolled under (ADR 0007).
 func PolicyAccount(k keys.Key) string {
-	if k.Strategy == "" {
-		return k.Address
-	}
-	return k.Address + "/" + k.Strategy
+	return strings.ToLower(k.Address)
+}
+
+// legacyPolicyAccount is the account a strategy's own key traded under
+// before ADR 0007; what it journaled is restored under the wallet's.
+func legacyPolicyAccount(wallet, strategyID string) string {
+	return strings.ToLower(wallet) + "/" + strategyID
 }
 
 // LimitsFor narrows the platform limits to a strategy's own cap from the
-// catalog. A wallet-wide key trades under the platform limits as they are.
+// catalog, for the order that names it.
 func LimitsFor(base policy.Limits, strategyID string) policy.Limits {
 	info, ok := strategy.Lookup(strategyID)
 	if !ok {
@@ -226,15 +229,12 @@ func (r *Registry) connect(k keys.Key) (*Service, error) {
 	// and a key connected before a listing must see it too.
 	forKey := func() policy.Limits {
 		limits := r.baseLimits()
-		if k.Strategy != "" {
-			limits = LimitsFor(limits, k.Strategy)
-		}
 		// One person, one day: every strategy the wallet trades shares its
 		// budget, its cooldown and its count of open positions.
 		limits.Group = strings.ToLower(addr)
 		return limits
 	}
-	svc, err := New(r.ctx, v, r.policy, PolicyAccount(k), forKey(), r.log.With("wallet", addr, "strategy", k.Strategy))
+	svc, err := New(r.ctx, v, r.policy, PolicyAccount(k), forKey(), r.log.With("wallet", addr))
 	if err != nil {
 		_ = v.Close()
 		return nil, err
@@ -255,7 +255,7 @@ func (r *Registry) connect(k keys.Key) (*Service, error) {
 			return nil, err
 		}
 	}
-	r.log.Info("wallet connected to venue", "wallet", addr, "strategy", k.Strategy, "derived", k.Derived, "builder", k.BuilderID, "fee_per_100k", k.MaxBuilderFeePer100K)
+	r.log.Info("wallet connected to venue", "wallet", addr, "key_label", k.Label, "derived", k.Derived, "builder", k.BuilderID, "fee_per_100k", k.MaxBuilderFeePer100K)
 	return svc, nil
 }
 

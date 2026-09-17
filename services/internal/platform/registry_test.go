@@ -164,14 +164,13 @@ func TestRegistryConnectionOutlivesRequest(t *testing.T) {
 	}
 }
 
-// A strategy with its own key gets its own service under "<wallet>/<strategy>"
-// with its own budget; strategies without one share the wallet-wide key's
-// service under the wallet's address.
-func TestRegistryOneServicePerStrategyKey(t *testing.T) {
+// One wallet, one service, whatever keys it enrolled (ADR 0007): a
+// strategy key from ADR 0005 is the wallet's key, and every strategy trades
+// under the wallet's own policy account.
+func TestRegistryOneServicePerWallet(t *testing.T) {
 	const addr = "0x00000000000000000000000000000000000000cc"
 	_, priv, _ := ed25519.GenerateKey(nil)
 	s := keys.New()
-	_ = s.Put(keys.Key{Address: addr, APIKey: "wide", PrivateKey: priv})
 	_ = s.Put(keys.Key{Address: addr, Strategy: "rsi", APIKey: "rsi", PrivateKey: priv, Derived: true})
 	var built []string
 	r := NewRegistry(s, func(_ context.Context, k keys.Key) (venue.Adapter, error) {
@@ -183,40 +182,21 @@ func TestRegistryOneServicePerStrategyKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	maCross, _ := r.Get(context.Background(), addr, "ma-cross")
-	rsi, err := r.Get(context.Background(), addr, "rsi")
-	if err != nil {
-		t.Fatal(err)
+	rsi, _ := r.Get(context.Background(), addr, "rsi")
+	if direction != maCross || rsi != direction {
+		t.Fatal("the wallet's strategies got different services")
 	}
-	if direction != maCross {
-		t.Fatal("two strategies on the wallet-wide key got two services")
+	if len(built) != 1 || built[0] != "rsi" {
+		t.Fatalf("venue connections built = %v, want the one key", built)
 	}
-	if rsi == direction {
-		t.Fatal("the strategy's own key shares the wallet-wide service")
-	}
-	if len(built) != 2 || built[0] != "wide" || built[1] != "rsi" {
-		t.Fatalf("venue connections built = %v", built)
-	}
-	if direction.account != addr || rsi.account != addr+"/rsi" {
-		t.Fatalf("policy accounts = %q, %q", direction.account, rsi.account)
-	}
-	// No strategy in the catalog caps a position below the platform's own
-	// limit — the standard position is one number every screen opens with —
-	// so the strategy's key trades under the platform limits, on its own
-	// budget: its exposure and its daily loss are counted apart from the
-	// wallet-wide key's.
-	wide, _ := r.policy.Limits(addr)
-	own, _ := r.policy.Limits(addr + "/rsi")
-	if own.MaxNotional.Cmp(wide.MaxNotional) != 0 {
-		t.Fatalf("rsi limit %s is not the platform limit %s", own.MaxNotional, wide.MaxNotional)
+	if direction.account != addr {
+		t.Fatalf("policy account = %q, want the wallet", direction.account)
 	}
 	if _, err := r.Get(context.Background(), addr, "nope"); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("unknown strategy: %v", err)
 	}
 }
 
-// LimitsFor narrows the platform limits to a strategy that asks for less, and
-// leaves them alone otherwise. No strategy in the catalog asks today, but the
-// key's limits are read through this, so the narrowing has to keep working.
 func TestLimitsFor(t *testing.T) {
 	base := testLimits() // max notional 50, min 5
 	for _, tc := range []struct {

@@ -284,6 +284,18 @@ func (h *handler) buildRisk(ctx context.Context, services map[string]*Service, w
 			allToday, allWeek, allAll = mergeStats(allToday, today), mergeStats(allWeek, week), mergeStats(allAll, all)
 		}
 		for _, p := range st.Positions {
+			// One service serves every strategy (ADR 0007): a position is
+			// listed under the strategy whose tap opened it, as the ledger
+			// remembers; one the ledger never saw counts under the default.
+			holder := strategy.DefaultStrategy
+			if h.ledger != nil {
+				if id, ok := h.ledger.Holder(ctx, svc.wallet, p.Symbol); ok && strategy.Known(id) {
+					holder = id
+				}
+			}
+			if holder != s.ID {
+				continue
+			}
 			var m *venue.Market
 			if mk, ok := markets[p.Symbol]; ok {
 				m = &mk

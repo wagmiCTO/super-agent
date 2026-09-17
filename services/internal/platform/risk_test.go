@@ -92,9 +92,13 @@ func TestRiskReportAndCloseAll(t *testing.T) {
 	if len(out.Market) != 1 || out.Market[0].Symbol != "MON" || out.Market[0].Vol1mBps < 15 || out.Market[0].Vol1mBps > 25 {
 		t.Fatalf("market = %+v", out.Market)
 	}
-	// The shared service is read once: the same position is not counted three times.
-	if out.Strategies[1].Open == nil || len(out.Strategies[1].Open) != 1 {
-		t.Fatalf("second strategy sees %+v", out.Strategies[1].Open)
+	// One service serves every strategy: the position is listed once, under
+	// the strategy whose tap opened it, and the other rows are empty.
+	if len(out.Strategies[0].Open) != 1 || out.Strategies[1].Open == nil || len(out.Strategies[1].Open) != 0 {
+		t.Fatalf("direction sees %+v, second strategy sees %+v", out.Strategies[0].Open, out.Strategies[1].Open)
+	}
+	if len(out.Open) != 1 {
+		t.Fatalf("open positions = %+v", out.Open)
 	}
 
 	req = httptest.NewRequest(http.MethodPost, "/v1/risk/close-all", nil)

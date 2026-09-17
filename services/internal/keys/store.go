@@ -316,19 +316,31 @@ func (s *Store) Get(address, strategy string) (Key, error) {
 	return k, nil
 }
 
-// Resolve returns the key that trades strategy for a wallet: the strategy's
-// own key when enrolled, else the wallet-wide key from before per-strategy
-// keys existed.
+// Resolve returns the wallet's exchange key, whatever strategy is asked
+// for (ADR 0007): the wallet-wide key when one is enrolled, else the key
+// the wallet enrolled for a strategy under ADR 0005 — the first by strategy
+// name, so a wallet with several always resolves to the same one.
 func (s *Store) Resolve(address, strategy string) (Key, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if k, ok := s.keys[id(address, strategy)]; ok {
-		return k, nil
-	}
 	if k, ok := s.keys[id(address, "")]; ok {
 		return k, nil
 	}
-	return Key{}, ErrNotFound
+	addr := normalize(address)
+	var found *Key
+	for _, k := range s.keys {
+		if k.Address != addr {
+			continue
+		}
+		if found == nil || k.Strategy < found.Strategy {
+			c := k
+			found = &c
+		}
+	}
+	if found == nil {
+		return Key{}, ErrNotFound
+	}
+	return *found, nil
 }
 
 // ForWallet lists a wallet's keys, wallet-wide first, then by strategy.

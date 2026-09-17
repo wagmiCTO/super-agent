@@ -301,11 +301,7 @@ func (h *handler) serviceFor(w http.ResponseWriter, r *http.Request, strategyID 
 	svc, err := h.registry.Get(r.Context(), addr, strategyID)
 	if err != nil {
 		if errors.Is(err, ErrNoKey) {
-			msg := "no exchange key is enrolled for this wallet"
-			if strategyID != "" {
-				msg = "this wallet has no key for the " + strategyID + " strategy yet — enable it first"
-			}
-			writeJSON(w, http.StatusNotFound, errorDTO{Error: "no_key", Message: msg})
+			writeJSON(w, http.StatusNotFound, errorDTO{Error: "no_key", Message: "no exchange key is enrolled for this wallet — open the account first"})
 			return nil, false
 		}
 		h.fail(w, err)
@@ -1760,7 +1756,10 @@ func (h *handler) enrolledKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	address := r.URL.Query().Get("address")
-	k, err := h.enroll.Key(address, r.URL.Query().Get("strategy"))
+	// The wallet's key is whichever it enrolled (ADR 0007); a strategy
+	// named here is an older client asking about that strategy, and the
+	// answer is the same key.
+	k, err := h.enroll.Resolve(address, r.URL.Query().Get("strategy"))
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, errorDTO{Error: "no_key", Message: "no exchange key is enrolled for this address"})
 		return

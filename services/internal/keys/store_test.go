@@ -52,24 +52,30 @@ func TestFileRoundTrip(t *testing.T) {
 
 // A strategy with its own key gets it; one without falls back to the
 // wallet-wide key; a wallet with neither has nothing.
-func TestResolvePrefersTheStrategyKey(t *testing.T) {
+func TestResolveIsTheWalletsOneKey(t *testing.T) {
 	s := New()
 	_, priv, _ := ed25519.GenerateKey(rand.Reader)
-	_ = s.Put(Key{Address: "0xabc", APIKey: "wide", PrivateKey: priv})
 	_ = s.Put(Key{Address: "0xabc", Strategy: "rsi", APIKey: "rsi", PrivateKey: priv})
-	if k, _ := s.Resolve("0xABC", "rsi"); k.APIKey != "rsi" {
-		t.Fatalf("rsi resolved to %q", k.APIKey)
+	_ = s.Put(Key{Address: "0xabc", Strategy: "direction", APIKey: "direction", PrivateKey: priv})
+	// A wallet from before ADR 0007: its strategy keys are the wallet's
+	// key, the same one for every strategy.
+	for _, strat := range []string{"", "rsi", "direction", "ma-cross"} {
+		if k, _ := s.Resolve("0xABC", strat); k.APIKey != "direction" {
+			t.Fatalf("%q resolved to %q, want the first strategy key", strat, k.APIKey)
+		}
 	}
-	if k, _ := s.Resolve("0xabc", "direction"); k.APIKey != "wide" {
-		t.Fatalf("direction resolved to %q, want the wallet-wide key", k.APIKey)
+	// A wallet-wide key wins over any strategy key.
+	_ = s.Put(Key{Address: "0xabc", APIKey: "wide", PrivateKey: priv})
+	if k, _ := s.Resolve("0xabc", "rsi"); k.APIKey != "wide" {
+		t.Fatalf("rsi resolved to %q, want the wallet-wide key", k.APIKey)
 	}
-	if _, err := s.Get("0xabc", "direction"); err != ErrNotFound {
-		t.Fatal("Get fell back to the wallet-wide key")
+	if _, err := s.Get("0xabc", "ma-cross"); err != ErrNotFound {
+		t.Fatal("Get fell back to another key")
 	}
 	if _, err := s.Resolve("0xdef", "rsi"); err != ErrNotFound {
 		t.Fatal("an unknown wallet resolved a key")
 	}
-	if ks := s.ForWallet("0xabc"); len(ks) != 2 || ks[0].Strategy != "" || ks[1].Strategy != "rsi" {
+	if ks := s.ForWallet("0xabc"); len(ks) != 3 || ks[0].Strategy != "" || ks[1].Strategy != "direction" {
 		t.Fatalf("ForWallet = %+v", ks)
 	}
 }

@@ -157,6 +157,17 @@ func (s *Service) Restore(ctx context.Context, st *store.Store) error {
 	if err != nil {
 		return fmt.Errorf("platform: restore horizons: %w", err)
 	}
+	// What a strategy's own key journaled before ADR 0007 belongs to this
+	// wallet now: a position open across that deploy still closes on time.
+	if s.account == s.wallet {
+		for _, info := range strategy.Catalog {
+			old, err := st.Horizons(ctx, legacyPolicyAccount(s.wallet, info.ID))
+			if err != nil {
+				return fmt.Errorf("platform: restore horizons: %w", err)
+			}
+			hs = append(hs, old...)
+		}
+	}
 	for _, h := range hs {
 		symbol := h.Symbol
 		if !h.ClosesAt.IsZero() {
@@ -350,6 +361,13 @@ func (s *Service) Open(ctx context.Context, req OpenRequest) (venue.Order, error
 	}
 	if !strategy.Known(req.Strategy) {
 		return venue.Order{}, fmt.Errorf("%w: unknown strategy %q", ErrInvalid, req.Strategy)
+	}
+	// The strategy's own cap from the catalog, by the strategy the order
+	// names (ADR 0007): the one per-strategy limit there is.
+	if info, ok := strategy.Lookup(req.Strategy); ok && info.NotionalCap != "" {
+		if cap, err := fixed.Parse(info.NotionalCap); err == nil && cap.IsPos() && req.Notional.Cmp(cap) > 0 {
+			return venue.Order{}, fmt.Errorf("%w: %s allows at most %s per position", ErrInvalid, info.Name, cap)
+		}
 	}
 
 	order := venue.OrderRequest{

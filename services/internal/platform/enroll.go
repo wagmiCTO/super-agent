@@ -267,6 +267,12 @@ func (e *Enrollment) Enroll(ctx context.Context, handle, signInSignature, wallet
 	return k, nil
 }
 
+// Resolve returns the wallet's exchange key, whatever strategy is named
+// (ADR 0007), or keys.ErrNotFound.
+func (e *Enrollment) Resolve(address, strategyID string) (keys.Key, error) {
+	return e.store.Resolve(address, strategyID)
+}
+
 // Key returns the key enrolled for a wallet and strategy, or keys.ErrNotFound.
 func (e *Enrollment) Key(address, strategyID string) (keys.Key, error) {
 	return e.store.Get(address, strategyID)
