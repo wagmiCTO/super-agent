@@ -390,43 +390,49 @@ function ChartBox({ id, symbol, markets, lit, trades, position, signal }: { id: 
         {markets && picking ? (
           <View
             testID="symbol-menu"
-            style={{ padding: 4, borderRadius: theme.radius.rMd, gap: 1, minWidth: 168, ...glass, ...(theme.shadow.lift ? { boxShadow: theme.shadow.lift } : null) }}
+            style={{ padding: 6, borderRadius: theme.radius.rMd, gap: 4, maxWidth: 236, ...glass, ...(theme.shadow.lift ? { boxShadow: theme.shadow.lift } : null) }}
           >
-            <Text variant="small" style={{ fontSize: theme.type.t2xs, letterSpacing: 0.6, paddingHorizontal: 10, paddingTop: 6, paddingBottom: 4 }}>MARKET</Text>
-            {markets.offered.map((s) => {
-              const holder = markets.heldBy(s);
-              const on = s === symbol;
-              return (
-                <Pressable
-                  key={s}
-                  testID={`symbol-${s}`}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: on, disabled: holder !== null }}
-                  disabled={holder !== null}
-                  onPress={() => {
-                    markets.choose(s);
-                    setPicking(false);
-                  }}
-                  style={({ pressed }) => ({
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: theme.space.s2,
-                    paddingVertical: 7,
-                    paddingHorizontal: 10,
-                    borderRadius: theme.radius.rSm,
-                    backgroundColor: on ? theme.color.accent : 'transparent',
-                    opacity: holder ? 0.45 : pressed ? 0.7 : 1,
-                  })}
-                >
-                  <Text style={{ flex: 1, fontFamily: face(theme, 'display', 700), fontSize: theme.type.tSm, color: on ? theme.color.onAccent : theme.color.ink }}>{s}</Text>
-                  {on ? (
-                    <Text style={{ fontFamily: face(theme, 'display', 700), fontSize: theme.type.tXs, color: theme.color.onAccent }}>✓</Text>
-                  ) : holder ? (
-                    <Text variant="small" numberOfLines={1} style={{ fontSize: theme.type.t2xs }}>{`in ${holder}`}</Text>
-                  ) : null}
-                </Pressable>
-              );
-            })}
+            <Text variant="small" style={{ fontSize: theme.type.t2xs, letterSpacing: 0.6, paddingHorizontal: 4, paddingTop: 2 }}>MARKET</Text>
+            {/* A grid of keys rather than a column: the venue lists seven
+                markets and the chart box is the height it is, so a column
+                would run off its bottom edge. */}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+              {markets.offered.map((s) => {
+                const holder = markets.heldBy(s);
+                const on = s === symbol;
+                return (
+                  <Pressable
+                    key={s}
+                    testID={`symbol-${s}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={holder ? `${s}, in ${holder}` : s}
+                    accessibilityState={{ selected: on, disabled: holder !== null }}
+                    disabled={holder !== null}
+                    onPress={() => {
+                      markets.choose(s);
+                      setPicking(false);
+                    }}
+                    style={({ pressed }) => ({
+                      minWidth: 68,
+                      paddingVertical: 6,
+                      paddingHorizontal: 10,
+                      borderRadius: theme.radius.rSm,
+                      borderWidth: theme.size.bw,
+                      borderColor: on ? theme.color.accent : theme.color.line,
+                      backgroundColor: on ? theme.color.accent : 'transparent',
+                      opacity: holder ? 0.45 : pressed ? 0.7 : 1,
+                    })}
+                  >
+                    <Text style={{ fontFamily: face(theme, 'display', 700), fontSize: theme.type.tSm, lineHeight: theme.type.tSm * 1.2, color: on ? theme.color.onAccent : theme.color.ink }}>
+                      {on ? `${s} ✓` : s}
+                    </Text>
+                    {holder ? (
+                      <Text variant="small" numberOfLines={1} style={{ fontSize: theme.type.t2xs, lineHeight: theme.type.t2xs * 1.3 }}>{`in ${holder}`}</Text>
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
         ) : null}
       </View>
