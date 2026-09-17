@@ -32,6 +32,27 @@ test('a position stays with the strategy that opened it, and the others grey its
   await page.screenshot({ path: info.outputPath('direction-menu.png') });
   await picker.click();
 
+  // A swipe across the band turns the market, and back. A finger, not a
+  // mouse: the phone's gesture is what the band answers to.
+  const band = page.getByTestId('chart-band');
+  const at = await band.boundingBox();
+  if (!at) throw new Error('no chart band');
+  const cdp = await context.newCDPSession(page);
+  const swipe = async (fromX: number, toX: number) => {
+    const y = at.y + 70;
+    const step = fromX < toX ? 30 : -30;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: at.x + fromX, y }] });
+    for (let x = fromX + step; step > 0 ? x <= toX : x >= toX; x += step) {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: at.x + x, y }] });
+      await page.waitForTimeout(16);
+    }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  };
+  await swipe(260, 80);
+  await expect(picker).toContainText('ETH');
+  await swipe(80, 260);
+  await expect(picker).toContainText('MON');
+
   await up.click();
   await expect(page.getByTestId('open-position')).toContainText(/^Up/, { timeout: 40_000 });
 
