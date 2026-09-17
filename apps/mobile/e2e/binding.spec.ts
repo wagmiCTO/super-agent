@@ -52,6 +52,8 @@ test('a position stays with the strategy that opened it, and the others grey its
   await page.goto('/rsi');
   await expect(page.getByTestId('key-up')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId('rsi-thermometer')).toBeVisible();
+  // The pane has drawn once the price is on it.
+  await expect(page.getByTestId('chart-price')).toHaveText(/\d/, { timeout: 30_000 });
   await page.screenshot({ path: info.outputPath('rsi.png') });
 
   // Back to Direction, and after a reload: the position is still its own.

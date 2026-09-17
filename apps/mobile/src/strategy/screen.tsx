@@ -441,9 +441,9 @@ function ChartBox({ id, symbol, markets, lit, trades, position, signal }: { id: 
           left of the price pane — 70 at the top, 30 at the bottom, the
           zones shaded, the index as a mark — and the lower pane's name at
           its top edge. The pane itself is the library's, at RSI_PANE of the box. */}
-      {id === 'rsi' ? (
+      {id === 'rsi' && !picking ? (
         <>
-          <View pointerEvents="none" testID="rsi-thermometer" style={{ position: 'absolute', left: 14, top: 62, bottom: `${RSI_PANE * 100 + 4}%`, width: 40, alignItems: 'center', gap: theme.space.s1 }}>
+          <View pointerEvents="none" testID="rsi-thermometer" style={{ position: 'absolute', left: 14, top: 98, bottom: `${RSI_PANE * 100 + 4}%`, width: 40, alignItems: 'center', gap: theme.space.s1 }}>
             <Text variant="small" style={{ fontSize: theme.type.t2xs, lineHeight: theme.type.t2xs * 1.3 }}>70</Text>
             <View style={{ flex: 1, width: 14, borderRadius: theme.radius.rSm, overflow: 'hidden', ...glass }}>
               <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '30%', backgroundColor: theme.color.line }} />
@@ -468,7 +468,7 @@ function ChartBox({ id, symbol, markets, lit, trades, position, signal }: { id: 
       ) : null}
 
       {/* Bottom-left, MA Cross only: which lines these are, and what they say. */}
-      {averages ? (
+      {averages && !picking ? (
         <View
           pointerEvents="none"
           testID="chart-legend"
