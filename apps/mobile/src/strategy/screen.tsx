@@ -626,7 +626,7 @@ function ChartBox({
           its top edge, with the zone and the window while one is lit. */}
       {id === 'rsi' && !picking ? (
         <>
-          <View pointerEvents="none" testID="rsi-thermometer" style={{ position: 'absolute', left: 14, top: 98, bottom: `${RSI_PANE * 100 + 4}%`, width: 40, alignItems: 'center', gap: theme.space.s1 }}>
+          <View pointerEvents="none" testID="rsi-thermometer" style={{ position: 'absolute', left: 14, top: 96, bottom: `${RSI_PANE * 100 + 3}%`, width: 40, alignItems: 'center', gap: 2 }}>
             <Text variant="small" style={{ fontSize: theme.type.t2xs, lineHeight: theme.type.t2xs * 1.3 }}>70</Text>
             <View style={{ flex: 1, width: 14, borderRadius: theme.radius.rSm, overflow: 'hidden', ...glass }}>
               <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '30%', backgroundColor: theme.color.line }} />
