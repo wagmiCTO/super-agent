@@ -110,6 +110,31 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/VenueRejected" }
 
+  /v1/orders/amend:
+    post:
+      summary: Change a running position's exits
+      description: |
+        Re-arms the stop, the target and the horizon of an open position
+        without touching the position itself. Nothing is placed at the
+        venue: the stop and the target are the platform's watch on the
+        venue's mark, the horizon its timer. A field that is absent keeps
+        that exit as it is; `"0"` disarms it. The horizon can only be
+        pushed out, never brought in — a manual close is the way to end
+        a position sooner.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AmendRequest" }
+      responses:
+        "200":
+          description: The exits as they now stand.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Amended" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /v1/exchange/enroll/payload:
     post:
       summary: Start enrolling an exchange API key for a wallet
@@ -1352,6 +1377,40 @@ components:
       properties:
         symbol: { type: string }
         strategy: { type: string, description: Which strategy's key closes; defaults to the X-Strategy header. }
+
+    AmendRequest:
+      type: object
+      required: [symbol]
+      properties:
+        symbol: { type: string }
+        strategy: { type: string, description: Which strategy's position; defaults to the X-Strategy header. }
+        max_loss:
+          $ref: "#/components/schemas/Decimal"
+          description: >-
+            The stop to arm, as the fraction of collateral (0..1) the
+            position may lose. Absent keeps the current one; 0 disarms it.
+        take_profit:
+          $ref: "#/components/schemas/Decimal"
+          description: >-
+            The target to arm, as the fraction of collateral the position
+            may make. Absent keeps the current one; 0 disarms it.
+        extend_seconds:
+          type: integer
+          minimum: 0
+          description: >-
+            Pushes the horizon this many seconds further out; a position
+            without one gets one this long from now. The position may not
+            run more than 24 h from now in total. 0 or absent leaves the
+            timer alone.
+
+    Amended:
+      type: object
+      required: [symbol]
+      properties:
+        symbol: { type: string }
+        closes_at: { type: string, format: date-time, description: When the horizon closes the position; absent without one. }
+        max_loss: { $ref: "#/components/schemas/Decimal" }
+        take_profit: { $ref: "#/components/schemas/Decimal" }
 
     Order:
       type: object

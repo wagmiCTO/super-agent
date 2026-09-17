@@ -227,12 +227,18 @@ func run(log *slog.Logger) error {
 		if err != nil {
 			return err
 		}
-		ttl, err := time.ParseDuration(envOr("NANSEN_CACHE", "4h"))
+		ttl, err := time.ParseDuration(envOr("NANSEN_CACHE", "24h"))
 		if err != nil {
 			return fmt.Errorf("NANSEN_CACHE: %w", err)
 		}
-		handlerOpts = append(handlerOpts, platform.WithMarketContext(platform.NewMarketContext(n, tokens, ttl, log)))
-		log.Info("market context enabled", "source", "nansen", "markets", len(tokens), "cache", ttl)
+		mc := platform.NewMarketContext(n, tokens, ttl, log)
+		if db != nil {
+			// The last card per market outlives the process: a deploy
+			// serves what the one before it paid for.
+			mc.UseStore(db)
+		}
+		handlerOpts = append(handlerOpts, platform.WithMarketContext(mc))
+		log.Info("market context enabled", "source", "nansen", "markets", len(tokens), "cache", ttl, "persisted", db != nil)
 	} else {
 		log.Warn("market context disabled: NANSEN_API_KEY is not set")
 	}

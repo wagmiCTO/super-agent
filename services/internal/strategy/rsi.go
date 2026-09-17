@@ -223,9 +223,27 @@ func (r *RSI) State(now time.Time) RSIState {
 	if r.last != nil {
 		c := *r.last
 		st.LastCross = &c
-		if exp := c.At.Add(r.cfg.Window); now.Before(exp) {
+		exp := c.At.Add(r.cfg.Window)
+		// While the index is still in the zone it entered, the offer stands:
+		// the window runs to the close of the bar now forming, and again past
+		// that if that bar closes in the zone too. A crowd that has overdone
+		// it for an hour has not stopped overdoing it after three bars.
+		if n := len(r.values); n > 0 && r.inZone(c.Side, r.values[n-1]) {
+			if bar := r.bars[n-1].Open.Add(2 * r.cfg.Period); bar.After(exp) {
+				exp = bar
+			}
+		}
+		if now.Before(exp) {
 			st.Window = &Window{Side: c.Side, OpenedAt: c.At, ExpiresAt: exp}
 		}
 	}
 	return st
+}
+
+// inZone reports whether the index is in the zone a side's signal comes from.
+func (r *RSI) inZone(side venue.Side, value fixed.D) bool {
+	if side == venue.Long {
+		return value.Cmp(r.cfg.Oversold) <= 0
+	}
+	return value.Cmp(r.cfg.Overbought) >= 0
 }

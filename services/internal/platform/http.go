@@ -92,6 +92,7 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /v1/state", h.state)
 	mux.HandleFunc("POST /v1/orders/open", h.open)
 	mux.HandleFunc("POST /v1/orders/close", h.close)
+	mux.HandleFunc("POST /v1/orders/amend", h.amend)
 	mux.HandleFunc("POST /v1/kill", h.kill)
 	mux.HandleFunc("POST /v1/revive", h.revive)
 	var out http.Handler = h.auth.middleware(mux, log)
@@ -452,6 +453,26 @@ type closeReqDTO struct {
 	Strategy string `json:"strategy,omitempty"`
 }
 
+// amendReqDTO changes a running position's exits. A field that is absent
+// leaves that exit as it is; "0" disarms it.
+type amendReqDTO struct {
+	Symbol   string  `json:"symbol"`
+	Strategy string  `json:"strategy,omitempty"`
+	MaxLoss  *string `json:"max_loss,omitempty"`
+	// TakeProfit is the target as a fraction of collateral.
+	TakeProfit *string `json:"take_profit,omitempty"`
+	// ExtendSeconds pushes the horizon this much further out.
+	ExtendSeconds int `json:"extend_seconds,omitempty"`
+}
+
+// amendedDTO is the position's exits after the amendment.
+type amendedDTO struct {
+	Symbol     string `json:"symbol"`
+	ClosesAt   string `json:"closes_at,omitempty"`
+	MaxLoss    string `json:"max_loss,omitempty"`
+	TakeProfit string `json:"take_profit,omitempty"`
+}
+
 type orderDTO struct {
 	ClientID   string  `json:"client_id"`
 	VenueID    string  `json:"venue_id"`
@@ -582,6 +603,56 @@ func (h *handler) close(w http.ResponseWriter, r *http.Request) {
 	}
 	h.forgetRisk(r)
 	writeJSON(w, http.StatusOK, toOrderDTO(order))
+}
+
+// amend re-arms a running position's stop, target and horizon. Nothing is
+// placed at the venue, so there is no order to return: the answer is the
+// exits as they now stand, and the app re-reads the state for the rest.
+func (h *handler) amend(w http.ResponseWriter, r *http.Request) {
+	var in amendReqDTO
+	if err := decode(r, &in); err != nil {
+		h.fail(w, err)
+		return
+	}
+	req, err := parseAmend(in)
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	svc, ok := h.serviceFor(w, r, strings.TrimSpace(in.Strategy))
+	if !ok {
+		return
+	}
+	out, err := svc.Amend(r.Context(), req)
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	h.forgetRisk(r)
+	writeJSON(w, http.StatusOK, amendedDTO{Symbol: out.Symbol, ClosesAt: timeOrEmpty(out.ClosesAt), MaxLoss: zeroToEmpty(out.MaxLoss), TakeProfit: zeroToEmpty(out.TakeProfit)})
+}
+
+func parseAmend(in amendReqDTO) (AmendRequest, error) {
+	req := AmendRequest{Symbol: in.Symbol}
+	if in.MaxLoss != nil {
+		v, err := fixed.Parse(strings.TrimSpace(*in.MaxLoss))
+		if err != nil {
+			return AmendRequest{}, fmt.Errorf("%w: max_loss: %v", ErrInvalid, err)
+		}
+		req.MaxLoss = &v
+	}
+	if in.TakeProfit != nil {
+		v, err := fixed.Parse(strings.TrimSpace(*in.TakeProfit))
+		if err != nil {
+			return AmendRequest{}, fmt.Errorf("%w: take_profit: %v", ErrInvalid, err)
+		}
+		req.TakeProfit = &v
+	}
+	if in.ExtendSeconds < 0 {
+		return AmendRequest{}, fmt.Errorf("%w: extend_seconds must not be negative", ErrInvalid)
+	}
+	req.Extend = time.Duration(in.ExtendSeconds) * time.Second
+	return req, nil
 }
 
 func (h *handler) kill(w http.ResponseWriter, r *http.Request) {

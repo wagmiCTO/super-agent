@@ -156,3 +156,61 @@ func TestLeanAndMoney(t *testing.T) {
 		}
 	}
 }
+
+// memCards is a CardStore in memory, for the tests.
+type memCards struct {
+	saved int
+	raw   []byte
+	at    time.Time
+}
+
+func (m *memCards) SaveMarketCard(_ context.Context, _ string, card []byte, at time.Time) error {
+	m.saved++
+	m.raw, m.at = card, at
+	return nil
+}
+
+func (m *memCards) MarketCard(context.Context, string) ([]byte, time.Time, bool, error) {
+	if m.raw == nil {
+		return nil, time.Time{}, false, nil
+	}
+	return m.raw, m.at, true, nil
+}
+
+// A fresh card is kept, and a new process serves it without asking the
+// source until it is older than the TTL — a restart costs no credits.
+func TestMarketContextOutlivesTheProcess(t *testing.T) {
+	m, fake := newTestContext(t)
+	kept := &memCards{}
+	m.UseStore(kept)
+	now := time.Date(2026, 9, 18, 10, 0, 0, 0, time.UTC)
+	m.now = func() time.Time { return now }
+
+	if _, err := m.Card(context.Background(), "MON"); err != nil {
+		t.Fatal(err)
+	}
+	if kept.saved != 1 || fake.calls.Load() != 3 {
+		t.Fatalf("saved %d, calls %d", kept.saved, fake.calls.Load())
+	}
+
+	// The next process, half an hour later: the card comes from the store.
+	again, source := newTestContext(t)
+	again.UseStore(kept)
+	again.now = func() time.Time { return now.Add(30 * time.Minute) }
+	card, err := again.Card(context.Background(), "MON")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if source.calls.Load() != 0 || card.TokenSymbol != "WMON" || !card.UpdatedAt.Equal(now) {
+		t.Fatalf("calls %d, card %+v", source.calls.Load(), card)
+	}
+
+	// Past the TTL the source is asked again, and the store is updated.
+	again.now = func() time.Time { return now.Add(2 * time.Hour) }
+	if _, err := again.Card(context.Background(), "MON"); err != nil {
+		t.Fatal(err)
+	}
+	if source.calls.Load() != 3 || kept.saved != 2 {
+		t.Fatalf("calls %d, saved %d", source.calls.Load(), kept.saved)
+	}
+}

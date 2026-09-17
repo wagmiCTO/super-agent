@@ -2,6 +2,7 @@ package platform
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -23,9 +24,28 @@ type MarketContext struct {
 	ttl    time.Duration
 	log    *slog.Logger
 	now    func() time.Time
+	// store, when set, keeps the last card per market across restarts:
+	// a deploy must not cost a credit per market to learn what the
+	// process before it already knew.
+	store CardStore
 
 	mu    sync.Mutex
 	cards map[string]*cardEntry
+}
+
+// CardStore keeps the last card fetched for a market, as JSON, with when
+// it was fetched. The platform's store implements it.
+type CardStore interface {
+	SaveMarketCard(ctx context.Context, symbol string, card []byte, fetchedAt time.Time) error
+	MarketCard(ctx context.Context, symbol string) (card []byte, fetchedAt time.Time, ok bool, err error)
+}
+
+// UseStore makes cards outlive the process: the last one kept for a market
+// is served until it is older than the TTL, and every fresh one is kept.
+func (m *MarketContext) UseStore(st CardStore) {
+	m.mu.Lock()
+	m.store = st
+	m.mu.Unlock()
 }
 
 type cardEntry struct {
@@ -90,9 +110,11 @@ type Trader struct {
 	SoldUSD   float64
 }
 
-// DefaultContextTTL keeps three Nansen calls per market per refresh
-// within a free plan's daily credits when polled all day.
-const DefaultContextTTL = 4 * time.Hour
+// DefaultContextTTL is a day: the card is built from Nansen's 24-hour
+// windows (the screener's volume and flow, who bought and sold over the
+// last day), so a fresher read mostly repeats the last one, and credits
+// are what the plan meters. Three calls per market per day.
+const DefaultContextTTL = 24 * time.Hour
 
 // contextRetry is how long a failed refresh with no card to fall back on
 // is remembered before the source is asked again.
@@ -152,18 +174,40 @@ func (m *MarketContext) Card(ctx context.Context, symbol string) (Card, error) {
 			}
 		}
 		if e == nil {
-			e = &cardEntry{}
-			m.cards[symbol] = e
+			// Nothing in memory yet: what the process before this one kept
+			// is the first thing to try, and is judged by the same TTL.
+			st := m.store
+			m.mu.Unlock()
+			kept, at, ok := m.restore(ctx, st, symbol)
+			m.mu.Lock()
+			if m.cards[symbol] == nil {
+				e = &cardEntry{}
+				if ok {
+					e.card, e.fetched = kept, at
+				}
+				m.cards[symbol] = e
+			}
+			m.mu.Unlock()
+			continue
 		}
 		e.inflight = make(chan struct{})
+		st := m.store
 		m.mu.Unlock()
 
 		card, err := m.fetch(ctx, symbol, ref)
+		fetched := m.now()
+		if err == nil && st != nil {
+			if raw, jerr := json.Marshal(card); jerr == nil {
+				if serr := st.SaveMarketCard(context.WithoutCancel(ctx), symbol, raw, fetched); serr != nil {
+					m.log.Warn("market context not kept", "symbol", symbol, "err", serr)
+				}
+			}
+		}
 
 		m.mu.Lock()
 		close(e.inflight)
 		e.inflight = nil
-		e.fetched = m.now()
+		e.fetched = fetched
 		if err == nil {
 			e.card, e.err = card, nil
 		} else {
@@ -183,6 +227,29 @@ func (m *MarketContext) Card(ctx context.Context, symbol string) (Card, error) {
 		}
 		return out, nil
 	}
+}
+
+// restore reads the card the store kept for a market, if any. A card that
+// cannot be read is treated as none: the source is asked instead.
+func (m *MarketContext) restore(ctx context.Context, st CardStore, symbol string) (Card, time.Time, bool) {
+	if st == nil {
+		return Card{}, time.Time{}, false
+	}
+	raw, at, ok, err := st.MarketCard(ctx, symbol)
+	if err != nil {
+		m.log.Warn("market context not restored", "symbol", symbol, "err", err)
+		return Card{}, time.Time{}, false
+	}
+	if !ok {
+		return Card{}, time.Time{}, false
+	}
+	var card Card
+	if err := json.Unmarshal(raw, &card); err != nil || card.Symbol == "" {
+		m.log.Warn("market context kept in a shape this build cannot read", "symbol", symbol, "err", err)
+		return Card{}, time.Time{}, false
+	}
+	m.log.Info("market context restored", "symbol", symbol, "fetched_at", at)
+	return card, at, true
 }
 
 func (m *MarketContext) fetch(ctx context.Context, symbol string, ref TokenRef) (Card, error) {

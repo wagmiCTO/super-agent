@@ -83,6 +83,27 @@ type CloseRequest struct {
 	Symbol string
 }
 
+// AmendRequest changes a running position's exits without touching the
+// position itself: the stop, the target, and how long it has left. A set
+// pointer replaces that exit (zero disarms it); nil leaves it as it is.
+type AmendRequest struct {
+	Symbol     string
+	MaxLoss    *fixed.D
+	TakeProfit *fixed.D
+	// Extend pushes the horizon this much further out; a position without
+	// one gets one this long from now. Zero leaves the timer alone.
+	Extend time.Duration
+}
+
+// Amended is a position's exits as they stand after an amendment.
+type Amended struct {
+	Symbol string
+	// ClosesAt is zero while no horizon is armed.
+	ClosesAt   time.Time
+	MaxLoss    fixed.D
+	TakeProfit fixed.D
+}
+
 // Service is the trading core. One instance serves one exchange account; the
 // per-user layer arrives with the account layer and sits above this.
 type Service struct {
@@ -554,6 +575,92 @@ const (
 	horizonCloseTimeout  = 30 * time.Second
 	horizonCloseRetry    = 5 * time.Second
 )
+
+// Amend re-arms a running position's exits. Nothing is placed at the
+// venue: the stop and the target are the platform's own watch on the
+// venue's mark, and the horizon is the platform's timer, so an amendment
+// is the same guards armed again with the new numbers. It goes through no
+// policy check because it opens nothing; the exits it sets are the ones
+// every open already gets.
+func (s *Service) Amend(ctx context.Context, req AmendRequest) (Amended, error) {
+	symbol := strings.ToUpper(strings.TrimSpace(req.Symbol))
+	if symbol == "" {
+		return Amended{}, fmt.Errorf("%w: symbol is required", ErrInvalid)
+	}
+	if req.MaxLoss != nil && (req.MaxLoss.IsNeg() || req.MaxLoss.Cmp(fixed.FromInt(1)) > 0) {
+		return Amended{}, fmt.Errorf("%w: max_loss must be between 0 and 1", ErrInvalid)
+	}
+	if req.TakeProfit != nil && req.TakeProfit.IsNeg() {
+		return Amended{}, fmt.Errorf("%w: take_profit must not be negative", ErrInvalid)
+	}
+	if req.Extend < 0 {
+		return Amended{}, fmt.Errorf("%w: extend must not be negative", ErrInvalid)
+	}
+	positions, err := s.venue.Positions(ctx)
+	if err != nil {
+		return Amended{}, err
+	}
+	var pos *venue.Position
+	for i := range positions {
+		if positions[i].Symbol == symbol {
+			pos = &positions[i]
+			break
+		}
+	}
+	if pos == nil {
+		return Amended{}, fmt.Errorf("%w in %s", ErrNoPosition, symbol)
+	}
+
+	// The exits as they stand, with the requested ones written over them.
+	current, _ := s.stopFor(symbol)
+	maxLoss, takeProfit := current.maxLoss, current.takeProfit
+	if req.MaxLoss != nil {
+		maxLoss = *req.MaxLoss
+	}
+	if req.TakeProfit != nil {
+		takeProfit = *req.TakeProfit
+	}
+	closesAt, hasHorizon := s.timers.Deadline(symbol)
+	if req.Extend > 0 {
+		now := s.now()
+		from := now
+		if hasHorizon && closesAt.After(now) {
+			from = closesAt
+		}
+		closesAt = from.Add(req.Extend)
+		if left := closesAt.Sub(now); left > strategy.MaxHorizon {
+			return Amended{}, fmt.Errorf("%w: the position would run %s from now; the most is %s", ErrInvalid, left.Round(time.Minute), strategy.MaxHorizon)
+		}
+		s.timers.Schedule(symbol, closesAt, func() { s.closeOnHorizon(symbol) })
+		hasHorizon = true
+	}
+	if maxLoss.IsPos() || takeProfit.IsPos() {
+		s.armStop(symbol, maxLoss, takeProfit)
+	} else {
+		s.disarmStop(symbol)
+	}
+	if s.store != nil {
+		var err error
+		if hasHorizon || maxLoss.IsPos() || takeProfit.IsPos() {
+			h := store.Horizon{Account: s.account, Symbol: symbol, MaxLoss: maxLoss, TakeProfit: takeProfit}
+			if hasHorizon {
+				h.ClosesAt = closesAt
+			}
+			err = s.store.SaveHorizon(ctx, h)
+		} else {
+			err = s.store.DeleteHorizon(ctx, s.account, symbol)
+		}
+		if err != nil {
+			s.log.Warn("amendment not persisted", "symbol", symbol, "err", err)
+		}
+	}
+	out := Amended{Symbol: symbol, MaxLoss: maxLoss, TakeProfit: takeProfit}
+	if hasHorizon {
+		out.ClosesAt = closesAt
+	}
+	s.log.Info("amended", "symbol", symbol, "max_loss", maxLoss, "take_profit", takeProfit, "closes_at", out.ClosesAt, "extend", req.Extend)
+	return out, nil
+}
 
 // Close flattens the open position in a market. It sizes the order from the
 // venue's position, not from anything the caller sends: a close that could be

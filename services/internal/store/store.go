@@ -1021,3 +1021,25 @@ func (s *Store) ReferralsOf(ctx context.Context, referrer string) ([]ReferralRow
 	}
 	return out, rows.Err()
 }
+
+// --- market context ---
+
+// SaveMarketCard keeps the last card fetched for a market, as JSON.
+func (s *Store) SaveMarketCard(ctx context.Context, symbol string, card []byte, fetchedAt time.Time) error {
+	_, err := s.pool.Exec(ctx, `insert into market_cards (symbol, card, fetched_at) values ($1, $2, $3)
+		on conflict (symbol) do update set card = excluded.card, fetched_at = excluded.fetched_at`,
+		strings.ToUpper(symbol), string(card), fetchedAt)
+	return err
+}
+
+// MarketCard returns the last card kept for a market; ok is false when none was.
+func (s *Store) MarketCard(ctx context.Context, symbol string) (card []byte, fetchedAt time.Time, ok bool, err error) {
+	err = s.pool.QueryRow(ctx, `select card::text, fetched_at from market_cards where symbol = $1`, strings.ToUpper(symbol)).Scan(&card, &fetchedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, time.Time{}, false, nil
+	}
+	if err != nil {
+		return nil, time.Time{}, false, err
+	}
+	return card, fetchedAt, true, nil
+}

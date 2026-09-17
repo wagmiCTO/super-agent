@@ -88,3 +88,32 @@ func TestRSIFlatIsFifty(t *testing.T) {
 		t.Fatalf("flat: value=%s window=%v", st.Value, st.Window)
 	}
 }
+
+// The window outlives its three bars while the index stays in the zone:
+// it runs to the close of the bar now forming, then on again. Once the
+// index leaves the zone the window ends with its three bars.
+func TestRSIWindowStaysWhileInZone(t *testing.T) {
+	r, _ := NewRSI(rsiCfg())
+	end := t0.Add(8 * time.Minute)
+	r.Seed(bars(10, 11, 12, 13, 9, 6, 3, 2), end) // enters oversold, then stays
+	st := r.State(end)
+	if st.Window == nil || st.Window.Side != venue.Long {
+		t.Fatalf("window = %+v", st.Window)
+	}
+	// Four bars after the entry the plain window would be over; the last
+	// closed bar (open at end-1m) is still oversold, so the offer runs to
+	// the close of the forming bar: end+1m.
+	if want := end.Add(time.Minute); !st.Window.ExpiresAt.Equal(want) && st.Window.ExpiresAt.Before(want) {
+		t.Fatalf("expires %v, want at least %v", st.Window.ExpiresAt, want)
+	}
+	if st := r.State(end.Add(59 * time.Second)); st.Window == nil {
+		t.Fatal("window closed while the index was still in the zone")
+	}
+	// The next bar closes out of the zone: the offer is only its three bars,
+	// long gone.
+	up := fixed.MustParse("4")
+	r.Apply(venue.Candle{Open: end, Period: time.Minute, O: up, H: up, L: up, C: up}, end.Add(time.Minute))
+	if st := r.State(end.Add(time.Minute)); st.Window != nil {
+		t.Fatalf("window still open after leaving the zone: %+v", st.Window)
+	}
+}

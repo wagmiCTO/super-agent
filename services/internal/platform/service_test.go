@@ -515,3 +515,70 @@ func TestTakeProfitClosesAWinningPosition(t *testing.T) {
 		t.Fatal("negative take_profit accepted")
 	}
 }
+
+// An amendment re-arms the exits of a running position: the horizon is
+// pushed out from where it stood, the stop and the target are replaced
+// only where the request names them, and nothing is placed at the venue.
+func TestAmendRearmsTheExits(t *testing.T) {
+	fv := &fakeVenue{}
+	svc, _ := newService(t, fv)
+	fa := &fakeAfter{}
+	now := time.Date(2026, 9, 18, 12, 0, 0, 0, time.UTC)
+	svc.timers = strategy.NewTimersWith(func() time.Time { return now }, fa.after)
+	svc.now = func() time.Time { return now }
+
+	_, err := svc.Open(context.Background(), OpenRequest{Symbol: "MON", Side: venue.Long, Notional: fixed.FromInt(10), Leverage: fixed.FromInt(1),
+		Rules: strategy.Rules{Horizon: 15 * time.Minute}, MaxLoss: fixed.MustParse("0.5")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	placed := len(fv.placed)
+
+	tp := fixed.MustParse("0.25")
+	out, err := svc.Amend(context.Background(), AmendRequest{Symbol: "MON", TakeProfit: &tp, Extend: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !out.ClosesAt.Equal(now.Add(75 * time.Minute)) {
+		t.Fatalf("closes_at = %v, want +75m", out.ClosesAt)
+	}
+	if out.MaxLoss != fixed.MustParse("0.5") || out.TakeProfit != tp {
+		t.Fatalf("exits = stop %s, target %s", out.MaxLoss, out.TakeProfit)
+	}
+	if !fa.calls[0].stopped || len(fa.calls) != 2 {
+		t.Fatalf("old timer stopped=%v, timers=%d", fa.calls[0].stopped, len(fa.calls))
+	}
+	if len(fv.placed) != placed {
+		t.Fatal("an amendment placed an order")
+	}
+	st, _ := svc.State(context.Background())
+	if at := st.Deadlines["MON"]; !at.Equal(now.Add(75 * time.Minute)) {
+		t.Fatalf("state deadline = %v", at)
+	}
+	if st.Stops["MON"] != fixed.MustParse("0.5") || st.TakeProfits["MON"] != tp {
+		t.Fatalf("state exits = %v / %v", st.Stops, st.TakeProfits)
+	}
+
+	// Disarming the stop with "0" leaves the target alone.
+	zero := fixed.D(0)
+	out, err = svc.Amend(context.Background(), AmendRequest{Symbol: "MON", MaxLoss: &zero})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.MaxLoss.IsPos() || out.TakeProfit != tp {
+		t.Fatalf("after disarming the stop: %+v", out)
+	}
+
+	// Past a day from now is refused, and the timer is left where it was.
+	if _, err := svc.Amend(context.Background(), AmendRequest{Symbol: "MON", Extend: 24 * time.Hour}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("err = %v", err)
+	}
+	if len(fa.calls) != 2 {
+		t.Fatalf("a refused extension rescheduled: %d timers", len(fa.calls))
+	}
+
+	// No position, nothing to amend.
+	if _, err := svc.Amend(context.Background(), AmendRequest{Symbol: "ETH", Extend: time.Minute}); !errors.Is(err, ErrNoPosition) {
+		t.Fatalf("err = %v", err)
+	}
+}
