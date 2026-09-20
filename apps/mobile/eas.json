@@ -29,7 +29,7 @@
   },
   "submit": {
     "production": {
-      "ios": { "appleTeamId": "9Q73U33Y7D" }
+      "ios": { "appleTeamId": "9Q73U33Y7D", "ascAppId": "6814427558" }
     }
   }
 }
