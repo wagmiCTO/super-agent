@@ -57,22 +57,50 @@ export function Row({ label, value, tone }: { label: string; value: string; tone
   );
 }
 
-export function Badge({ children, strong }: { children: string; strong?: boolean }) {
+/**
+ * A badge states a fact; with `onPress` it also offers the way to change it.
+ *
+ * The outlined chip reads as a button whether or not it is one, so a badge
+ * that names something the user can act on — SIGN IN — must actually be
+ * pressable. One that names a state they cannot change stays a plain view.
+ */
+export function Badge({
+  children,
+  strong,
+  onPress,
+  testID,
+  accessibilityLabel,
+}: {
+  children: string;
+  strong?: boolean;
+  onPress?: () => void;
+  testID?: string;
+  accessibilityLabel?: string;
+}) {
   const theme = useTheme();
+  const base: ViewStyle = {
+    paddingVertical: theme.space.s1,
+    paddingHorizontal: theme.space.s2,
+    borderRadius: theme.radius.rSm,
+    borderWidth: theme.size.bw,
+    borderColor: strong ? theme.color.accent : theme.color.line,
+    backgroundColor: strong ? theme.color.accent : 'transparent',
+  };
+  // The design's badge is a size up from the caps label above a block.
+  const label = (
+    <Text variant="caps" style={{ fontSize: theme.type.tXs, lineHeight: theme.type.tXs * 1.3, color: strong ? theme.color.onAccent : theme.color.text2 }}>{children}</Text>
+  );
+  if (!onPress) return <View style={base} testID={testID}>{label}</View>;
   return (
-    <View
-      style={{
-        paddingVertical: theme.space.s1,
-        paddingHorizontal: theme.space.s2,
-        borderRadius: theme.radius.rSm,
-        borderWidth: theme.size.bw,
-        borderColor: strong ? theme.color.accent : theme.color.line,
-        backgroundColor: strong ? theme.color.accent : 'transparent',
-      }}
+    <Pressable
+      testID={testID}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? children}
+      onPress={onPress}
+      style={({ pressed }) => [base, { opacity: pressed ? 0.7 : 1 }]}
     >
-      {/* The design's badge is a size up from the caps label above a block. */}
-      <Text variant="caps" style={{ fontSize: theme.type.tXs, lineHeight: theme.type.tXs * 1.3, color: strong ? theme.color.onAccent : theme.color.text2 }}>{children}</Text>
-    </View>
+      {label}
+    </Pressable>
   );
 }
 

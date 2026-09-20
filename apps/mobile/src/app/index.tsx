@@ -138,9 +138,19 @@ function LobbyScreen() {
           <NetworkBadge onPress={() => setMenu((m) => !m)} />
           <View style={{ flex: 1 }} />
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s2 }}>
-            <Text variant="num" numberOfLines={1} style={{ fontSize: theme.type.tXs, color: theme.color.muted, flexShrink: 1 }} testID="balance">
-              {t.state ? `${equity(t.state).toFixed(2)} AUSD` : t.offline ? 'offline' : '…'}
-            </Text>
+            {/* A remembered account is locked: the seed lives for the tab, the
+                address outlives it. There is no balance to show and nothing
+                here works until the passkey is asked for, so the slot the
+                balance would take offers the way in. */}
+            {account.state.status === 'remembered' ? (
+              <Badge testID="sign-in-badge" accessibilityLabel="Sign in with your passkey" onPress={() => router.push('/passkey')}>
+                SIGN IN
+              </Badge>
+            ) : (
+              <Text variant="num" numberOfLines={1} style={{ fontSize: theme.type.tXs, color: theme.color.muted, flexShrink: 1 }} testID="balance">
+                {t.state ? `${equity(t.state).toFixed(2)} AUSD` : t.offline ? 'offline' : '…'}
+              </Text>
+            )}
             <Pressable onPress={() => router.push('/risk')} testID="risk-dial" accessibilityRole="button" accessibilityLabel="Risk and performance">
               <RiskDial percent={risk} />
             </Pressable>

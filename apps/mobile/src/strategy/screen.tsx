@@ -22,6 +22,7 @@ import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, PanResponder, Pressable, ScrollView, Vibration, View, useWindowDimensions } from 'react-native';
 
+import { useAccount } from '@/account/useAccount';
 import { api, type Position, type State, type Trade } from '@/api/client';
 import { INTERVALS, INTERVAL_LABELS, type ChartPosition, type ChartTick, type Interval } from '@/chart/page';
 import { Pager, slice } from '@/ui/pager';
@@ -397,6 +398,7 @@ export function StrategyScreen({ id }: { id: StrategyId }) {
 /** ‹ Lobby · the strategy · where the money is · the day's risk · the lesson. */
 function Header({ id, state, offline, locked, symbol }: { id: StrategyId; state: State | null; offline: boolean; locked: boolean; symbol: string | null }) {
   const theme = useTheme();
+  const signedIn = useAccount().state.status === 'unlocked';
   // The dial is the wallet's, not this strategy's: a strategy the wallet
   // has no key for has no state, and its dial must not read calm for it.
   const report = useRiskReport(true);
@@ -412,7 +414,25 @@ function Header({ id, state, offline, locked, symbol }: { id: StrategyId; state:
       </Text>
       {/* The balance belongs to the lobby: here the header is the way back,
           what you are trading, and what the day has left in it. */}
-      <Badge>{offline ? 'OFFLINE' : locked ? 'SIGN IN' : 'TESTNET'}</Badge>
+      {/* The locked badge is an instruction, so it is also the way to carry it
+          out. Which instruction depends on what is missing: a wallet the app
+          cannot sign for needs the passkey, one the exchange has no key for
+          needs the account opened. Both were a dead chip that read as a
+          button — every request here is answered for nobody until one of them
+          is done. */}
+      {!offline && locked ? (
+        signedIn ? (
+          <Badge testID="open-account-badge" accessibilityLabel="Open your account on the exchange" onPress={() => router.push('/enable')}>
+            OPEN
+          </Badge>
+        ) : (
+          <Badge testID="sign-in-badge" accessibilityLabel="Sign in with your passkey" onPress={() => router.push('/passkey')}>
+            SIGN IN
+          </Badge>
+        )
+      ) : (
+        <Badge>{offline ? 'OFFLINE' : 'TESTNET'}</Badge>
+      )}
       <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: theme.space.s2 }}>
         <Pressable onPress={() => router.push('/risk')} testID="risk-dial" accessibilityRole="button" accessibilityLabel="Risk and performance">
           <RiskDial percent={percent} />

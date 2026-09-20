@@ -25,7 +25,13 @@ export default function PasskeyScreen() {
   const top = useTop(32);
   const { state, error, create, signIn } = useAccount();
   const { markReturning } = useOnboarding();
-  const signedIn = state.status === 'unlocked' || state.status === 'remembered';
+  // Only an unlocked account is signed in. A remembered one is an account on
+  // this device whose key is gone with the tab — the session holds the seed,
+  // localStorage only the address — and it used to count as signed in here,
+  // so the screen handed it straight back to the app. Every request then went
+  // out for nobody, the header read SIGN IN, and there was nowhere to do it.
+  const signedIn = state.status === 'unlocked';
+  const remembered = state.status === 'remembered' ? state.stored : null;
   // Which button was pressed, so the effect below can tell a new account from
   // one that already existed — and so the wait says which of the two is
   // happening. A ref alone would not repaint the screen.
@@ -73,11 +79,15 @@ export default function PasskeyScreen() {
         <Mark size={64} />
 
         <View style={{ gap: theme.space.s3 }}>
-          <Text variant="h1">Your account is a passkey</Text>
+          <Text variant="h1">{remembered ? 'Welcome back' : 'Your account is a passkey'}</Text>
           <Text variant="body">
-            No password, no seed phrase. The key is created on this device and Face ID unlocks it. Nobody else,
-            including us, can withdraw.
+            {remembered
+              ? 'Your account is on this device. The key itself is never stored — unlock it with the passkey to trade again.'
+              : 'No password, no seed phrase. The key is created on this device and Face ID unlocks it. Nobody else, including us, can withdraw.'}
           </Text>
+          {remembered ? (
+            <Text variant="small" testID="passkey-remembered">{`${remembered.address.slice(0, 6)}…${remembered.address.slice(-4)}`}</Text>
+          ) : null}
         </View>
 
         {error ? (
@@ -88,16 +98,35 @@ export default function PasskeyScreen() {
 
         <View style={{ flex: 1 }} />
 
+        {/* A device that already holds an account is here to unlock it, so
+            that is the button; creating another one is the way out of a
+            passkey that cannot be found. */}
         <View style={{ gap: theme.space.s3 }}>
-          <Button testID="passkey-create" title="Create account" onPress={() => start('create')} />
-          <Text
-            testID="passkey-signin"
-            variant="small"
-            style={{ textAlign: 'center', paddingVertical: theme.space.s2 }}
-            onPress={() => start('signIn')}
-          >
-            I already have one · Sign in
-          </Text>
+          {remembered ? (
+            <>
+              <Button testID="passkey-signin-primary" title="Sign in" onPress={() => start('signIn')} />
+              <Text
+                testID="passkey-create-other"
+                variant="small"
+                style={{ textAlign: 'center', paddingVertical: theme.space.s2 }}
+                onPress={() => start('create')}
+              >
+                Use a different account
+              </Text>
+            </>
+          ) : (
+            <>
+              <Button testID="passkey-create" title="Create account" onPress={() => start('create')} />
+              <Text
+                testID="passkey-signin"
+                variant="small"
+                style={{ textAlign: 'center', paddingVertical: theme.space.s2 }}
+                onPress={() => start('signIn')}
+              >
+                I already have one · Sign in
+              </Text>
+            </>
+          )}
         </View>
       </View>
     </Screen>
