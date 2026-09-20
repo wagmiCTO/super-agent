@@ -4,7 +4,7 @@
     "target": {
       "namespace": "android_app",
       "package_name": "work.inflight.taptrader",
-      "sha256_cert_fingerprints": ["SHA256_FINGERPRINT"]
+      "sha256_cert_fingerprints": ["F5:E9:49:7B:0F:14:87:68:ED:1D:9B:9F:17:D1:15:35:0E:4F:0E:69:2A:2C:92:91:1A:73:9B:7C:F2:BB:C5:BF"]
     }
   }
 ]
