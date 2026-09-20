@@ -40,3 +40,16 @@ export const PALETTE = {
   terminal: { ink: '#E4F3F0', acc: '#50D2C1', bg: '#060F0D', onAcc: '#05201C' },
   paper: { ink: '#0E100F', acc: '#836EF9', bg: '#FBFAF9', onAcc: '#FFFFFF' },
 };
+
+/**
+ * Two grounds the mark has to hold that are not skins.
+ *
+ * `paperOnDark` is the shipping brand under a dark system appearance: the same
+ * purple, the structure inverted, because a black bull on a black ground is no
+ * bull at all. `tinted` is the greyscale master iOS recolours itself — there
+ * the luminance is the drawing, so the accent is only a step down from white.
+ */
+export const GROUNDS = {
+  paperOnDark: { ink: '#FBFAF9', acc: '#836EF9', bg: '#0E100F' },
+  tinted: { ink: '#FFFFFF', acc: '#B4B4B4', bg: '#000000' },
+};

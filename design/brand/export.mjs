@@ -14,13 +14,14 @@ import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '../../apps/mobile/node_modules/playwright-core/index.mjs';
-import { mark, svg, PALETTE } from './mark.mjs';
+import { mark, svg, PALETTE, GROUNDS } from './mark.mjs';
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), 'logo');
 rmSync(OUT, { recursive: true, force: true });
-for (const d of ['svg', 'png', 'app-icon', 'favicon']) mkdirSync(join(OUT, d), { recursive: true });
+for (const d of ['svg', 'png', 'app-icon', 'favicon', 'app']) mkdirSync(join(OUT, d), { recursive: true });
 
 const T = PALETTE.terminal, P = PALETTE.paper;
+const D = GROUNDS.paperOnDark, G = GROUNDS.tinted;
 
 // ------------------------------------------------------------------- vectors
 // The masters. `currentColor` makes the mono file inherit whatever colour the
@@ -47,10 +48,20 @@ const page = (inner, w, h, bg = 'transparent') => `<!doctype html><meta charset=
 const box = (ink, acc, size) =>
   `<svg viewBox="0 0 64 64" width="${size}" height="${size}" style="display:block">${mark(ink, acc)}</svg>`;
 
-/** The app icon: the mark on its brand ground, padded like a real icon. */
-const iconPage = (bg, ink, acc, size) =>
+/**
+ * The app icon: the mark on its brand ground.
+ *
+ * `fill` is how much of the square the drawing spans. A home screen already
+ * pads every icon by rounding it, so an icon that pads itself again reads as
+ * a small logo floating in a tile; 0.84 is the mark filling its own tile.
+ */
+const iconPage = (bg, ink, acc, size, fill = 0.84) =>
   page(`<div style="width:${size}px;height:${size}px;background:${bg};display:flex;align-items:center;justify-content:center">
-          ${box(ink, acc, Math.round(size * 0.68))}</div>`, size, size, 'transparent');
+          ${box(ink, acc, Math.round(size * fill))}</div>`, size, size, 'transparent');
+
+/** The mark alone on nothing, at a given share of the square. */
+const barePage = (ink, acc, size, fill) =>
+  page(box(ink, acc, Math.round(size * fill)), size, size, 'transparent');
 
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ deviceScaleFactor: 1 });
@@ -104,6 +115,34 @@ for (const [skin, pal] of [['terminal', T], ['paper', P]]) {
     written.push(f);
     (favBuffers[skin] ??= {})[s] = f;
   }
+}
+
+// ------------------------------------------------------- the app's own icons
+// Exactly the files apps/mobile/assets/images/ holds, under the names
+// app.config.ts asks for, so the app never carries a hand-made icon. They are
+// copied into the app at the end of this script.
+//
+// The Android foreground keeps inside the adaptive icon's safe circle — two
+// thirds of the layer — because every launcher masks the rest away.
+
+const APP = [
+  ['icon.png', () => iconPage(P.bg, P.ink, P.acc, 1024), 1024],
+  ['icon-dark.png', () => iconPage(D.bg, D.ink, D.acc, 1024), 1024],
+  ['icon-tinted.png', () => iconPage(G.bg, G.ink, G.acc, 1024), 1024],
+  ['android-icon-foreground.png', () => barePage(P.ink, P.acc, 1024, 0.78), 1024],
+  ['android-icon-monochrome.png', () => barePage('#000000', '#000000', 1024, 0.78), 1024],
+  ['splash-icon.png', () => barePage(P.ink, P.acc, 512, 1), 512],
+  ['splash-icon-dark.png', () => barePage(D.ink, D.acc, 512, 1), 512],
+  ['favicon.png', () => iconPage(P.bg, P.ink, P.acc, 96), 96],
+];
+const transparentApp = new Set([
+  'android-icon-foreground.png', 'android-icon-monochrome.png',
+  'splash-icon.png', 'splash-icon-dark.png',
+]);
+for (const [name, html, s] of APP) {
+  const f = join(OUT, 'app', name);
+  await shoot(html(), s, s, f, transparentApp.has(name));
+  written.push(f);
 }
 
 await browser.close();
@@ -161,6 +200,7 @@ The mark is a bull in shades inside a gun barrel, which is also a scope.
 | Store listing | \`app-icon/app-icon-<skin>-store-1024.png\` |
 | Browser tab | \`favicon/favicon-<skin>.ico\` plus the PNGs beside it |
 | Raster at a known size | \`png/mark-<skin|black|white>-<size>.png\` |
+| The mobile app | \`app/\` — copied into \`apps/mobile/assets/images/\` by this script |
 
 \`<skin>\` is \`terminal\` (dark, mint) or \`paper\` (off-white, purple) — whichever
 theme the app ships in. See \`design/path/tradeagent-proto.html\` for both.
@@ -173,4 +213,13 @@ theme the app ships in. See \`design/path/tradeagent-proto.html\` for both.
 - The accent may be dropped (the one-colour files), the structure may not.
 `);
 
+// -------------------------------------------------- into the app
+// The mobile app cannot reference an asset outside its own tree, so the set
+// above is copied in. It is the only place an icon leaves design/.
+
+const APP_ASSETS = new URL('../../apps/mobile/assets/images/', import.meta.url);
+const { copyFileSync } = await import('node:fs');
+for (const [name] of APP) copyFileSync(join(OUT, 'app', name), fileURLToPath(new URL(name, APP_ASSETS)));
+
 console.log(`${written.length} raster files + ${Object.keys(VECTORS).length} vectors + README`);
+console.log(`${APP.length} app icons copied into apps/mobile/assets/images/`);

@@ -18,6 +18,7 @@ The mark is a bull in shades inside a gun barrel, which is also a scope.
 | Store listing | `app-icon/app-icon-<skin>-store-1024.png` |
 | Browser tab | `favicon/favicon-<skin>.ico` plus the PNGs beside it |
 | Raster at a known size | `png/mark-<skin|black|white>-<size>.png` |
+| The mobile app | `app/` — copied into `apps/mobile/assets/images/` by this script |
 
 `<skin>` is `terminal` (dark, mint) or `paper` (off-white, purple) — whichever
 theme the app ships in. See `design/path/tradeagent-proto.html` for both.

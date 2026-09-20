@@ -3,7 +3,7 @@
     "relation": ["delegate_permission/common.get_login_creds"],
     "target": {
       "namespace": "android_app",
-      "package_name": "app.tradeagent.mobile",
+      "package_name": "work.inflight.taptrader",
       "sha256_cert_fingerprints": ["SHA256_FINGERPRINT"]
     }
   }
