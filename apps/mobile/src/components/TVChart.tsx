@@ -68,6 +68,11 @@ export function TVChart({ symbol, theme, colours, chartType, interval, trend, av
         javaScriptEnabled
         domStorageEnabled
         allowsInlineMediaPlayback
+        // The charting library starts its workers from blob: URLs it makes
+        // itself. A URL outside this list is not loaded but handed to the OS,
+        // so without blob: the workers never start and the pane stays empty —
+        // which is why the chart drew in Safari and not here.
+        originWhitelist={['https://*', 'http://*', 'blob:*', 'data:*', 'about:*']}
         style={{ backgroundColor: colours.background }}
       />
     </View>
