@@ -43,6 +43,10 @@ const config: ExpoConfig = {
   },
   android: {
     package: applicationId,
+    // Firebase names the app to Google's push service. The file is not in the
+    // repository — this one is public — so EAS hands it to the build as a file
+    // variable; without it the app builds and simply never asks for a token.
+    ...(process.env.GOOGLE_SERVICES_JSON ? { googleServicesFile: process.env.GOOGLE_SERVICES_JSON } : {}),
     // The foreground stays inside the adaptive icon's safe circle, so the
     // ground is a flat brand colour rather than a second image to mask.
     adaptiveIcon: {

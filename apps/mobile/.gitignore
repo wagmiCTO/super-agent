@@ -55,3 +55,7 @@ playwright-report/
 
 # TradingView Charting Library: licensed, never committed. Copy it in with scripts/link-charting-library.mjs.
 public/static/charting_library/
+
+# Firebase names the app to Google's push service; it is handed to builds
+# as an EAS file variable rather than kept here, because this repo is public.
+google-services.json
