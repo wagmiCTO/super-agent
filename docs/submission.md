@@ -59,7 +59,6 @@ three seconds.
 | Agora — mobile trading app | Mera passkey accounts, AUSD collateral, Perpl execution, the whole loop on a phone | `apps/mobile`, `services/internal/venue/perpl` |
 | Perpl — best use of the API | Enrollment with builder code, trading over REST+WS, reconciliation, horizon exits, fee-aware strategy parameters | `services/internal/venue/perpl`, `services/internal/platform` |
 | Mera — best UX / one passkey, many keys | Passkey → wallet + request key + per-strategy exchange keys; signed requests; no seed, no extension | `apps/mobile/src/account/derive.ts`, ADR 0005 |
-| Perpl — analytics / risk tool | Stops per tap, per-strategy limits and loss budgets, the risk screen (open risk, drawdown, liquidation distance, fee vs volatility), close-everything | `services/internal/platform/risk.go`, `apps/mobile/src/app/risk.tsx` |
 | Nansen | The on-chain context card on every strategy screen | `services/internal/insight`, `apps/mobile/src/components/context.tsx` |
 | Aurora Intents | Any-chain deposits into the wallet | `services/internal/deposit`, `apps/mobile/src/app/deposit.tsx` |
 | Envio | Prize-pool indexer, hosted; the lobby's past weeks | `indexers/prize-pool` |
@@ -68,7 +67,7 @@ three seconds.
 
 - App: https://inflight.work
 - Platform API: https://platform-production-bf25.up.railway.app (OpenAPI in `api/openapi.yaml`)
-- Prize pool: `0x19952068Ce2D25C672d71cD48775A9f43438f4E6` on Monad testnet
+- Prize pool: `0x1cC7f88b21E0158e70323aad98Dea4dC20b380aC` on Monad testnet
 - Indexer: https://indexer.dev.hyperindex.xyz/efd72aa/v1/graphql
 - Repository: https://github.com/wagmiCTO/super-agent
 

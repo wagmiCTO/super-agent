@@ -1,7 +1,8 @@
 # Traction
 
-*Last true: 2026-09-21. Nothing below is filled in yet; each row names where
-its number comes from, so filling it is a query and not a judgement call.*
+*Last true: 2026-09-22. Rows that carry a number were read that day; a row
+that is still blank names where its number comes from, so filling it is a
+query and not a judgement call.*
 
 Everything here is **testnet**. The trades are real trades — signed, routed,
 filled and settled on Perpl — but the money is play money. A number on this
@@ -12,9 +13,9 @@ whether they made a living from it.
 
 | Measure | Value | Source |
 |---|---|---|
-| Wallets that opened at least one position | — | platform trade journal |
-| Closed trades | — | platform trade journal |
-| Volume, AUSD | — | platform trade journal |
+| Wallets that opened at least one position | 14 | platform trade journal |
+| Closed trades | 145 | platform trade journal |
+| Volume, AUSD | 10,945.82 | platform trade journal |
 | Wallets with ≥3 closed trades in a week | — | platform trade journal, grouped by week |
 | Returned the next day / the next week | — | platform trade journal, first-seen vs later |
 
@@ -32,11 +33,15 @@ whether people turn them off and trade the way they always did.
 
 ## Result by strategy
 
-| Strategy | Trades | Net result | Source |
-|---|---|---|---|
-| Direction | — | — | platform trade journal |
-| MA Cross | — | — | platform trade journal |
-| RSI Bounce | — | — | platform trade journal |
+| Strategy | Trades | Wallets | Volume, AUSD | Net result, AUSD | Source |
+|---|---|---|---|---|---|
+| Direction | 114 | 14 | 9,472.34 | −42.74 | platform trade journal |
+| MA Cross | 20 | 7 | 962.47 | +3.33 | platform trade journal |
+| RSI Bounce | 11 | 3 | 511.01 | +2.76 | platform trade journal |
+
+Traders are net down on Direction and slightly up on the two signal
+strategies. On 145 trades that is not evidence of either; it is here because
+leaving it out would make the page a sales sheet.
 
 ## Prize pools
 
