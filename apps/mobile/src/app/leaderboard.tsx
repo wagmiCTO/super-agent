@@ -31,6 +31,7 @@ import { Pager } from '@/ui/pager';
 import { back } from '@/ui/stub';
 import { Card, Chip, Screen } from '@/ui/surface';
 import { Text, grouped, money } from '@/ui/text';
+import { useTop } from '@/ui/inset';
 import { useTheme } from '@/theme';
 
 type Period = 'week' | 'all';
@@ -44,6 +45,7 @@ type Row = { wallet: string; volume: number; pnl: number; trades: number; you: b
 
 export default function LeaderboardScreen() {
   const theme = useTheme();
+  const top = useTop();
   const [period, setPeriod] = useState<Period>('week');
   const [tab, setTab] = useState<Tab>('direction');
   const lb = useLeaderboard(period);
@@ -65,7 +67,7 @@ export default function LeaderboardScreen() {
       <ScrollView
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: 52, paddingBottom: theme.space.s6, gap: theme.space.s4 }}
+        contentContainerStyle={{ paddingTop: top, paddingBottom: theme.space.s6, gap: theme.space.s4 }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s3 }}>
           <Text variant="small" numberOfLines={1} testID="lobby-link" onPress={back}>‹ Lobby</Text>

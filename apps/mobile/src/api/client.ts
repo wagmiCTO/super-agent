@@ -213,9 +213,12 @@ export const api = {
    */
   tradesPage: (strategy: string, cursor?: string, limit = PAGE_SIZE) =>
     request<TradesPage>(
-      `/v1/trades?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+      `/v1/trades?limit=${limit}${strategy ? `&strategy=${encodeURIComponent(strategy)}` : ''}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
       undefined,
-      { strategy },
+      // The header names the key that signs, not the rows that come back
+      // (ADR 0007), so it is not the filter — and a request with no filter
+      // still has to sign as something.
+      { strategy: strategy || 'direction' },
     ),
   /** One round trip of this wallet's, by id. */
   trade: (id: string, strategy: string) => request<Trade>(`/v1/trades/${encodeURIComponent(id)}`, undefined, { strategy }),

@@ -24,6 +24,7 @@ import { Pager } from '@/ui/pager';
 import { back } from '@/ui/stub';
 import { Card, Chip, Screen } from '@/ui/surface';
 import { Text, money } from '@/ui/text';
+import { useTop } from '@/ui/inset';
 import { useTheme } from '@/theme';
 
 const FILTERS: { id: string; label: string }[] = [
@@ -37,6 +38,7 @@ type Tab = 'positions' | 'orders';
 
 export default function HistoryScreen() {
   const theme = useTheme();
+  const top = useTop();
   // Not before the account layer has read the device: a request that leaves
   // without the wallet on it is answered "sign in".
   const knows = useAccount().state.status !== 'loading';
@@ -49,7 +51,7 @@ export default function HistoryScreen() {
       <ScrollView
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: 52, paddingBottom: theme.space.s6, gap: theme.space.s4 }}
+        contentContainerStyle={{ paddingTop: top, paddingBottom: theme.space.s6, gap: theme.space.s4 }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s3 }}>
           <Text variant="small" numberOfLines={1} testID="lobby-link" onPress={back}>‹ Lobby</Text>
@@ -143,11 +145,14 @@ function PositionRow({ t }: { t: Trade }) {
       onPress={t.id && !open ? () => router.push({ pathname: '/trade/[id]', params: { id: t.id!, strategy: t.strategy } }) : undefined}
     >
       <View style={{ gap: 2, flexShrink: 1 }}>
+        {/* The market and what was put on it lead the row: with the filter on
+            All every strategy is in the list, so the asset is what tells one
+            row from the next. The strategy moves under it. */}
         <Text variant="body" numberOfLines={1} style={{ fontSize: theme.type.tSm, color: theme.color.ink }}>
-          {`${STRATEGY_NAMES[t.strategy] ?? t.strategy} · ${t.side === 'long' ? 'Up' : 'Down'} @ ${trim(t.entry_price)}${t.exit_price ? ` → ${trim(t.exit_price)}` : ''}`}
+          {`${t.symbol} · ${t.side === 'long' ? 'Up' : 'Down'}${t.notional ? ` · ${money(Number(t.notional))} AUSD` : ''} @ ${trim(t.entry_price)}${t.exit_price ? ` → ${trim(t.exit_price)}` : ''}`}
         </Text>
         <Text variant="small" numberOfLines={1} style={{ fontSize: theme.type.t2xs }}>
-          {`${hm(t.opened_at)}${t.closed_at ? ` – ${hm(t.closed_at)}` : ''} · ${why(t)}`}
+          {`${STRATEGY_NAMES[t.strategy] ?? t.strategy}${t.leverage ? ` · ${trim(t.leverage)}×` : ''} · ${hm(t.opened_at)}${t.closed_at ? ` – ${hm(t.closed_at)}` : ''} · ${why(t)}`}
         </Text>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s2 }}>
@@ -259,7 +264,11 @@ function useHistory(ready: boolean, filter: string, tab: Tab) {
 
   const read = useCallback(
     async (after?: string) => {
-      const strategy = filter === 'all' ? 'direction' : filter;
+      // No filter is an empty one: the platform reads that as every strategy
+      // this wallet has traded. Naming a strategy here used to be how the
+      // request was signed rather than how it was filtered, so every chip
+      // returned the same rows.
+      const strategy = filter === 'all' ? '' : filter;
       try {
         return await api.tradesPage(strategy, after);
       } catch (e) {

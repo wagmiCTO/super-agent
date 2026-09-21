@@ -17,6 +17,7 @@ import { PositionForm, PossibleOutcomes } from '@/trading/position-form';
 import { CrossArt, DirectionIdea, DirectionShown, ReadyArt, RsiArt, RunArt } from '@/ui/lesson-art';
 import { Dots, Screen } from '@/ui/surface';
 import { Text } from '@/ui/text';
+import { useBottom, useTop } from '@/ui/inset';
 import { useTheme } from '@/theme';
 
 type StrategyId = 'direction' | 'ma-cross' | 'rsi';
@@ -51,6 +52,8 @@ const ROUTES = { direction: '/direction', 'ma-cross': '/ma-cross', rsi: '/rsi' }
 
 export default function LessonScreen() {
   const theme = useTheme();
+  const top = useTop();
+  const bottom = useBottom(theme.space.s6);
   const params = useLocalSearchParams<{ strategy?: string }>();
   const id: StrategyId = params.strategy === 'ma-cross' || params.strategy === 'rsi' ? params.strategy : 'direction';
   const steps = LESSONS[id];
@@ -99,7 +102,7 @@ export default function LessonScreen() {
 
   return (
     <Screen>
-      <View style={{ flex: 1, paddingTop: 52, paddingBottom: theme.space.s6, gap: theme.space.s4 }}>
+      <View style={{ flex: 1, paddingTop: top, paddingBottom: bottom, gap: theme.space.s4 }}>
         {setup ? (
           <>
             {/* Bounded, so the outcomes and the button below never leave the screen. */}

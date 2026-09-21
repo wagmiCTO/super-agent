@@ -17,6 +17,7 @@ import { Mark } from '@/ui/mark';
 import { APP_NAME } from '@/config';
 import { Badge, Dots, Screen } from '@/ui/surface';
 import { Text } from '@/ui/text';
+import { useBottom, useTop } from '@/ui/inset';
 import { useTheme } from '@/theme';
 
 const SLIDES = [
@@ -39,6 +40,8 @@ const SLIDES = [
 
 export default function IntroScreen() {
   const theme = useTheme();
+  const top = useTop();
+  const bottom = useBottom(theme.space.s6);
   const { markIntroSeen } = useOnboarding();
   const [at, setAt] = useState(0);
   const slide = SLIDES[at];
@@ -50,7 +53,7 @@ export default function IntroScreen() {
 
   return (
     <Screen>
-      <View style={{ flex: 1, paddingTop: 52, paddingBottom: theme.space.s6, gap: theme.space.s5 }}>
+      <View style={{ flex: 1, paddingTop: top, paddingBottom: bottom, gap: theme.space.s5 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s3 }}>
           <Mark size={24} />
           <Text variant="bodyStrong" style={{ fontSize: theme.type.tSm }}>{APP_NAME}</Text>

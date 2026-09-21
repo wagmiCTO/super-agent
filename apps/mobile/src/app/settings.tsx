@@ -9,7 +9,7 @@
  * teaches and what the taps use cannot drift apart.
  */
 
-import { router, useLocalSearchParams } from 'expo-router';
+import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { ScrollView, View } from 'react-native';
 
 import { DEFAULT_SYMBOL } from '@/config';
@@ -17,10 +17,13 @@ import { PositionForm, PossibleOutcomes } from '@/trading/position-form';
 import { Button } from '@/ui/button';
 import { Screen } from '@/ui/surface';
 import { Text } from '@/ui/text';
+import { useBottom, useTop } from '@/ui/inset';
 import { useTheme } from '@/theme';
 
 export default function SettingsScreen() {
   const theme = useTheme();
+  const top = useTop();
+  const bottom = useBottom(theme.space.s5);
   // The market the form was opened from: its leverage is the one the
   // slider sets. The size and the rules are the same everywhere.
   const params = useLocalSearchParams<{ symbol?: string }>();
@@ -30,7 +33,12 @@ export default function SettingsScreen() {
 
   return (
     <Screen>
-      <View style={{ flex: 1, paddingTop: 52, paddingBottom: theme.space.s5, gap: theme.space.s4 }}>
+      {/* The grips here span the screen, so a drag on one starts inside the
+          edge strip iOS reads as "go back". Holding the gesture off from the
+          control is a race the native recogniser usually wins, so this screen
+          does not offer it at all; `‹ Back` is right there. */}
+      <Stack.Screen options={{ gestureEnabled: false }} />
+      <View style={{ flex: 1, paddingTop: top, paddingBottom: bottom, gap: theme.space.s4 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s3 }}>
           <Text variant="small" numberOfLines={1} testID="settings-back" onPress={back} style={{ flexShrink: 0 }}>‹ Back</Text>
           <Text variant="bodyStrong" numberOfLines={1} style={{ fontSize: theme.type.tMd, flexShrink: 0 }}>{`Position · ${symbol}`}</Text>

@@ -25,8 +25,8 @@ import { useRiskReport } from '@/trading/useRiskReport';
 import { Bone } from '@/ui/anim';
 import { Button } from '@/ui/button';
 import { Card, Row, Screen } from '@/ui/surface';
-import { Text, money } from '@/ui/text';
-import { useTop } from '@/ui/inset';
+import { Text, lineBox, money } from '@/ui/text';
+import { useBottom, useTop } from '@/ui/inset';
 import { useTheme } from '@/theme';
 
 const ROUTES = { direction: '/direction', 'ma-cross': '/ma-cross', rsi: '/rsi' } as const;
@@ -34,6 +34,7 @@ const ROUTES = { direction: '/direction', 'ma-cross': '/ma-cross', rsi: '/rsi' }
 export default function ResultScreen() {
   const theme = useTheme();
   const top = useTop(16);
+  const bottom = useBottom(theme.space.s6);
   const { id, strategy: raw } = useLocalSearchParams<{ id: string; strategy?: string }>();
   const strategy = raw ?? 'direction';
   const knows = useAccount().state.status !== 'loading';
@@ -71,7 +72,7 @@ export default function ResultScreen() {
 
   return (
     <Screen testID="result">
-      <View style={{ flex: 1, paddingTop: top, paddingBottom: theme.space.s6, justifyContent: 'space-between', gap: theme.space.s4 }}>
+      <View style={{ flex: 1, paddingTop: top, paddingBottom: bottom, justifyContent: 'space-between', gap: theme.space.s4 }}>
         <View style={{ gap: theme.space.s5 }}>
           {trade === null ? (
             <View style={{ gap: theme.space.s3 }}>
@@ -97,13 +98,13 @@ export default function ResultScreen() {
                     : undefined
                 }
               >
-                <Text variant="h1" style={{ fontSize: theme.type.t3xl, lineHeight: theme.type.t3xl * 1.15 }}>
+                <Text variant="h1" style={{ fontSize: theme.type.t3xl, lineHeight: lineBox('display', theme.type.t3xl) }}>
                   {won ? 'Nice call.' : lost ? 'Not this time.' : 'Break even.'}
                 </Text>
                 <Text
                   variant="hero"
                   testID="result-pnl"
-                  style={{ color: won ? theme.color.up : theme.color.ink, fontSize: won ? theme.type.tMega * 1.15 : theme.type.tMega, lineHeight: (won ? theme.type.tMega * 1.15 : theme.type.tMega) * 1.02 }}
+                  style={{ color: won ? theme.color.up : theme.color.ink, fontSize: won ? theme.type.tMega * 1.15 : theme.type.tMega, lineHeight: lineBox('num', won ? theme.type.tMega * 1.15 : theme.type.tMega) }}
                 >
                   {money(pnl)}
                 </Text>

@@ -214,37 +214,98 @@ export function DisciplineScene() {
 }
 
 /**
- * The invite, drawn: you, your friend, the link between you and what comes
- * back along it. The share is written on the arrow because it is the whole
- * offer — a referral screen that makes you read for it is a referral screen
- * nobody shares.
+ * The invite, drawn: your screen, the three it reaches, and the fee coming
+ * back along the same lines.
+ *
+ * The share is written at the top, in the colour of a win, because it is the
+ * whole offer — a referral screen that makes you read for it is a referral
+ * screen nobody shares. Everything else is the app itself: the phone on the
+ * left is this one, keys and all, and the cards on the right are the same
+ * screen in someone else's hand, one of them mid-trade.
  */
 export function ReferralScene({ sharePct }: { sharePct: number }) {
   const theme = useTheme();
+  // Where each friend's card sits, and whether they are in a trade right now.
+  const friends: { x: number; y: number; live: boolean }[] = [
+    { x: 212, y: 40, live: false },
+    { x: 224, y: 98, live: true },
+    { x: 212, y: 156, live: false },
+  ];
+  const from = { x: 114, y: 118 };
   return (
-    <Frame height={150} viewBox="16 40 292 116" fit>
-      <Rect x={26} y={52} width={92} height={76} rx={16} fill={theme.color.accent} />
-      <Circle cx={72} cy={80} r={13} fill={theme.color.onAccent} />
-      <Rect x={52} y={100} width={40} height={7} rx={3.5} fill={theme.color.onAccent} opacity={0.8} />
-      <SvgText x={72} y={142} fontSize={12} textAnchor="middle" fontFamily={face(theme, 'num', 400)} fill={theme.color.muted}>you</SvgText>
-
-      <Rect x={202} y={52} width={92} height={76} rx={16} fill={theme.color.soft} stroke={theme.color.hair} strokeWidth={2} />
-      <Circle cx={248} cy={80} r={13} fill={theme.color.dim} opacity={0.55} />
-      <Rect x={228} y={100} width={40} height={7} rx={3.5} fill={theme.color.dim} opacity={0.4} />
-      <SvgText x={248} y={142} fontSize={12} textAnchor="middle" fontFamily={face(theme, 'num', 400)} fill={theme.color.muted}>your friend</SvgText>
-
-      <Path d="M124 74h64" fill="none" stroke={theme.color.ink} strokeWidth={2.5} strokeLinecap="round" />
-      <Path d="M182 68l8 6-8 6" fill="none" stroke={theme.color.ink} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
-      <SvgText x={156} y={62} fontSize={11} textAnchor="middle" fontFamily={face(theme, 'num', 400)} fill={theme.color.muted}>your link</SvgText>
-
-      <Path d="M188 104h-64" fill="none" stroke={theme.color.up} strokeWidth={3} strokeLinecap="round" />
-      <Path d="M130 98l-8 6 8 6" fill="none" stroke={theme.color.up} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
-      {/* A size down from the prototype's: our figure face is wider than
-          the monospace it was drawn against, and at 12 the label touched
-          the card behind it. */}
-      <SvgText x={156} y={124} fontSize={11} textAnchor="middle" fontFamily={face(theme, 'num', 700)} fill={theme.color.up}>
+    <Frame viewBox="0 0 320 216">
+      {/* The offer, stated before anything is looked at. */}
+      <Rect x={118} y={6} width={132} height={28} rx={14} fill={theme.color.up} />
+      <SvgText x={184} y={25} fontSize={13} textAnchor="middle" fontFamily={face(theme, 'display', 700)} fill={theme.color.onUp}>
         {`${sharePct}% of fees`}
       </SvgText>
+      {/* And where it goes: down into the phone on the left, which is yours. */}
+      <Path d="M118 20C104 20 94 23 90 36" fill="none" stroke={theme.color.up} strokeWidth={2.4} strokeLinecap="round" />
+      <Path d="M84 30l6 9 6-9" fill="none" stroke={theme.color.up} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
+
+      {/* Your phone: the screen this app draws, at the size of a thumb. */}
+      <Rect x={18} y={48} width={94} height={142} rx={20} fill={theme.color.accent} opacity={0.18} />
+      <Rect x={12} y={42} width={94} height={142} rx={20} fill={theme.color.accent} />
+      <Rect x={22} y={54} width={74} height={82} rx={11} fill={theme.color.onAccent} opacity={0.16} />
+      <Path
+        d="M30 118l12-9 9 7 11-19 10 8 12-22"
+        fill="none"
+        stroke={theme.color.onAccent}
+        strokeWidth={2.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Circle cx={84} cy={83} r={3.4} fill={theme.color.onAccent} />
+      {/* The two keys, the whole product in one gesture. */}
+      <Rect x={22} y={146} width={35} height={26} rx={9} fill={theme.color.onAccent} opacity={0.92} />
+      <Path d="M35.5 163l4-6 4 6z" fill={theme.color.up} />
+      <Rect x={61} y={146} width={35} height={26} rx={9} fill={theme.color.onAccent} opacity={0.42} />
+      <Path d="M74.5 155l4 6 4-6z" fill={theme.color.down} opacity={0.85} />
+      <Note x={59} y={206} theme={theme} anchor="middle" weight={600}>you</Note>
+
+      {friends.map((f, i) => (
+        <G key={i}>
+          {/* The line out — your link — and, on it, what comes back. */}
+          <Path
+            d={`M${from.x} ${from.y} C ${from.x + 44} ${from.y}, ${f.x - 44} ${f.y + 22}, ${f.x - 4} ${f.y + 22}`}
+            fill="none"
+            stroke={theme.color.accent}
+            strokeWidth={2.2}
+            strokeLinecap="round"
+            opacity={0.9}
+          />
+          <Path
+            d={`M${f.x - 12} ${f.y + 17}l6 5-6 5`}
+            fill="none"
+            stroke={theme.color.accent}
+            strokeWidth={2.2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <G opacity={f.live ? 1 : 0.55}>
+            <Circle cx={from.x + 52 + i * 4} cy={(from.y + f.y + 22) / 2} r={9} fill={theme.color.up} />
+            <Path
+              d={`M${from.x + 48 + i * 4} ${(from.y + f.y + 22) / 2}h8M${from.x + 52 + i * 4} ${(from.y + f.y + 22) / 2 - 4}v8`}
+              stroke={theme.color.onUp}
+              strokeWidth={2}
+              strokeLinecap="round"
+            />
+          </G>
+
+          {/* Their screen: the same app, in a hand that came in on your link. */}
+          <Rect x={f.x} y={f.y} width={84} height={44} rx={13} fill={theme.color.soft} stroke={theme.color.hair} strokeWidth={1.5} />
+          <Circle cx={f.x + 19} cy={f.y + 22} r={9} fill={theme.color.dim} opacity={0.5} />
+          <Rect x={f.x + 34} y={f.y + 13} width={34} height={5.5} rx={2.75} fill={theme.color.dim} opacity={0.45} />
+          <Rect x={f.x + 34} y={f.y + 25} width={22} height={5.5} rx={2.75} fill={theme.color.dim} opacity={0.28} />
+          {f.live ? (
+            <G>
+              <Circle cx={f.x + 76} cy={f.y + 9} r={5} fill={theme.color.up} />
+              <Circle cx={f.x + 76} cy={f.y + 9} r={9} fill={theme.color.up} opacity={0.18} />
+            </G>
+          ) : null}
+        </G>
+      ))}
+      <Note x={266} y={214} theme={theme} anchor="middle" weight={600}>your friends</Note>
     </Frame>
   );
 }

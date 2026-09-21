@@ -26,7 +26,7 @@ import { useTrading } from '@/trading/useTrading';
 import { Button } from '@/ui/button';
 import { Card, Progress, Screen } from '@/ui/surface';
 import { Text } from '@/ui/text';
-import { useTop } from '@/ui/inset';
+import { useBottom, useTop } from '@/ui/inset';
 import { useTheme } from '@/theme';
 
 /** What the user is waiting for, in the order it happens. */
@@ -35,6 +35,7 @@ const STEPS = ['Signing in to the exchange', 'Test money arriving', 'Opening you
 export default function EnableScreen() {
   const theme = useTheme();
   const top = useTop(32);
+  const bottom = useBottom(theme.space.s6);
   const account = useAccount();
   const wallet = account.state.status === 'unlocked' ? account.state.wallet : null;
   const keys = account.state.status === 'unlocked' ? account.state.keys : null;
@@ -102,7 +103,7 @@ export default function EnableScreen() {
 
   return (
     <Screen>
-      <View style={{ flex: 1, paddingTop: top, paddingBottom: theme.space.s6, gap: theme.space.s5 }}>
+      <View style={{ flex: 1, paddingTop: top, paddingBottom: bottom, gap: theme.space.s5 }}>
         <View style={{ gap: theme.space.s3 }}>
           <Text variant="h1">Open your account</Text>
           <Text variant="body">

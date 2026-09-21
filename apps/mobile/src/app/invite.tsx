@@ -24,10 +24,12 @@ import { ReferralScene } from '@/ui/illustration';
 import { back } from '@/ui/stub';
 import { Card, Chip, Screen } from '@/ui/surface';
 import { Text } from '@/ui/text';
+import { useTop } from '@/ui/inset';
 import { useTheme } from '@/theme';
 
 export default function InviteScreen() {
   const theme = useTheme();
+  const top = useTop();
   // Not before the account layer has read the device: a request that leaves
   // without the wallet on it is answered "sign in", and this screen would
   // then say so to someone who is signed in.
@@ -63,7 +65,7 @@ export default function InviteScreen() {
       <ScrollView
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: 52, paddingBottom: theme.space.s6, gap: theme.space.s4 }}
+        contentContainerStyle={{ paddingTop: top, paddingBottom: theme.space.s6, gap: theme.space.s4 }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s3 }}>
           <Text variant="small" numberOfLines={1} testID="lobby-link" onPress={back}>‹ Back</Text>

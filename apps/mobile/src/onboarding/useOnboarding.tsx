@@ -25,6 +25,8 @@ export type OnboardingState = {
   /** True once a strategy's lesson has been offered. */
   taught: (strategy: string) => boolean;
   markTaught: (strategy: string) => Promise<void>;
+  /** The swipes on a strategy screen have been pointed out. */
+  markSwipesSeen: () => Promise<void>;
   /** Signing in with an existing passkey: the first visit is behind them. */
   markReturning: () => Promise<void>;
 };
@@ -68,6 +70,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
         if (stored.taught.includes(strategy)) return;
         await patch({ taught: [...stored.taught, strategy] });
       },
+      markSwipesSeen: () => patch({ swipesSeen: true }),
       markReturning: () => patch({ introSeen: true, lessonSeen: true, taught: ['direction', 'ma-cross', 'rsi'] }),
     }),
     [ready, prefs, patch],

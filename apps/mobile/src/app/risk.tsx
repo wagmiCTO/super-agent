@@ -10,11 +10,16 @@
  * Below the limits sits the danger zone: the limits are the wallet's to
  * raise, between the safe tier everyone starts on and the ceiling the
  * platform holds. A choice takes a second tap, like closing everything.
+ *
+ * A screen that was refused by one of those limits sends the trader here
+ * with `focus` naming it — `open-positions`, `daily-loss`, `cooldown`. The
+ * screen then scrolls to the danger zone and marks that one row, so the
+ * answer to "you may only hold two" is the slider that says two.
  */
 
-import { router, type Href } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { Stack, router, useLocalSearchParams, type Href } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Pressable, ScrollView, View, type ViewStyle } from 'react-native';
 
 import { useAccount } from '@/account/useAccount';
 import { api, ApiError, describeError, type LimitTier, type RiskReport, type Trade } from '@/api/client';
@@ -30,7 +35,8 @@ import { useCountdown } from '@/ui/countdown';
 import { Slider } from '@/ui/slider';
 import { StubHeader } from '@/ui/stub';
 import { Card, Row, Screen } from '@/ui/surface';
-import { Text, money } from '@/ui/text';
+import { Text, lineBox, money } from '@/ui/text';
+import { useTop } from '@/ui/inset';
 import { useTheme } from '@/theme';
 
 type OpenNow = RiskReport['open'][number];
@@ -91,10 +97,31 @@ function useTodayTrades(): Trade[] {
 
 export default function RiskScreen() {
   const theme = useTheme();
+  const top = useTop();
   const knows = useAccount().state.status !== 'loading';
   const { report, problem, refresh } = useRisk(knows);
   const trades = useTodayTrades();
   const { settings } = usePositionSettings();
+  // Which limit sent them here, if one did.
+  const { focus } = useLocalSearchParams<{ focus?: string }>();
+  const scroll = useRef<ScrollView>(null);
+  // Where the readings begin, under the dial: the danger zone measures
+  // itself against that block, and the two together are where it sits in
+  // the list. It is below the fold on every phone, so arriving with a limit
+  // named means travelling — the screen does it rather than asking for a
+  // scroll.
+  const bodyTop = useRef(0);
+  // Once, on the way in: the zone is laid out again on every poll, and a
+  // screen that travelled on each of them could never be scrolled away from.
+  const travelled = useRef(false);
+  const showZone = useCallback(
+    (y: number) => {
+      if (!focus || travelled.current) return;
+      travelled.current = true;
+      scroll.current?.scrollTo({ y: Math.max(0, bodyTop.current + y - 12), animated: true });
+    },
+    [focus],
+  );
   // Something in the way is worth a sentence; simply waiting is not. A word
   // like "Loading…" on an empty screen is the app admitting it has nothing,
   // so instead the screen draws itself — the panel, empty, with the needles
@@ -103,7 +130,11 @@ export default function RiskScreen() {
 
   return (
     <Screen testID="risk">
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: 52, paddingBottom: theme.space.s6, gap: theme.space.s4 }}>
+      {/* The day's budget is set with a grip that spans the screen, and a
+          drag on it starts inside the strip iOS reads as "go back". The
+          screen keeps its own way back instead. */}
+      <Stack.Screen options={{ gestureEnabled: false }} />
+      <ScrollView ref={scroll} style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: top, paddingBottom: theme.space.s6, gap: theme.space.s4 }}>
         <StubHeader title="Risk" badge={problem === 'offline' ? 'OFFLINE' : problem === 'locked' ? 'SIGN IN' : 'TESTNET'} />
         {stalled ? (
           <Text variant="small">
@@ -117,9 +148,11 @@ export default function RiskScreen() {
                 reading instead of restarting at zero. */}
             <Dial report={report} />
             {report ? (
-              <FadeIn style={{ gap: theme.space.s4 }}>
-                <Body report={report} trades={trades} leverage={settings.leverage} refresh={refresh} />
-              </FadeIn>
+              <View onLayout={(e) => (bodyTop.current = e.nativeEvent.layout.y)}>
+                <FadeIn style={{ gap: theme.space.s4 }}>
+                  <Body report={report} trades={trades} leverage={settings.leverage} refresh={refresh} focus={focus ?? null} onZoneAt={showZone} />
+                </FadeIn>
+              </View>
             ) : (
               <Panel />
             )}
@@ -150,7 +183,7 @@ function Dial({ report }: { report: RiskReport | null }) {
             testID="risk-level"
             style={{
               fontSize: theme.type.t3xl,
-              lineHeight: theme.type.t3xl * 1.1,
+              lineHeight: lineBox('display', theme.type.t3xl),
               color: reading.percent < 34 ? theme.color.riskCalm : reading.percent < 67 ? theme.color.riskWarm : theme.color.riskHot,
             }}
           >
@@ -223,7 +256,22 @@ function Panel() {
   );
 }
 
-function Body({ report, trades, leverage, refresh }: { report: RiskReport; trades: Trade[]; leverage: number; refresh: () => Promise<void> }) {
+function Body({
+  report,
+  trades,
+  leverage,
+  refresh,
+  focus,
+  onZoneAt,
+}: {
+  report: RiskReport;
+  trades: Trade[];
+  leverage: number;
+  refresh: () => Promise<void>;
+  /** The limit a refused tap named, or null when nobody sent them. */
+  focus: string | null;
+  onZoneAt: (y: number) => void;
+}) {
   const theme = useTheme();
   const budget = Number(report.limits.active?.daily_loss ?? 0);
   const lost = Number(report.totals.daily_loss);
@@ -311,7 +359,11 @@ function Body({ report, trades, leverage, refresh }: { report: RiskReport; trade
         <Row label="Liquidation" value={`${(100 / Math.max(1, leverage)).toFixed(1)}% against you`} />
       </Card>
 
-      <DangerZone limits={report.limits} refresh={refresh} />
+      {/* Measured from the outside: the card is where the screen scrolls to
+          when a refusal on another screen named one of these numbers. */}
+      <View onLayout={(e) => onZoneAt(e.nativeEvent.layout.y)}>
+        <DangerZone limits={report.limits} refresh={refresh} focus={focus} />
+      </View>
 
       {/* This week. */}
       {week ? (
@@ -438,8 +490,40 @@ function OpenRow({ p }: { p: OpenNow }) {
  * colour of a loss. A change takes a second tap, and the platform answers
  * with what it now holds the wallet to.
  */
-function DangerZone({ limits, refresh }: { limits: RiskReport['limits']; refresh: () => Promise<void> }) {
+function DangerZone({
+  limits,
+  refresh,
+  focus,
+}: {
+  limits: RiskReport['limits'];
+  refresh: () => Promise<void>;
+  /** The row a refused tap named, or null. */
+  focus: string | null;
+}) {
   const theme = useTheme();
+  // Marked, not moved: the row the refusal named wears the accent for a few
+  // seconds, long enough for the eye arriving from the other screen to find
+  // it, and then the zone is an ordinary zone again.
+  const [faded, fade] = useState(false);
+  useEffect(() => {
+    if (!focus) return;
+    const id = setTimeout(() => fade(true), 6000);
+    return () => clearTimeout(id);
+  }, [focus]);
+  const lit = focus && !faded ? focus : null;
+  // A row's own box while it is marked: drawn around the label and the
+  // slider together, and out into the card's padding so nothing shifts.
+  const mark = (row: string): ViewStyle =>
+    lit === row
+      ? {
+          marginHorizontal: -theme.space.s2,
+          paddingHorizontal: theme.space.s2,
+          paddingVertical: theme.space.s2,
+          marginVertical: -theme.space.s2,
+          borderRadius: theme.radius.rMd,
+          backgroundColor: theme.color.glow,
+        }
+      : {};
   const { chosen, safe, ceiling } = limits;
   // What the sliders show: the platform's answer until the user moves one,
   // then the draft, until it is applied or the sliders go back to it.
@@ -481,13 +565,16 @@ function DangerZone({ limits, refresh }: { limits: RiskReport['limits']; refresh
   const tone = (hot: boolean) => (hot ? theme.color.down : theme.color.ink);
 
   return (
-    <Card style={{ gap: theme.space.s3, borderWidth: theme.size.bw, borderColor: danger(tier) ? theme.color.down : theme.color.hair }} testID="danger-zone">
+    <Card
+      style={{ gap: theme.space.s3, borderWidth: theme.size.bw, borderColor: danger(tier) ? theme.color.down : theme.color.hair }}
+      testID="danger-zone"
+    >
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text variant="caps" style={{ color: theme.color.down }}>Danger zone</Text>
         <Text variant="small">{`safe: ${safe.daily_loss_pct}% · ${safe.max_open_positions} open · ${safe.cooldown_seconds} s`}</Text>
       </View>
 
-      <View style={{ gap: theme.space.s1 }}>
+      <View testID="danger-daily-loss-row" style={{ gap: theme.space.s1, ...mark('daily-loss') }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <Text variant="small" style={{ color: theme.color.body }}>Daily loss budget</Text>
           <Text variant="num" style={{ color: tone(tier.daily_loss_pct > safe.daily_loss_pct) }} testID="danger-daily">{`${tier.daily_loss_pct}% of balance`}</Text>
@@ -495,7 +582,7 @@ function DangerZone({ limits, refresh }: { limits: RiskReport['limits']; refresh
         <Slider value={tier.daily_loss_pct} min={1} max={ceiling.daily_loss_pct} step={1} onChange={(v) => set({ daily_loss_pct: v })} testID="danger-daily-slider" />
       </View>
 
-      <View style={{ gap: theme.space.s1 }}>
+      <View testID="danger-open-positions-row" style={{ gap: theme.space.s1, ...mark('open-positions') }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <Text variant="small" style={{ color: theme.color.body }}>Open at once</Text>
           <Text variant="num" style={{ color: tone(tier.max_open_positions > safe.max_open_positions) }} testID="danger-positions">{`${tier.max_open_positions}`}</Text>
@@ -503,7 +590,7 @@ function DangerZone({ limits, refresh }: { limits: RiskReport['limits']; refresh
         <Slider value={tier.max_open_positions} min={1} max={ceiling.max_open_positions} step={1} onChange={(v) => set({ max_open_positions: v })} testID="danger-positions-slider" />
       </View>
 
-      <View style={{ gap: theme.space.s1 }}>
+      <View testID="danger-cooldown-row" style={{ gap: theme.space.s1, ...mark('cooldown') }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <Text variant="small" style={{ color: theme.color.body }}>Cooldown between taps</Text>
           <Text variant="num" style={{ color: tone(tier.cooldown_seconds < safe.cooldown_seconds) }} testID="danger-cooldown">{`${tier.cooldown_seconds} s`}</Text>

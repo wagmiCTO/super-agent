@@ -10,17 +10,27 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { api, ApiError, currentAccountAddress, describeError, type AmendRequest, type Market, type Order, type Position, type State, type Trade } from '@/api/client';
+import { api, ApiError, currentAccountAddress, describeError, type AmendRequest, type ErrorCode, type Market, type Order, type Position, type State, type Trade } from '@/api/client';
 import { DEFAULT_LEVERAGE, STATE_POLL_MS } from '@/config';
 import { refreshRiskReport } from '@/trading/useRiskReport';
 
-export type Notice = { text: string; kind: 'error' | 'info' };
+/**
+ * What just happened, in a line. `code` is the platform's own reason when
+ * it refused, so the screen can offer the way out of that particular
+ * refusal rather than only repeating it.
+ */
+export type Notice = { text: string; kind: 'error' | 'info'; code?: ErrorCode };
 export type Busy = 'up' | 'down' | 'close' | 'reverse' | 'amend' | null;
 
 /** How long a reversal waits between the close and the opposite open. */
 const REVERSE_PAUSE_MS = 2000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** A refusal as a notice: what it says, and which rule said it. */
+function refusal(e: unknown): Notice {
+  return { text: describeError(e), kind: 'error', ...(e instanceof ApiError ? { code: e.code } : null) };
+}
 
 export function useTrading(symbol: string, strategy: string) {
   const [state, setState] = useState<State | null>(null);
@@ -107,7 +117,7 @@ export function useTrading(symbol: string, strategy: string) {
         await refresh();
         refreshRiskReport();
       } catch (e) {
-        setNotice({ text: describeError(e), kind: 'error' });
+        setNotice(refusal(e));
       } finally {
         setBusy(null);
       }

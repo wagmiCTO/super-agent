@@ -13,6 +13,7 @@ import { ScrollView, View, type ViewProps } from 'react-native';
 
 import { Badge, Screen } from '@/ui/surface';
 import { Text } from '@/ui/text';
+import { useTop } from '@/ui/inset';
 import { useTheme } from '@/theme';
 
 export function back() {
@@ -35,11 +36,12 @@ export function StubHeader({ title, badge = 'TESTNET', testID }: { title: string
 
 export function StubScreen({ title, badge, children, testID, ...rest }: { title: string; badge?: string; testID?: string } & ViewProps) {
   const theme = useTheme();
+  const top = useTop();
   return (
     <Screen testID={testID} {...rest}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: 52, paddingBottom: theme.space.s6, gap: theme.space.s4 }}
+        contentContainerStyle={{ paddingTop: top, paddingBottom: theme.space.s6, gap: theme.space.s4 }}
       >
         <StubHeader title={title} badge={badge} />
         <View style={{ gap: theme.space.s2 }}>

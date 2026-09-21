@@ -21,9 +21,15 @@ export type OnboardingPrefs = {
   lessonSeen: boolean;
   /** Which strategies have had their lesson offered, by id. */
   taught: string[];
+  /**
+   * Whether the two swipes on a strategy screen — along the charts, along
+   * the strategies — have been pointed out. Neither leaves a mark on the
+   * screen, so they are said once, over the chart, and never again.
+   */
+  swipesSeen: boolean;
 };
 
-export const EMPTY_PREFS: OnboardingPrefs = { network: 'testnet', introSeen: false, lessonSeen: false, taught: [] };
+export const EMPTY_PREFS: OnboardingPrefs = { network: 'testnet', introSeen: false, lessonSeen: false, taught: [], swipesSeen: false };
 
 const KEY = 'tradeagent.onboarding';
 

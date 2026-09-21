@@ -28,10 +28,12 @@ import { copy } from '@/ui/clipboard';
 import { back } from '@/ui/stub';
 import { Badge, Card, Chip, Row, Screen } from '@/ui/surface';
 import { Text } from '@/ui/text';
+import { useTop } from '@/ui/inset';
 import { useTheme } from '@/theme';
 
 export default function AccountScreen() {
   const theme = useTheme();
+  const top = useTop();
   const account = useAccount();
   const { prefs } = useOnboarding();
   const testnet = prefs.network !== 'mainnet';
@@ -51,7 +53,7 @@ export default function AccountScreen() {
       <ScrollView
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ flexGrow: 1, paddingTop: 52, paddingBottom: theme.space.s6, gap: theme.space.s4 }}
+        contentContainerStyle={{ flexGrow: 1, paddingTop: top, paddingBottom: theme.space.s6, gap: theme.space.s4 }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s3 }}>
           <Text variant="small" numberOfLines={1} testID="lobby-link" onPress={back}>‹ Lobby</Text>

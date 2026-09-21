@@ -28,7 +28,7 @@ import { Splash } from '@/ui/splash';
 import { Badge, Screen } from '@/ui/surface';
 import { riskPercent, riskPercentOf } from '@/strategy/risk';
 import { Text, money } from '@/ui/text';
-import { useTop } from '@/ui/inset';
+import { useBottom, useTop } from '@/ui/inset';
 import { face, useTheme } from '@/theme';
 
 const ROUTES: Record<string, Href> = { direction: '/direction', 'ma-cross': '/ma-cross', rsi: '/rsi' };
@@ -260,13 +260,14 @@ function LobbyScreen() {
  */
 function Footer() {
   const theme = useTheme();
+  const bottom = useBottom(theme.space.s6);
   const link = (title: string, href: Href, testID: string) => (
     <Text variant="small" testID={testID} onPress={() => router.push(href)} style={{ paddingVertical: theme.space.s2 }}>
       {title}
     </Text>
   );
   return (
-    <View style={{ paddingBottom: theme.space.s6, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: theme.color.paper }}>
+    <View style={{ paddingBottom: bottom, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: theme.color.paper }}>
       <View style={{ flexDirection: 'row', gap: theme.space.s4 }}>
         {link('Leaderboard', '/leaderboard', 'leaderboard-link')}
         {link('Invite', '/invite', 'invite-link')}

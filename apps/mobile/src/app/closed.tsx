@@ -11,7 +11,7 @@ import { STRATEGY_NAMES } from '@/config';
 import { Button } from '@/ui/button';
 import { Card, Row, Screen } from '@/ui/surface';
 import { Text, money } from '@/ui/text';
-import { useTop } from '@/ui/inset';
+import { useBottom, useTop } from '@/ui/inset';
 import { useTheme } from '@/theme';
 
 type Result = { closed: number; results: { strategy: string; symbol: string; closed: boolean; error?: string; pnl?: string }[] };
@@ -28,6 +28,7 @@ function parse(raw: unknown): Result {
 export default function ClosedScreen() {
   const theme = useTheme();
   const top = useTop(16);
+  const bottom = useBottom(theme.space.s6);
   const { r } = useLocalSearchParams<{ r?: string }>();
   const res = parse(r);
   const rows = res.results.filter((x) => x.closed);
@@ -36,7 +37,7 @@ export default function ClosedScreen() {
 
   return (
     <Screen testID="closed">
-      <View style={{ flex: 1, paddingTop: top, paddingBottom: theme.space.s6, justifyContent: 'space-between' }}>
+      <View style={{ flex: 1, paddingTop: top, paddingBottom: bottom, justifyContent: 'space-between' }}>
         <View style={{ gap: theme.space.s4 }}>
           <Text variant="caps" style={{ color: theme.color.text2 }}>Everything closed</Text>
           <View>

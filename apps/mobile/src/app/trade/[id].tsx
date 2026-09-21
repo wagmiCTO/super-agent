@@ -22,10 +22,12 @@ import { Bone, FadeIn } from '@/ui/anim';
 import { back } from '@/ui/stub';
 import { Card, Row, Screen } from '@/ui/surface';
 import { Text, money } from '@/ui/text';
+import { useTop } from '@/ui/inset';
 import { useTheme } from '@/theme';
 
 export default function TradeScreen() {
   const theme = useTheme();
+  const top = useTop();
   const { id, strategy, order } = useLocalSearchParams<{ id: string; strategy?: string; order?: 'open' | 'close' }>();
   const knows = useAccount().state.status !== 'loading';
   const { trade, problem } = useTrade(knows, String(id), strategy ?? 'direction');
@@ -36,7 +38,7 @@ export default function TradeScreen() {
       <ScrollView
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: 52, paddingBottom: theme.space.s6, gap: theme.space.s4 }}
+        contentContainerStyle={{ paddingTop: top, paddingBottom: theme.space.s6, gap: theme.space.s4 }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.s3 }}>
           <Text variant="small" numberOfLines={1} testID="history-link" onPress={back}>‹ History</Text>

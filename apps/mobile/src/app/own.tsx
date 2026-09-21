@@ -11,7 +11,7 @@ import { ScrollView, TextInput, View } from 'react-native';
 import { loadOwnDraft, saveOwnDraft } from '@/strategy/own-store';
 import { Button } from '@/ui/button';
 import { OwnScene } from '@/ui/illustration';
-import { useTop } from '@/ui/inset';
+import { useBottom, useTop } from '@/ui/inset';
 import { StubHeader, back } from '@/ui/stub';
 import { Card, Screen } from '@/ui/surface';
 import { Text } from '@/ui/text';
@@ -22,6 +22,7 @@ const EXAMPLE = 'Buy Bitcoin when it drops 2% in an hour, sell after 30 minutes 
 export default function OwnStrategyScreen() {
   const theme = useTheme();
   const top = useTop();
+  const bottom = useBottom(theme.space.s6);
   const [text, setText] = useState('');
   const [listed, setListed] = useState(false);
   const [ready, setReady] = useState(false);
@@ -52,7 +53,7 @@ export default function OwnStrategyScreen() {
 
   return (
     <Screen testID="own">
-      <View style={{ flex: 1, paddingTop: top, paddingBottom: theme.space.s6, gap: theme.space.s4 }}>
+      <View style={{ flex: 1, paddingTop: top, paddingBottom: bottom, gap: theme.space.s4 }}>
         <StubHeader title="Your strategy" badge="COMING SOON" />
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: theme.space.s5, paddingBottom: theme.space.s4 }} keyboardShouldPersistTaps="handled">
           <OwnScene />
