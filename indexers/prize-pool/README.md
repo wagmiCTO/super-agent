@@ -37,6 +37,33 @@ Hasura is then on http://localhost:8085 (console password `testing`):
 
 ## Deploy
 
-Envio's hosted service builds from this directory on every push to `main`
-(indexer `prize-pool` in the `wagmicto` organisation, root `indexers/prize-pool`). The
-platform reads the deployed GraphQL endpoint from `ENVIO_GRAPHQL_URL`.
+Envio's hosted service builds from this directory (indexer `prize-pool` in the
+`wagmicto` organisation, root `indexers/prize-pool`), but **a push to `main` is
+not enough on its own**. The development plan allows three active deployments,
+and once all three slots are taken every later commit is simply refused with
+"you've reached the maximum number of active deployments". A push that looks
+ignored usually means the slots are full, not that the hook is broken.
+
+So a redeploy is three steps in the dashboard:
+
+1. Delete an old deployment to free a slot. It asks you to type
+   `prize-pool-<commit>` to confirm, and it cannot be undone.
+2. Deploy the commit you want from *Latest Commits*. A full historical sync of
+   this contract takes about a minute.
+3. Copy the new deployment's GraphQL endpoint into `ENVIO_GRAPHQL_URL` on the
+   platform service and redeploy it.
+
+Step 3 is needed because **every deployment gets its own endpoint hash** — the
+URL changes under you on each redeploy. A deployment can instead be *promoted*
+to the indexer's static production endpoint, which does not change; do that and
+step 3 becomes a one-off.
+
+Two things worth knowing before changing `config.yaml`:
+
+- **Changing the contract address does not move an existing deployment.** The
+  running indexer keeps its own database and goes on watching the address it
+  was built with. Only a new deployment reads the new address, so an address
+  change always means a redeploy, not just a push.
+- Each active deployment burns indexing hours whether or not anything reads it.
+  Deployments left behind from old commits are the usual reason the plan's
+  included hours run out.
