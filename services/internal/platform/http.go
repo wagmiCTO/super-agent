@@ -53,7 +53,7 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	}
 	h := &handler{
 		svc: s, log: log, enroll: o.enrollment, registry: o.registry, signals: o.signals, ledger: o.ledger, prize: o.prize, auth: newAuthenticator(authKeys),
-		context: o.context, deposits: o.deposits, history: o.history, ownAccount: o.ownAccount, limits: limitsStore, referrals: referrals, adminToken: o.adminToken,
+		context: o.context, deposits: o.deposits, history: o.history, ownAccount: o.ownAccount, limits: limitsStore, referrals: referrals, devices: o.devices, adminToken: o.adminToken,
 		riskMemo: newMemo[riskReportDTO](riskReportTTL), marketMemo: newMemo[riskMarketDTO](marketRiskTTL), candleMemo: newMemo[[]candleDTO](candlesTTL),
 	}
 	if o.ledger != nil {
@@ -61,6 +61,7 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/auth/keys", h.registerAuthKey)
+	mux.HandleFunc("POST /v1/devices", h.registerDevice)
 	mux.HandleFunc("POST /v1/exchange/enroll/payload", h.enrollPayload)
 	mux.HandleFunc("POST /v1/exchange/enroll", h.enrollFinish)
 	mux.HandleFunc("GET /v1/exchange/key", h.enrolledKey)
@@ -119,6 +120,7 @@ type options struct {
 	ownAccount  bool
 	limits      LimitsStore
 	referrals   Referrals
+	devices     DeviceStore
 	adminToken  string
 }
 
@@ -169,6 +171,13 @@ func WithLimitsStore(s LimitsStore) Option {
 // they live in memory and are lost on restart.
 func WithReferrals(r Referrals) Option {
 	return func(o *options) { o.referrals = r }
+}
+
+// WithDevices lets a wallet register where to be reached with a push, and
+// is what makes a closed position say so. Without it the endpoint answers
+// that notifications are not enabled and nothing is ever sent.
+func WithDevices(d DeviceStore) Option {
+	return func(o *options) { o.devices = d }
 }
 
 // WithRegistry routes requests carrying X-Account-Address to that wallet's
@@ -247,6 +256,7 @@ type handler struct {
 	ownAccount bool
 	limits     LimitsStore
 	referrals  Referrals
+	devices    DeviceStore
 	adminToken string
 
 	// What the screens poll, answered once per moment however many ask:

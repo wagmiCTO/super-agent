@@ -238,6 +238,52 @@ paths:
                 items: { $ref: "#/components/schemas/EnrolledKey" }
         "400": { $ref: "#/components/responses/Invalid" }
 
+  /v1/devices:
+    post:
+      summary: Where to reach this wallet when a position of its own closes
+      description: |
+        The platform owns the exit — the horizon, the stop and the target are
+        its timers and its watch on the mark — so it is the only thing that
+        can say a trade is over while the app is shut. The device registers
+        the push token its platform issued, and the platform sends to it when
+        a round trip of this wallet's closes.
+
+        Idempotent: the app calls it on every unlock, because a push token is
+        reissued from time to time and a wallet that has moved to another
+        phone must stop the old one buzzing. The token identifies the device,
+        so registering one already known to another wallet moves it.
+
+        The notification names the market and asks for a look; it never
+        carries the result. A number on a lock screen has no fees, no reason
+        and no excursions attached to it, and would mislead.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, platform]
+              properties:
+                token: { type: string, description: The push token the device's platform issued. }
+                platform: { type: string, enum: [ios, android] }
+      responses:
+        "204": { description: Registered. }
+        "400":
+          description: A token and a platform of ios or android are required.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: No wallet on the request.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: The platform keeps no devices, so nothing can be sent.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /v1/auth/keys:
     post:
       summary: Register a request-signing key for a wallet

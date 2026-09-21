@@ -1043,3 +1043,38 @@ func (s *Store) MarketCard(ctx context.Context, symbol string) (card []byte, fet
 	}
 	return card, fetchedAt, true, nil
 }
+
+// SaveDevice records where a wallet can be reached with a push.
+//
+// The token is the identity: a device handed to another account re-registers
+// under the new wallet rather than going on buzzing for the old one.
+func (s *Store) SaveDevice(ctx context.Context, wallet, token, platform string, seenAt time.Time) error {
+	_, err := s.pool.Exec(ctx, `insert into devices (token, wallet, platform, seen_at) values ($1, $2, $3, $4)
+		on conflict (token) do update set wallet = excluded.wallet, platform = excluded.platform, seen_at = excluded.seen_at`,
+		token, strings.ToLower(wallet), platform, seenAt)
+	return err
+}
+
+// Devices returns every push token registered for a wallet.
+func (s *Store) Devices(ctx context.Context, wallet string) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `select token from devices where wallet = $1`, strings.ToLower(wallet))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var token string
+		if err := rows.Scan(&token); err != nil {
+			return nil, err
+		}
+		out = append(out, token)
+	}
+	return out, rows.Err()
+}
+
+// ForgetDevice drops a token the push service has told us is dead.
+func (s *Store) ForgetDevice(ctx context.Context, token string) error {
+	_, err := s.pool.Exec(ctx, `delete from devices where token = $1`, token)
+	return err
+}

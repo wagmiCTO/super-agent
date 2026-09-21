@@ -474,6 +474,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Where to reach this wallet when a position of its own closes
+         * @description The platform owns the exit — the horizon, the stop and the target are
+         *     its timers and its watch on the mark — so it is the only thing that
+         *     can say a trade is over while the app is shut. The device registers
+         *     the push token its platform issued, and the platform sends to it when
+         *     a round trip of this wallet's closes.
+         *
+         *     Idempotent: the app calls it on every unlock, because a push token is
+         *     reissued from time to time and a wallet that has moved to another
+         *     phone must stop the old one buzzing. The token identifies the device,
+         *     so registering one already known to another wallet moves it.
+         *
+         *     The notification names the market and asks for a look; it never
+         *     carries the result. A number on a lock screen has no fees, no reason
+         *     and no excursions attached to it, and would mislead.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description The push token the device's platform issued. */
+                        token: string;
+                        /** @enum {string} */
+                        platform: "ios" | "android";
+                    };
+                };
+            };
+            responses: {
+                /** @description Registered. */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description A token and a platform of ios or android are required. */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description No wallet on the request. */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The platform keeps no devices, so nothing can be sent. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/keys": {
         parameters: {
             query?: never;

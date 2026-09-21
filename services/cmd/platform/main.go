@@ -215,6 +215,18 @@ func run(log *slog.Logger) error {
 	go markets.Run(ctx)
 	handlerOpts = append(handlerOpts, platform.WithSignals(signals), platform.WithLedger(ledger))
 
+	// A position that ends while the phone is in a pocket says so. The
+	// platform owns the exit — the horizon, the stop and the target are its
+	// own — so it is the only thing that can tell anyone the trade is over.
+	// Without a database there is nowhere to keep a device, and the endpoint
+	// says notifications are off rather than pretending.
+	if db != nil {
+		push := platform.NewPush(db, log)
+		ledger.OnClosed(push.Closed)
+		handlerOpts = append(handlerOpts, platform.WithDevices(db))
+		log.Info("push notifications enabled")
+	}
+
 	// The market context card (Nansen) and any-chain deposits (Aurora)
 	// are partner integrations: each is on when its key is set and absent
 	// from the API otherwise.

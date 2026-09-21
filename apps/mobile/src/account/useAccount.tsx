@@ -24,6 +24,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { api, ApiError, setAccountAddress, setRequestSigner } from '@/api/client';
 import { registerAuthKey } from '@/exchange/enroll';
 import { clearPendingInvite, pendingInvite } from '@/invite/pending';
+import { registerForPush } from '@/push/register';
 import { KeyFamily, prfOutputToSeed, type Wallet } from './derive';
 import { toHex } from './hex';
 import { createPasskey, signInWithPasskey } from './passkey';
@@ -77,6 +78,10 @@ function useAccountState(): Account {
     // stay routed by address, which the platform still serves.
     registerAuthKey(family)
       .then(claimPendingInvite)
+      // Where to reach this device when a position of theirs closes. Last in
+      // the chain and never fatal: it is a courtesy, and a refused prompt or
+      // a build without push credentials must not touch signing in.
+      .then(registerForPush)
       .catch((e) => console.warn('request-signing key not registered', e));
   }, []);
 

@@ -220,6 +220,14 @@ export const api = {
       // still has to sign as something.
       { strategy: strategy || 'direction' },
     ),
+  /**
+   * Where to reach this device when a position closes.
+   *
+   * Called on every unlock: the push service reissues tokens, and a wallet
+   * that has moved to another phone must stop the old one buzzing.
+   */
+  registerDevice: (token: string, platform: 'ios' | 'android') =>
+    request<void>('/v1/devices', { method: 'POST', body: JSON.stringify({ token, platform }) }),
   /** One round trip of this wallet's, by id. */
   trade: (id: string, strategy: string) => request<Trade>(`/v1/trades/${encodeURIComponent(id)}`, undefined, { strategy }),
   /** One page of a board, and how many wallets are on it altogether. */

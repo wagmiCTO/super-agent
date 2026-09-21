@@ -59,6 +59,9 @@ const config: ExpoConfig = {
     // a colour the app never uses again reads as someone else's app.
     ['expo-splash-screen', { backgroundColor: '#FBFAF9', image: './assets/images/splash-icon.png', imageWidth: 132, dark: { backgroundColor: '#0E100F', image: './assets/images/splash-icon-dark.png' } }],
     ['expo-secure-store', { faceIDPermission: 'Allow Tap Trader to unlock the account this device already signed in to.' }],
+    // A position ends on the platform's timer whether the phone is awake or
+    // not; the notification is how its owner learns the trade is over.
+    ['expo-notifications', { icon: './assets/images/android-icon-monochrome.png', color: '#836EF9' }],
   ],
   experiments: { typedRoutes: true, reactCompiler: true },
   owner: 'romanwagmi',

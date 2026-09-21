@@ -11,6 +11,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AccountProvider } from '@/account/useAccount';
 import { FONT_FACES } from '@/constants/theme';
 import { OnboardingProvider } from '@/onboarding/useOnboarding';
+import { followNotifications } from '@/push/register';
 import { PositionSettingsProvider } from '@/trading/useSettings';
 import { ThemeProvider, useThemeControls } from '@/theme';
 
@@ -58,6 +59,9 @@ export default function RootLayout() {
 
 function Shell() {
   const { theme, name } = useThemeControls();
+  // A tapped notification leads to the strategy it names, where the result
+  // of the trade it is about is read.
+  useEffect(followNotifications, []);
   return (
     <>
       <Stack
