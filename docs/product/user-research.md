@@ -14,8 +14,8 @@ The path under observation is the whole first run:
 
     intro → passkey → account opens → lesson → first tap → position → result
 
-What gets written down: where they stopped, what they said, what they asked,
-and — when the format allows it — how long it took them to reach the first tap.
+What gets written down: where they stopped, what they said, and what they
+asked.
 
 Five questions to get through, in this order where the session allows it, so
 the early answers are not steered by the later ones:
@@ -33,13 +33,13 @@ them were.
 
 ## Sessions
 
-| # | Date | Trades already? | Where | Time to first tap | Reached a result unaided? |
-|---|---|---|---|---|---|
-| 1 | 2026-09-21 | yes, on centralised exchanges | direct invite, remote | not measured | yes |
+| # | Date | Trades already? | Where | Reached a result unaided? |
+|---|---|---|---|---|
+| 1 | 2026-09-21 | yes, on centralised exchanges | direct invite, remote | yes |
 
 Session 1 ran remotely: they opened the app on their own phone, went through
 the first run with nobody watching and sent back what they thought as they
-went. The five questions were not put to them, and nothing was timed.
+went. The five questions were not put to them.
 
 ## Findings
 
@@ -58,16 +58,8 @@ is noise; the second occurrence makes it a defect.
 
 | Measure | Value |
 |---|---|
-| Median time from launch to first tap | not measured |
-| Share who reached a result without a hint | not measured |
-| Share who could say what the app was, unprompted | not measured |
-
-Nothing here is measured yet. Timing a session by hand only works when
-somebody is sitting there, which will not be true of every session — so the
-first two rows are better taken from the platform's own journal, which knows
-when an account was created and when its first position opened. That is a
-query, not a stopwatch, and it covers everyone who ever opened the app rather
-than the handful we watched.
+| Share who reached a result without a hint | 1 of 1 so far |
+| Share who could say what the app was, unprompted | not asked yet |
 
 ## What this changes
 
