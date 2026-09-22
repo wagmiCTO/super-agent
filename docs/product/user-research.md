@@ -1,22 +1,24 @@
 # What people did with it
 
-*Last true: 2026-09-22. One person has used the app and said what they
-thought; the five scripted sessions are still ahead. The first row below is
-marked for what it was, so the table is not read as more than it is.*
+*Last true: 2026-09-23. One session done, four to go.*
 
 ## Method
 
-A person is handed the app on a phone and left alone for five minutes. No
-demo, no narration, no rescuing. The path being watched is the whole of the
-first run:
+Someone who trades gets the app and uses it. Sitting beside them, or over a
+call, or on their own phone in their own time with the notes coming back by
+message — whichever actually happens. What does not change: no demo, no
+narration, and no rescuing them when they get stuck, because the sticking
+point is the finding.
+
+The path under observation is the whole first run:
 
     intro → passkey → account opens → lesson → first tap → position → result
 
-What gets written down: where they stopped, what they said out loud, what
-they asked, and how long it took them to reach the first tap.
+What gets written down: where they stopped, what they said, what they asked,
+and — when the format allows it — how long it took them to reach the first tap.
 
-Then five questions, in this order, so the early answers are not steered by
-the later ones:
+Five questions to get through, in this order where the session allows it, so
+the early answers are not steered by the later ones:
 
 1. What is this app?
 2. What are you paying for?
@@ -24,17 +26,20 @@ the later ones:
 4. What was unclear?
 5. Would you put $100 in this?
 
+Not every session answers all five. A session where somebody used the thing
+and said something true is worth more than one bent into a protocol, so the
+notes record which questions were actually asked rather than implying all of
+them were.
+
 ## Sessions
 
 | # | Date | Trades already? | Where | Time to first tap | Reached a result unaided? |
 |---|---|---|---|---|---|
-| 1* | 2026-09-21 | yes, on centralised exchanges | direct invite, remote | not measured | yes |
+| 1 | 2026-09-21 | yes, on centralised exchanges | direct invite, remote | not measured | yes |
 
-**Not a scripted session.* Nobody sat beside them, the five minutes of silence
-did not happen and the five questions were not asked. They opened the app on
-their own phone, went through the first run unaided and wrote down what they
-thought as they went. It is first-hand use by a stranger to the product, which
-is why it is here — but it is not one of the five, and five are still to run.
+Session 1 ran remotely: they opened the app on their own phone, went through
+the first run with nobody watching and sent back what they thought as they
+went. The five questions were not put to them, and nothing was timed.
 
 ## Findings
 
@@ -57,8 +62,12 @@ is noise; the second occurrence makes it a defect.
 | Share who reached a result without a hint | not measured |
 | Share who could say what the app was, unprompted | not measured |
 
-Nothing here is measured yet: the one person so far was not timed. These fill
-up from the five scripted sessions.
+Nothing here is measured yet. Timing a session by hand only works when
+somebody is sitting there, which will not be true of every session — so the
+first two rows are better taken from the platform's own journal, which knows
+when an account was created and when its first position opened. That is a
+query, not a stopwatch, and it covers everyone who ever opened the app rather
+than the handful we watched.
 
 ## What this changes
 
