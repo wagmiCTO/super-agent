@@ -65,10 +65,12 @@ three seconds.
 
 ## Links
 
-- App: https://inflight.work
+- App, in a phone browser: https://inflight.work
+- App, iOS native build: https://testflight.apple.com/join/FC6PUbJK (TestFlight,
+  code `FC6PUbJK`) — the same build, installed rather than opened
 - Platform API: https://platform-production-bf25.up.railway.app (OpenAPI in `api/openapi.yaml`)
 - Prize pool: `0x1cC7f88b21E0158e70323aad98Dea4dC20b380aC` on Monad testnet
-- Indexer: https://indexer.dev.hyperindex.xyz/efd72aa/v1/graphql
+- Indexer: https://indexer.dev.hyperindex.xyz/45c9bd0/v1/graphql
 - Repository: https://github.com/wagmiCTO/super-agent
 
 ## Honest limits
