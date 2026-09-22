@@ -77,13 +77,15 @@ function useAccountState(): Account {
     setAccountAddress(family.wallet.address);
     // Registration is silent and idempotent; a failure only means requests
     // stay routed by address, which the platform still serves.
-    registerAuthKey(family)
+    // Three errands, not one chain. Where to reach this device runs after the
+    // signing key because the platform answers a signed request, but it runs
+    // whether or not that key registered: hung off the same `.then` it was
+    // simply skipped when anything above it failed, and the notifications
+    // went down with a problem that had nothing to do with them.
+    void registerAuthKey(family)
       .then(claimPendingInvite)
-      // Where to reach this device when a position of theirs closes. Last in
-      // the chain and never fatal: it is a courtesy, and a refused prompt or
-      // a build without push credentials must not touch signing in.
-      .then(registerForPush)
-      .catch((e) => console.warn('request-signing key not registered', e));
+      .catch((e) => console.warn('request-signing key not registered', e))
+      .finally(() => void registerForPush());
   }, []);
 
   const drop = useCallback(() => {
