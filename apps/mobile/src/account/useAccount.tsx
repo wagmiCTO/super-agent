@@ -20,6 +20,7 @@
  * platform on each unlock (idempotent, silent — the wallet signs it).
  */
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Platform } from 'react-native';
 
 import { api, ApiError, setAccountAddress, setRequestSigner } from '@/api/client';
 import { registerAuthKey } from '@/exchange/enroll';
@@ -164,11 +165,52 @@ function useAccountState(): Account {
   return { state, busy, error, create, signIn, signOut };
 }
 
+/**
+ * Everything an error and the errors under it say, outermost first.
+ *
+ * A passkey library reports its own label and keeps the platform's reason
+ * beneath it: a creation that failed inside the ceremony arrives as "Passkey
+ * creation failed" with the real cause in `cause`. Reading only the outer
+ * message therefore recognises nothing.
+ */
+function causeChain(e: unknown): string[] {
+  const out: string[] = [];
+  for (let cur: unknown = e, depth = 0; cur != null && depth < 8; depth += 1) {
+    const err = cur as { message?: unknown; code?: unknown; cause?: unknown };
+    if (typeof err.code === 'string') out.push(err.code);
+    const msg = cur instanceof Error ? cur.message : String(cur);
+    if (msg) out.push(msg);
+    cur = err.cause;
+  }
+  return out;
+}
+
+/**
+ * Why the passkey did not work, in words that say what to do next.
+ *
+ * The account is derived from the passkey itself, through the WebAuthn PRF
+ * extension: the passkey is not a login to an account we keep, it *is* the
+ * key. A password manager that stores passkeys but does not implement PRF
+ * therefore cannot hold this account at all — and it fails at the last step,
+ * after the prompt, which looks like our bug rather than a missing feature.
+ * So the message names the providers that do work, on the platform the person
+ * is actually holding.
+ */
 function describePasskeyError(e: unknown): string {
-  const msg = e instanceof Error ? e.message : String(e);
-  if (/NotAllowedError|cancel|abort/i.test(msg)) return 'Passkey prompt was cancelled';
-  if (/PRF|prf/.test(msg)) return 'This passkey provider does not support PRF. On desktop Chrome, save passkeys to Google Password Manager or use iCloud Keychain / 1Password.';
-  return msg;
+  const all = causeChain(e).join(' · ');
+  if (/NotAllowedError|cancel|abort/i.test(all)) return 'Passkey prompt was cancelled';
+  if (/PRF_UNAVAILABLE|PRF|prf/.test(all)) {
+    if (Platform.OS === 'ios') {
+      return 'That password manager cannot hold this account. Your account key is derived from the passkey itself, and that needs a feature (PRF) which it does not support. Use iCloud Keychain — in Settings › General › AutoFill & Passwords, turn on Passwords & Keychain and turn the other provider off, then try again. 1Password also works.';
+    }
+    if (Platform.OS === 'android') {
+      return 'That password manager cannot hold this account. Your account key is derived from the passkey itself, and that needs a feature (PRF) which it does not support. Use Google Password Manager — in Settings › Passwords & accounts, set it as the passkey provider, then try again. 1Password also works.';
+    }
+    return 'That password manager cannot hold this account. Your account key is derived from the passkey itself, and that needs a feature (PRF) which it does not support. Save the passkey to iCloud Keychain, Google Password Manager or 1Password instead.';
+  }
+  // The innermost message is the platform's own; the ones above it are labels.
+  const chain = causeChain(e).filter((m) => !/^[A-Z_]+$/.test(m));
+  return chain[chain.length - 1] ?? 'The passkey did not work, and the reason was not given';
 }
 
 /**
