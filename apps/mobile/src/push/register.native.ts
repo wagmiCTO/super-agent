@@ -11,10 +11,12 @@
  * on every unlock, because the token is reissued from time to time and a
  * wallet that has moved to a new phone must stop the old one buzzing.
  *
- * Every failure here is silent. Notifications are a courtesy: a trader who
- * refuses the prompt, or a build with no push credentials, must still be able
- * to trade, and an error about a notification in the middle of signing in
- * would be about us rather than about them.
+ * No failure here reaches the screen. Notifications are a courtesy: a trader
+ * who refuses the prompt, or a build with no push credentials, must still be
+ * able to trade, and an error about a notification in the middle of signing in
+ * would be about us rather than about them. It is still said out loud in the
+ * log, with the step that failed — silence cost a day of guessing at which of
+ * the six ways this can end quietly had happened.
  */
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
@@ -39,14 +41,16 @@ export async function registerForPush(): Promise<void> {
   try {
     // A simulator has no push service behind it and asking there only
     // produces an error in the log.
-    if (!Device.isDevice) return;
+    if (!Device.isDevice) return void console.log('[push] not a device; a simulator has no push service');
 
     const settings = await Notifications.getPermissionsAsync();
     const granted =
       settings.granted || settings.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL
         ? settings
         : await Notifications.requestPermissionsAsync();
-    if (!granted.granted && granted.ios?.status !== Notifications.IosAuthorizationStatus.PROVISIONAL) return;
+    if (!granted.granted && granted.ios?.status !== Notifications.IosAuthorizationStatus.PROVISIONAL) {
+      return void console.log('[push] permission refused');
+    }
 
     if (Platform.OS === 'android') {
       // Android shows nothing at all without a channel to show it in.
@@ -59,13 +63,15 @@ export async function registerForPush(): Promise<void> {
 
     const projectId =
       Constants.expoConfig?.extra?.eas?.projectId ?? (Constants as { easConfig?: { projectId?: string } }).easConfig?.projectId;
-    if (!projectId) return;
+    if (!projectId) return void console.warn('[push] no EAS project id in the config');
 
     const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
-    if (!token) return;
+    if (!token) return void console.warn('[push] the push service returned no token');
     await api.registerDevice(token, Platform.OS === 'ios' ? 'ios' : 'android');
-  } catch {
-    // Silent on purpose: see the note at the top.
+    console.log('[push] registered');
+  } catch (e) {
+    // Never on the screen, always in the log: see the note at the top.
+    console.warn('[push] not registered', e);
   }
 }
 
