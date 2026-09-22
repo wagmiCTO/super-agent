@@ -22,19 +22,33 @@ import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { router } from 'expo-router';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import { api } from '@/api/client';
 
+/**
+ * A notification is for someone who is not looking.
+ *
+ * The platform sends on every close, because it cannot know where the phone
+ * is. This decides what to do with one that arrives while the app is open:
+ * nothing. The screen already carries the news — the position card settles
+ * and the result opens — and a banner over it only covers what the person
+ * came to read.
+ *
+ * Only the foreground passes through here. With the app backgrounded or shut
+ * the system shows the notification itself and never asks, which is exactly
+ * the case worth being told about.
+ */
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    // The app being open is not a reason to stay quiet: a position can close
-    // while its own screen is being read.
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
+  handleNotification: async () => {
+    const looking = AppState.currentState === 'active';
+    return {
+      shouldShowBanner: !looking,
+      shouldShowList: !looking,
+      shouldPlaySound: !looking,
+      shouldSetBadge: false,
+    };
+  },
 });
 
 export async function registerForPush(): Promise<void> {
