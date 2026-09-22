@@ -8,6 +8,7 @@
  * hook is how the entry is made. Every order goes through the platform, which
  * puts it through the policy engine before the venue.
  */
+import { track } from '@/analytics/track';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { api, ApiError, currentAccountAddress, describeError, type AmendRequest, type ErrorCode, type Market, type Order, type Position, type State, type Trade } from '@/api/client';
@@ -113,6 +114,10 @@ export function useTrading(symbol: string, strategy: string) {
         });
         if (order.status === 'failed') {
           setNotice({ text: `The exchange refused: ${order.rejection?.code ?? 'unknown'}`, kind: 'error' });
+        } else {
+          // The step the whole funnel is built to reach. No amounts: what was
+          // traded is the journal's business.
+          track('position_opened', { strategy: strategy as 'direction' | 'ma-cross' | 'rsi', symbol });
         }
         await refresh();
         refreshRiskReport();

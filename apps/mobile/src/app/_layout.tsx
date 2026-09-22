@@ -11,6 +11,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AccountProvider } from '@/account/useAccount';
 import { FONT_FACES } from '@/constants/theme';
 import { OnboardingProvider } from '@/onboarding/useOnboarding';
+import { startAnalytics, track } from '@/analytics/track';
 import { followNotifications } from '@/push/register';
 import { PositionSettingsProvider } from '@/trading/useSettings';
 import { ThemeProvider, useThemeControls } from '@/theme';
@@ -62,6 +63,10 @@ function Shell() {
   // A tapped notification leads to the strategy it names, where the result
   // of the trade it is about is read.
   useEffect(followNotifications, []);
+  // The top of the funnel. Everything else is counted against this.
+  useEffect(() => {
+    void startAnalytics().then(() => track('app_opened'));
+  }, []);
   return (
     <>
       <Stack

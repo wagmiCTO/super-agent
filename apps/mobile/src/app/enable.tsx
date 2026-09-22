@@ -14,6 +14,7 @@
  * stuck, and this genuinely takes a minute or two.
  */
 
+import { track } from '@/analytics/track';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
@@ -63,7 +64,11 @@ export default function EnableScreen() {
   // Activated: the design goes straight to the lobby from here.
   const done = hasKey && heard && !pending;
   useEffect(() => {
-    if (done) router.replace('/');
+    if (!done) return;
+    // A wallet is not yet a trading account; this is where it becomes one,
+    // and the drop-off before it is the one worth knowing about.
+    track('account_activated');
+    router.replace('/');
   }, [done]);
 
   // One press, then the screen carries on by itself: waiting for the venue to

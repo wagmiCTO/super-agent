@@ -66,6 +66,8 @@ const config: ExpoConfig = {
     // A position ends on the platform's timer whether the phone is awake or
     // not; the notification is how its owner learns the trade is over.
     ['expo-notifications', { icon: './assets/images/android-icon-monochrome.png', color: '#836EF9' }],
+    // Asked for by the analytics client, which reads the device's locale.
+    'expo-localization',
   ],
   experiments: { typedRoutes: true, reactCompiler: true },
   owner: 'romanwagmi',

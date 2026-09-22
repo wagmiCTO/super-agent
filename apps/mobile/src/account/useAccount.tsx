@@ -25,6 +25,7 @@ import { Platform } from 'react-native';
 import { api, ApiError, setAccountAddress, setRequestSigner } from '@/api/client';
 import { registerAuthKey } from '@/exchange/enroll';
 import { clearPendingInvite, pendingInvite } from '@/invite/pending';
+import { track } from '@/analytics/track';
 import { registerForPush } from '@/push/register';
 import { KeyFamily, prfOutputToSeed, type Wallet } from './derive';
 import { toHex } from './hex';
@@ -127,7 +128,7 @@ function useAccountState(): Account {
   }, [adopt, drop]);
 
   const unlock = useCallback(
-    async (run: () => Promise<{ prfOutput: Uint8Array; credential: StoredAccount['credential'] }>, label: string) => {
+    async (run: () => Promise<{ prfOutput: Uint8Array; credential: StoredAccount['credential'] }>, label: string, fresh: boolean) => {
       setBusy(true);
       setError(null);
       try {
@@ -140,9 +141,19 @@ function useAccountState(): Account {
         adopt(family);
         const stored: StoredAccount = { credential, address: family.wallet.address, label };
         await saveStoredAccount(stored);
+        // Only a new account counts: signing in again is the same person
+        // coming back, and counting it would flatter the funnel.
+        if (fresh) track('passkey_created');
         setState({ status: 'unlocked', stored, wallet: family.wallet, keys: family });
       } catch (e) {
-        setError(describePasskeyError(e));
+        const said = describePasskeyError(e);
+        // Bucketed, never the message: a raw one names the person's password
+        // manager, and the count is what tells us whether this is one friend
+        // or everybody.
+        track('passkey_failed', {
+          reason: /cannot hold your account/.test(said) ? 'prf' : /cancelled/.test(said) ? 'cancelled' : 'other',
+        });
+        setError(said);
       } finally {
         setBusy(false);
       }
@@ -150,11 +161,11 @@ function useAccountState(): Account {
     [adopt],
   );
 
-  const create = useCallback((label = 'Tap Trader account') => unlock(() => createPasskey(label), label), [unlock]);
+  const create = useCallback((label = 'Tap Trader account') => unlock(() => createPasskey(label), label, true), [unlock]);
 
   const signIn = useCallback(() => {
     const known = state.status === 'remembered' || state.status === 'unlocked' ? state.stored : undefined;
-    return unlock(() => signInWithPasskey(known?.credential), known?.label ?? 'Tap Trader account');
+    return unlock(() => signInWithPasskey(known?.credential), known?.label ?? 'Tap Trader account', false);
   }, [state, unlock]);
 
   const signOut = useCallback(async () => {
