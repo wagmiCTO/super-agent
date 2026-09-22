@@ -188,29 +188,24 @@ function causeChain(e: unknown): string[] {
 /**
  * Why the passkey did not work, in words that say what to do next.
  *
- * The account is derived from the passkey itself, through the WebAuthn PRF
+ * The account is derived from the passkey itself through the WebAuthn PRF
  * extension: the passkey is not a login to an account we keep, it *is* the
  * key. A password manager that stores passkeys but does not implement PRF
- * therefore cannot hold this account at all — and it fails at the last step,
- * after the prompt, which looks like our bug rather than a missing feature.
- * So the message names the providers that do work, on the platform the person
- * is actually holding.
+ * therefore cannot hold this account, and it fails after the prompt, which
+ * reads as our bug rather than as a missing feature. One sentence for what
+ * happened and one for the way out — on a red card, nobody reads a third.
  */
 function describePasskeyError(e: unknown): string {
   const all = causeChain(e).join(' · ');
   if (/NotAllowedError|cancel|abort/i.test(all)) return 'Passkey prompt was cancelled';
   if (/PRF_UNAVAILABLE|PRF|prf/.test(all)) {
-    if (Platform.OS === 'ios') {
-      return 'That password manager cannot hold this account. Your account key is derived from the passkey itself, and that needs a feature (PRF) which it does not support. Use iCloud Keychain — in Settings › General › AutoFill & Passwords, turn on Passwords & Keychain and turn the other provider off, then try again. 1Password also works.';
-    }
-    if (Platform.OS === 'android') {
-      return 'That password manager cannot hold this account. Your account key is derived from the passkey itself, and that needs a feature (PRF) which it does not support. Use Google Password Manager — in Settings › Passwords & accounts, set it as the passkey provider, then try again. 1Password also works.';
-    }
-    return 'That password manager cannot hold this account. Your account key is derived from the passkey itself, and that needs a feature (PRF) which it does not support. Save the passkey to iCloud Keychain, Google Password Manager or 1Password instead.';
+    if (Platform.OS === 'ios') return 'This password manager cannot hold your account. Turn on iCloud Keychain in Settings › General › AutoFill & Passwords, then try again.';
+    if (Platform.OS === 'android') return 'This password manager cannot hold your account. Make Google Password Manager the passkey provider in Settings, then try again.';
+    return 'This password manager cannot hold your account. Save the passkey to iCloud Keychain, Google Password Manager or 1Password instead.';
   }
   // The innermost message is the platform's own; the ones above it are labels.
   const chain = causeChain(e).filter((m) => !/^[A-Z_]+$/.test(m));
-  return chain[chain.length - 1] ?? 'The passkey did not work, and the reason was not given';
+  return chain[chain.length - 1] ?? 'The passkey did not work';
 }
 
 /**
