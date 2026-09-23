@@ -204,11 +204,6 @@ function LobbyScreen() {
           ))
         )}
 
-        {boards !== null && boards.length > 0 ? (
-          <Text variant="small" style={{ fontSize: theme.type.t2xs }} testID="pool-note">
-            A pool is prize money for the week&apos;s top three, funded from the fees trades pay — not from your balance.
-          </Text>
-        ) : null}
 
         <Link href="/own" asChild>
           <Pressable accessibilityRole="button" accessibilityLabel="Build your own strategy" testID="own-link">

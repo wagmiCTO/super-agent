@@ -144,7 +144,7 @@ export default function LeaderboardScreen() {
 
         <Text variant="small" style={{ fontSize: theme.type.t2xs }} testID="board-note">
           {period === 'week'
-            ? 'Ranked by what you traded this week. Where the money comes from: every trade pays a small fee, and half of what we receive goes back into this pool. It reaches the contract once the week is over, and the top three of each strategy claim it here.'
+            ? 'Ranked by what you traded this week · the pool is half the fees the week paid, funded and settled on-chain once they arrive · claimed here.'
             : 'Everything traded since launch. The prize is weekly: switch to This week.'}
         </Text>
 
@@ -323,7 +323,7 @@ function OnChain() {
         <Text variant="small" style={{ fontSize: theme.type.t2xs }}>{`${history.totals.pools} pools · ${micros(history.totals.funded)} AUSD funded`}</Text>
       </View>
       <Text variant="small" style={{ fontSize: theme.type.t2xs }} testID="past-weeks-note">
-        Finished weeks, paid by the contract itself. Once a week is settled nobody can change who won or what they get — us included.
+        Paid out by the contract. Once a week is settled, nobody can change it.
       </Text>
       {settled.length === 0 ? (
         <Text variant="small" style={{ fontSize: theme.type.t2xs }}>
