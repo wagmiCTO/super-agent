@@ -24,6 +24,10 @@ import { useTheme } from '@/theme';
 
 const POOL = '0x1cC7f88b21E0158e70323aad98Dea4dC20b380aC';
 
+/** A phone's proportions, so a whole screen fits without being cropped. */
+const SHOT_RATIO = 393 / 852;
+const SHOT_H = 420;
+
 type Step = {
   title: string;
   body: string;
@@ -34,49 +38,36 @@ type Step = {
 
 const STEPS: Step[] = [
   {
-    title: 'Three screens, thirty seconds',
-    body: 'What this is. Skippable.',
-    cta: 'Start',
-    href: '/',
-    shot: require('../../assets/judges/intro.png'),
-  },
-  {
-    title: 'Your account is a passkey',
-    body: 'Face ID makes it. It is your private key — nobody, us included, can move your money.',
+    title: 'Simple onboarding',
+    body: '30 seconds to your first trade: Face ID → the account is open. Your passkey is your private key, kept safe in the device\'s keychain.',
     cta: 'Make one',
     href: '/passkey',
     shot: require('../../assets/judges/passkey.png'),
   },
   {
-    title: 'Pick a strategy you like',
-    body: 'It opens funded. Each card says what the strategy does and how it is going this week.',
-    cta: 'Choose one',
+    title: 'Strategies do the setup',
+    body: 'Pick a strategy from the list and go: size, leverage, stop and exit are already decided. Nothing left to configure.',
+    cta: 'See the list',
     href: '/',
     shot: require('../../assets/judges/lobby.png'),
   },
   {
-    title: 'Tap Up or Down',
-    body: 'Size, leverage and stop are already set. The tap is the whole decision.',
-    cta: 'Open Direction',
+    title: 'Trading screen for tap traders',
+    body: 'The limits are pre-checked, the strategy is already worked out, and the discipline is ours to keep. All you do is tap. After that the platform owns the exit and closes the position on time, app open or not.',
+    cta: 'Open it',
     href: '/direction',
     shot: require('../../assets/judges/direction.png'),
   },
   {
-    title: 'Hunt for a signal',
-    body: '‹ and › walk the markets. A strategy lights up when its shape appears.',
-    cta: 'Go looking',
-    href: '/direction',
-  },
-  {
-    title: 'See what it is costing you',
-    body: 'What is at stake now, the day\'s budget, distance to liquidation. One button closes everything.',
+    title: 'We keep you in the game',
+    body: 'Every order carries a stop. The day has a loss budget; at zero, the day closes. One button flattens everything. A trader who cannot blow up in an afternoon is still here next week.',
     cta: 'Open Risk',
     href: '/risk',
     shot: require('../../assets/judges/risk.png'),
   },
   {
-    title: 'See who won, on chain',
-    body: 'Each week pays its top three from the contract. A settled week cannot be changed — by anyone.',
+    title: 'The week pays out on chain',
+    body: 'Half the fees your trades pay go into that strategy\'s pool for the week. The pool sits on a contract and settles on chain — 50/30/20 to the top three, claimed by the winners themselves.',
     cta: 'Open the board',
     href: '/leaderboard',
     shot: require('../../assets/judges/leaderboard.png'),
@@ -103,21 +94,31 @@ export default function JudgesScreen() {
 
         <Card style={{ gap: theme.space.s3 }} testID="judges-step">
           {step.shot ? (
-            <Image
-              source={step.shot}
-              testID="judges-shot"
-              contentFit="cover"
-              contentPosition="top"
-              style={{ width: '100%', height: 260, borderRadius: theme.radius.rMd, backgroundColor: theme.color.cardBg }}
-            />
+            <View style={{ alignItems: 'center' }}>
+              <Image
+                source={step.shot}
+                testID="judges-shot"
+                contentFit="contain"
+                style={{
+                  height: SHOT_H,
+                  aspectRatio: SHOT_RATIO,
+                  borderRadius: theme.radius.rMd,
+                  borderWidth: theme.size.bw,
+                  borderColor: theme.color.hair,
+                  backgroundColor: theme.color.cardBg,
+                }}
+              />
+            </View>
           ) : null}
           <View style={{ gap: theme.space.s1 }}>
-            <Text variant="caps">{`Step ${at + 1}`}</Text>
+            <Text variant="caps">{`Step ${at + 1} of ${STEPS.length}`}</Text>
             <Text variant="bodyStrong">{step.title}</Text>
             <Text variant="small">{step.body}</Text>
           </View>
           <Button title={step.cta} onPress={() => router.push(step.href)} testID="judges-cta" />
-          <Dots count={STEPS.length} at={at} />
+          <View style={{ alignItems: 'center' }}>
+            <Dots count={STEPS.length} at={at} />
+          </View>
           <Pager
             page={at + 1}
             pages={STEPS.length}
