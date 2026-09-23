@@ -26,7 +26,7 @@ const POOL = '0x1cC7f88b21E0158e70323aad98Dea4dC20b380aC';
 
 /** A phone's proportions, so a whole screen fits without being cropped. */
 const SHOT_RATIO = 393 / 852;
-const SHOT_H = 420;
+const SHOT_H = 340;
 
 type Step = {
   title: string;
