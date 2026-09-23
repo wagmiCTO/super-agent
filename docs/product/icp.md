@@ -1,7 +1,9 @@
 # The first user
 
-*Last true: 2026-09-21. Written before the onboarding sessions, so every line
-here is a hypothesis to be confirmed or killed by [`user-research.md`](user-research.md).*
+*Last true: 2026-09-24. Written as a hypothesis before the sessions, and tested
+by five of them. What survived, what did not and what came back inverted is at
+the bottom of this page; the sessions themselves are in
+[`user-research.md`](user-research.md).*
 
 ## Who
 
@@ -39,18 +41,46 @@ trip is cheap enough not to eat the move. That is an inequality, not an
 opinion — see [`../fee-model.md`](../fee-model.md). Settlement on Monad is
 what puts a short horizon on the right side of it.
 
-## How we will know this is wrong
+## How we said we would know this is wrong
 
-Any of these kills the segment as written and sends us back to this page:
+Three ways, written down before anyone was shown the product:
 
-- People who show up already have stops and a plan, and find the defaults
-  patronising.
-- People who show up have never traded at all, and the lesson screens are
-  doing the real work rather than the discipline defaults.
-- The thing they come back for is the leaderboard, not the trading — in which
-  case this is a game with a trading skin, and should be built as one.
+1. People who show up already have stops and a plan, and find the defaults
+   patronising.
+2. People who show up have never traded at all, and the lesson screens are
+   doing the real work rather than the discipline defaults.
+3. The thing they come back for is the leaderboard, not the trading — in which
+   case this is a game with a trading skin, and should be built as one.
+
+## What the five sessions did to it
+
+**The segment holds.** Nobody called the defaults patronising. The person who
+trades understood what the product was, and that the strategies aimed at his
+own trading problem, without being told — which is the segment statement
+arriving back at us unprompted. Four of five reached a result with no help.
+
+**Test 2 half-fired, and not the way we expected.** The person furthest from
+trading did not need the lesson screens to understand the trading; he picked
+that up quickly. He lost the thread on the risk screen and the leaderboard
+instead. So the trading is not the hard part for a newcomer. The machinery
+around it is.
+
+**Test 3 came back inverted, which is the most useful thing we learned.** We
+were watching for people who came back for the leaderboard rather than the
+trading. Instead the leaderboard and the on-chain prize pool were the *least*
+understood parts of the product, in two sessions out of five, while the trading
+needed no explanation at all. This is not a game with a trading skin. If
+anything the game wrapper is currently a tax on comprehension, and it has to
+earn its place before more of it gets built.
+
+**One thing we had not written down as a risk at all.** A passkey kept in a
+password manager without PRF support cannot open an account here, so one of the
+five never reached the product. The segment is fine; the account layer has a
+hole in it that the segment statement did not anticipate.
 
 ## Status
 
-Not yet confirmed. Five onboarding sessions with strangers are the test; the
-segment statement above gets rewritten from what those sessions show.
+**Confirmed as written, with one correction.** The trader described above is the
+right first user. The correction is to what we owe him: the tap is understood,
+and the risk screen and the prize pool are not, so the next work is on those
+rather than on more strategies or more game.
