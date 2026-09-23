@@ -66,6 +66,7 @@ three seconds.
 
 ## Links
 
+- **Start here — how to try it in 60 seconds: https://inflight.work/judges**
 - App, in a phone browser: https://inflight.work
 - App, iOS native build: https://testflight.apple.com/join/FC6PUbJK (TestFlight,
   code `FC6PUbJK`) — the same build, installed rather than opened
