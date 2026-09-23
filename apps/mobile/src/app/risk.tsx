@@ -114,14 +114,25 @@ export default function RiskScreen() {
   // Once, on the way in: the zone is laid out again on every poll, and a
   // screen that travelled on each of them could never be scrolled away from.
   const travelled = useRef(false);
+  // Where the zone sits, kept for anyone who asks — the refusal that sent
+  // the trader here, and the line at the top for everyone else. Two of five
+  // testers went looking for their limits and did not find them: the zone is
+  // below the fold on every phone, and a screen full of readings gives no
+  // sign that it is down there at all.
+  const zoneY = useRef<number | null>(null);
   const showZone = useCallback(
     (y: number) => {
+      zoneY.current = y;
       if (!focus || travelled.current) return;
       travelled.current = true;
       scroll.current?.scrollTo({ y: Math.max(0, bodyTop.current + y - 12), animated: true });
     },
     [focus],
   );
+  const goToZone = useCallback(() => {
+    if (zoneY.current === null) return;
+    scroll.current?.scrollTo({ y: Math.max(0, bodyTop.current + zoneY.current - 12), animated: true });
+  }, []);
   // Something in the way is worth a sentence; simply waiting is not. A word
   // like "Loading…" on an empty screen is the app admitting it has nothing,
   // so instead the screen draws itself — the panel, empty, with the needles
@@ -150,7 +161,7 @@ export default function RiskScreen() {
             {report ? (
               <View onLayout={(e) => (bodyTop.current = e.nativeEvent.layout.y)}>
                 <FadeIn style={{ gap: theme.space.s4 }}>
-                  <Body report={report} trades={trades} leverage={settings.leverage} refresh={refresh} focus={focus ?? null} onZoneAt={showZone} />
+                  <Body report={report} trades={trades} leverage={settings.leverage} refresh={refresh} focus={focus ?? null} onZoneAt={showZone} goToZone={goToZone} />
                 </FadeIn>
               </View>
             ) : (
@@ -263,6 +274,7 @@ function Body({
   refresh,
   focus,
   onZoneAt,
+  goToZone,
 }: {
   report: RiskReport;
   trades: Trade[];
@@ -271,6 +283,8 @@ function Body({
   /** The limit a refused tap named, or null when nobody sent them. */
   focus: string | null;
   onZoneAt: (y: number) => void;
+  /** Takes the screen down to the limits, for a trader who came looking. */
+  goToZone: () => void;
 }) {
   const theme = useTheme();
   const budget = Number(report.limits.active?.daily_loss ?? 0);
@@ -300,6 +314,15 @@ function Body({
         <Text variant="small" style={{ fontSize: theme.type.t2xs }} testID="risk-resets">
           {`The budget starts over at ${localClock(report.limits.day_resets_at)} your time.`}
         </Text>
+        {/* The limits are the trader's to move, and the place to move them
+            is far below the fold. Said here, where the budget it caps is. */}
+        <Pressable accessibilityRole="button" accessibilityLabel="Go to your limits" onPress={goToZone} testID="risk-to-limits">
+          {({ pressed }) => (
+            <Text variant="small" style={{ fontSize: theme.type.t2xs, color: theme.color.accent, opacity: pressed ? 0.6 : 1 }}>
+              These limits are yours to change ↓
+            </Text>
+          )}
+        </Pressable>
       </View>
 
       {/* One ring per strategy. */}
