@@ -11,7 +11,7 @@
  * submission.
  */
 import { Image } from 'expo-image';
-import { router, type Href } from 'expo-router';
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { Linking, ScrollView, View } from 'react-native';
 
@@ -24,15 +24,13 @@ import { useTheme } from '@/theme';
 
 const POOL = '0x1cC7f88b21E0158e70323aad98Dea4dC20b380aC';
 
-/** A phone's proportions, so a whole screen fits without being cropped. */
-const SHOT_RATIO = 393 / 852;
+/** The shots' own proportions, so the frame holds them without letterboxing. */
+const SHOT_RATIO = 1179 / 1752;
 const SHOT_H = 340;
 
 type Step = {
   title: string;
   body: string;
-  cta: string;
-  href: Href;
   shot?: number;
 };
 
@@ -40,36 +38,26 @@ const STEPS: Step[] = [
   {
     title: 'Simple onboarding',
     body: '30 seconds to your first trade: Face ID → the account is open. Your passkey is your private key, kept safe in the device\'s keychain.',
-    cta: 'Make one',
-    href: '/passkey',
     shot: require('../../assets/judges/passkey.png'),
   },
   {
     title: 'Strategies do the setup',
     body: 'Pick a strategy from the list and go: size, leverage, stop and exit are already decided. Nothing left to configure.',
-    cta: 'See the list',
-    href: '/',
     shot: require('../../assets/judges/lobby.png'),
   },
   {
     title: 'Trading screen for tap traders',
     body: 'The limits are pre-checked, the strategy is already worked out, and the discipline is ours to keep. All you do is tap. After that the platform owns the exit and closes the position on time, app open or not.',
-    cta: 'Open it',
-    href: '/direction',
     shot: require('../../assets/judges/direction.png'),
   },
   {
     title: 'We keep you in the game',
     body: 'Every order carries a stop. The day has a loss budget; at zero, the day closes. One button flattens everything. A trader who cannot blow up in an afternoon is still here next week.',
-    cta: 'Open Risk',
-    href: '/risk',
     shot: require('../../assets/judges/risk.png'),
   },
   {
     title: 'The week pays out on chain',
     body: 'Half the fees your trades pay go into that strategy\'s pool for the week. The pool sits on a contract and settles on chain — 50/30/20 to the top three, claimed by the winners themselves.',
-    cta: 'Open the board',
-    href: '/leaderboard',
     shot: require('../../assets/judges/leaderboard.png'),
   },
 ];
@@ -115,7 +103,6 @@ export default function JudgesScreen() {
             <Text variant="bodyStrong">{step.title}</Text>
             <Text variant="small">{step.body}</Text>
           </View>
-          <Button title={step.cta} onPress={() => router.push(step.href)} testID="judges-cta" />
           <View style={{ alignItems: 'center' }}>
             <Dots count={STEPS.length} at={at} />
           </View>
@@ -156,6 +143,8 @@ export default function JudgesScreen() {
             Source ↗
           </Text>
         </Card>
+
+        <Button title="Open the app" onPress={() => router.replace('/')} testID="judges-open" />
 
         <Text variant="small" style={{ fontSize: theme.type.t2xs }} testID="judges-prf">
           If the passkey will not save: some password managers do not support PRF. Use the device&apos;s own
