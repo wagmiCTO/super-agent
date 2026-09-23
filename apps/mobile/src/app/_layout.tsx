@@ -9,6 +9,7 @@ import { Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AccountProvider } from '@/account/useAccount';
+import { WideScreenNote } from '@/components/wide-note';
 import { FONT_FACES } from '@/constants/theme';
 import { OnboardingProvider } from '@/onboarding/useOnboarding';
 import { startAnalytics, track } from '@/analytics/track';
@@ -77,6 +78,7 @@ function Shell() {
         }}
       />
       <StatusBar style={name === 'terminal' ? 'light' : 'dark'} />
+      <WideScreenNote />
     </>
   );
 }
