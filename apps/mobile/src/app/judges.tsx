@@ -48,17 +48,18 @@ const STEPS: Step[] = [
     shot: require('../../assets/judges/passkey.png'),
   },
   {
+    title: 'Pick a strategy you like',
+    body: 'It opens funded. Each card says what the strategy does and how it is going this week.',
+    cta: 'Choose one',
+    href: '/',
+    shot: require('../../assets/judges/lobby.png'),
+  },
+  {
     title: 'Tap Up or Down',
-    body: 'The size, the leverage and the stop are already set. The tap is the whole decision.',
+    body: 'Size, leverage and stop are already set. The tap is the whole decision.',
     cta: 'Open Direction',
     href: '/direction',
     shot: require('../../assets/judges/direction.png'),
-  },
-  {
-    title: 'Pick a strategy you like',
-    body: 'Direction calls the next fifteen minutes. MA Cross and RSI Bounce wait for their shape.',
-    cta: 'See all three',
-    href: '/',
   },
   {
     title: 'Hunt for a signal',
@@ -67,8 +68,15 @@ const STEPS: Step[] = [
     href: '/direction',
   },
   {
+    title: 'See what it is costing you',
+    body: 'What is at stake now, the day\'s budget, distance to liquidation. One button closes everything.',
+    cta: 'Open Risk',
+    href: '/risk',
+    shot: require('../../assets/judges/risk.png'),
+  },
+  {
     title: 'See who won, on chain',
-    body: 'Each week pays its top three from the contract. Settled weeks cannot be changed — by anyone.',
+    body: 'Each week pays its top three from the contract. A settled week cannot be changed — by anyone.',
     cta: 'Open the board',
     href: '/leaderboard',
     shot: require('../../assets/judges/leaderboard.png'),
