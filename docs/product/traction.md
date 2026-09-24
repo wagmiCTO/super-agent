@@ -1,6 +1,6 @@
 # Traction
 
-*Last true: 2026-09-22. Rows that carry a number were read that day; a row
+*Last true: 2026-09-25. Rows that carry a number were read that day; a row
 that is still blank names where its number comes from, so filling it is a
 query and not a judgement call.*
 
@@ -13,9 +13,9 @@ whether they made a living from it.
 
 | Measure | Value | Source |
 |---|---|---|
-| Wallets that opened at least one position | 14 | platform trade journal |
-| Closed trades | 145 | platform trade journal |
-| Volume, AUSD | 10,945.82 | platform trade journal |
+| Wallets that opened at least one position | 15 | platform trade journal |
+| Closed trades | 181 | platform trade journal |
+| Volume, AUSD | 16,457.27 | platform trade journal |
 | Wallets with ≥3 closed trades in a week | — | platform trade journal, grouped by week |
 | Returned the next day / the next week | — | platform trade journal, first-seen vs later |
 
@@ -35,12 +35,12 @@ whether people turn them off and trade the way they always did.
 
 | Strategy | Trades | Wallets | Volume, AUSD | Net result, AUSD | Source |
 |---|---|---|---|---|---|
-| Direction | 114 | 14 | 9,472.34 | −42.74 | platform trade journal |
-| MA Cross | 20 | 7 | 962.47 | +3.33 | platform trade journal |
-| RSI Bounce | 11 | 3 | 511.01 | +2.76 | platform trade journal |
+| Direction | 128 | 15 | 10,900.21 | −45.79 | platform trade journal |
+| MA Cross | 35 | 8 | 3,630.27 | −0.25 | platform trade journal |
+| RSI Bounce | 18 | 4 | 1,926.78 | −0.55 | platform trade journal |
 
-Traders are net down on Direction and slightly up on the two signal
-strategies. On 145 trades that is not evidence of either; it is here because
+Traders are net down on Direction and roughly flat on the two signal
+strategies. On 181 trades that is not evidence of either; it is here because
 leaving it out would make the page a sales sheet.
 
 ## Prize pools
@@ -51,10 +51,10 @@ trade journal; winners claim from the contract themselves. The mechanism is
 
 | Measure | Value | Source |
 |---|---|---|
-| Weeks settled | — | settlement receipts |
-| Paid out, AUSD | — | `StrategyPrizePool` on Monad testnet |
-| Contract address | — | deployment record |
-| Indexer | — | Envio |
+| Weeks settled | 1 (week of 14 Sep) | settlement receipts |
+| Funded and settled, AUSD | 1.398321, four winners able to claim | `StrategyPrizePool` on Monad testnet |
+| Contract address | `0x1cC7f88b21E0158e70323aad98Dea4dC20b380aC` | deployment record |
+| Indexer | https://indexer.dev.hyperindex.xyz/45c9bd0/v1/graphql | Envio |
 
 Anything in this section is checkable by a stranger without asking us, which
 is the point of settling it on chain.
