@@ -24,8 +24,11 @@ import { useTheme } from '@/theme';
 
 const POOL = '0x1cC7f88b21E0158e70323aad98Dea4dC20b380aC';
 
-/** The shots' own proportions, so the frame holds them without letterboxing. */
-const SHOT_RATIO = 1179 / 1752;
+/** The shots' own proportions, so the frame holds them without letterboxing.
+ *  Cropping them instead was tried and reverted: the app fills the screen to
+ *  its edges, so a fixed crop takes the header off the top and the navigation
+ *  off the bottom. The empty bands were the frame's, not the pictures'. */
+const SHOT_RATIO = 1179 / 1977;
 const SHOT_H = 340;
 
 type Step = {
