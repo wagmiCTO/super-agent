@@ -22,7 +22,7 @@ import Svg, { Path, Rect } from 'react-native-svg';
 import { useAccount } from '@/account/useAccount';
 import { api, ApiError, describeError, type Leaderboard, type PrizeHistory, type Standing, type Standings } from '@/api/client';
 import { shortAddress, unclaimedTotal, useMyPrizes } from '@/components/prizes';
-import { PAGE_SIZE, STRATEGY_NAMES } from '@/config';
+import { PAGE_SIZE, STRATEGY_NAMES, STRATEGY_SHORT } from '@/config';
 import { copy } from '@/ui/clipboard';
 import { claimPrize } from '@/exchange/prize';
 import { useLeaderboard } from '@/trading/useLeaderboard';
@@ -35,10 +35,10 @@ import { useTop } from '@/ui/inset';
 import { useTheme } from '@/theme';
 
 type Period = 'week' | 'all';
-type Tab = 'direction' | 'ma-cross' | 'rsi' | 'all';
+type Tab = 'direction' | 'ma-cross' | 'rsi' | 'donchian' | 'orb' | 'all';
 type You = NonNullable<Standings['you']>;
 
-const TABS: Tab[] = ['direction', 'ma-cross', 'rsi', 'all'];
+const TABS: Tab[] = ['direction', 'ma-cross', 'rsi', 'donchian', 'orb', 'all'];
 
 /** One line of the board. */
 type Row = { wallet: string; volume: number; pnl: number; trades: number; you: boolean };
@@ -89,18 +89,21 @@ export default function LeaderboardScreen() {
           />
         ) : null}
 
-        <View style={{ flexDirection: 'row', gap: theme.space.s1 }}>
+        {/* A board per strategy and all of them together: more chips than a
+            phone is wide, so the row scrolls sideways and the edges bleed
+            into the screen's margins. */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -theme.space.s4 }} contentContainerStyle={{ flexDirection: 'row', gap: theme.space.s1, paddingHorizontal: theme.space.s4 }}>
           {TABS.map((id) => (
             <Chip
               key={id}
               testID={`board-${id}`}
-              label={id === 'all' ? 'All' : (STRATEGY_NAMES[id] ?? id).replace(' Bounce', '')}
+              label={id === 'all' ? 'All' : STRATEGY_SHORT[id] ?? id}
               small
               on={tab === id}
               onPress={() => setTab(id)}
             />
           ))}
-        </View>
+        </ScrollView>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.s3 }}>
           {lb ? (

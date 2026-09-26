@@ -31,7 +31,7 @@ export async function skipOnboarding(page: Page, network: 'testnet' | 'mainnet' 
     // sends anyone who has not to the lesson first — which is correct, and
     // not what a spec about the app is asking about. And today's analysis
     // sheet has been read, so it does not sit over the keys.
-    [KEY, JSON.stringify({ network, introSeen: true, lessonSeen: true, taught: ['direction', 'ma-cross', 'rsi'] }), ANALYSIS_KEY, JSON.stringify({ day: new Date().toISOString().slice(0, 10) })] as const,
+    [KEY, JSON.stringify({ network, introSeen: true, lessonSeen: true, taught: ['direction', 'ma-cross', 'rsi', 'donchian', 'orb'] }), ANALYSIS_KEY, JSON.stringify({ day: new Date().toISOString().slice(0, 10) })] as const,
   );
 }
 

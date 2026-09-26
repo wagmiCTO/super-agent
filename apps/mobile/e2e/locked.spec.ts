@@ -26,7 +26,7 @@ async function seed(page: Page, account: typeof ACCOUNT | null, wipeSession = tr
     ([a, wipe]) => {
       window.localStorage.setItem(
         'tradeagent.onboarding',
-        JSON.stringify({ network: 'testnet', introSeen: true, lessonSeen: true, taught: ['direction', 'ma-cross', 'rsi'] }),
+        JSON.stringify({ network: 'testnet', introSeen: true, lessonSeen: true, taught: ['direction', 'ma-cross', 'rsi', 'donchian', 'orb'] }),
       );
       window.localStorage.setItem('tradeagent.analysis', JSON.stringify({ day: new Date().toISOString().slice(0, 10) }));
       if (a) window.localStorage.setItem('tradeagent.account', JSON.stringify(a));

@@ -25,6 +25,8 @@ export type ErrorBody = components['schemas']['Error'];
 export type Side = components['schemas']['Side'];
 export type MACrossSignal = components['schemas']['MACrossSignal'];
 export type RSISignal = components['schemas']['RSISignal'];
+export type DonchianSignal = components['schemas']['DonchianSignal'];
+export type ORBSignal = components['schemas']['ORBSignal'];
 export type Trade = components['schemas']['Trade'];
 export type Perf = components['schemas']['Perf'];
 export type TradesPage = components['schemas']['TradesPage'];
@@ -234,6 +236,8 @@ export const api = {
   standings: (strategy: string, period: 'week' | 'all', offset = 0, limit = PAGE_SIZE) =>
     request<Standings>(`/v1/leaderboard/standings?strategy=${encodeURIComponent(strategy)}&period=${period}&limit=${limit}&offset=${offset}`),
   rsi: (symbol: string, periodSeconds = 60) => request<RSISignal>(`/v1/signals/rsi?symbol=${encodeURIComponent(symbol)}&period_seconds=${periodSeconds}`),
+  donchian: (symbol: string, periodSeconds = 60) => request<DonchianSignal>(`/v1/signals/donchian?symbol=${encodeURIComponent(symbol)}&period_seconds=${periodSeconds}`),
+  orb: (symbol: string, periodSeconds = 60) => request<ORBSignal>(`/v1/signals/orb?symbol=${encodeURIComponent(symbol)}&period_seconds=${periodSeconds}`),
   /** The boards, by result: this week's, or every trade on record. */
   leaderboard: (period: 'week' | 'all' = 'week') => request<Leaderboard>(`/v1/leaderboard?period=${period}`),
   context: (symbol: string) => request<MarketContext>(`/v1/context?symbol=${encodeURIComponent(symbol)}`),

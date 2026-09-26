@@ -29,7 +29,7 @@ import { Text, lineBox, money } from '@/ui/text';
 import { useBottom, useTop } from '@/ui/inset';
 import { useTheme } from '@/theme';
 
-const ROUTES = { direction: '/direction', 'ma-cross': '/ma-cross', rsi: '/rsi' } as const;
+const ROUTES = { direction: '/direction', 'ma-cross': '/ma-cross', rsi: '/rsi', donchian: '/donchian', orb: '/orb' } as const;
 
 export default function ResultScreen() {
   const theme = useTheme();

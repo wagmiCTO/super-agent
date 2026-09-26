@@ -44,7 +44,7 @@ export type Event =
  * amounts — what was traded is the journal's business, not a third party's.
  */
 export type Props = {
-  strategy?: 'direction' | 'ma-cross' | 'rsi';
+  strategy?: 'direction' | 'ma-cross' | 'rsi' | 'donchian' | 'orb';
   symbol?: string;
   /** Why a passkey did not work, bucketed — the raw message may name a person's provider. */
   reason?: 'prf' | 'cancelled' | 'other';

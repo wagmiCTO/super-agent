@@ -11,7 +11,7 @@ test('the lobby shows each strategy with its week and opens it', async ({ page, 
   await expect(page.getByText('Choose a strategy')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId('balance')).toHaveText(/^[\d.]+ AUSD$|^offline$|^…$/);
 
-  for (const id of ['direction', 'ma-cross', 'rsi']) {
+  for (const id of ['direction', 'ma-cross', 'rsi', 'donchian', 'orb']) {
     const card = page.getByTestId(`strategy-${id}`);
     await expect(card).toBeVisible();
     // The week, in the design's money: a real minus sign and two decimals.

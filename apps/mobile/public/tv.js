@@ -1,6 +1,7 @@
 /**
  * The strategy chart page: TradingView's Charting Library with a datafeed
- * on the platform's candles, and one moving average drawn on top.
+ * on the platform's candles, and the strategy's own lines drawn on top: the
+ * two averages, the RSI in its pane, or the Donchian channel.
  *
  * Loaded at /tv.html by the app — inside an iframe on web, a WebView on the
  * phone — with the platform, the market and the skin's colours in the query:
@@ -10,7 +11,9 @@
  *
  * The app talks to the page with postMessage: chartType (candles | line),
  * interval ('1' | '5' | '15' | '30' | '60' minutes), trend (up | down | flat),
- * box ({top, bottom} | null), trades (the round trips to mark) and position
+ * box ({top, bottom, from?, to?} | null — two levels, and with from/to the
+ * stretch of bars between them shaded), cross (the bar to mark), trades
+ * (the round trips to mark) and position
  * (the open one with the levels that end it, or null). The page answers { type: 'ready' } once the chart
  * is drawn and { type: 'price', price, change } with the last close and its
  * move since the day opened, on every bar it receives.
@@ -23,6 +26,8 @@
   // The two averages MA Cross reads; 0 draws none.
   var FAST = Number(params.get('fast') || 0), SLOW = Number(params.get('slow') || 0);
   var STUDY = params.get('study') || '';
+  // The Donchian channel's length in bars; 0 draws none.
+  var CHANNEL = Number(params.get('channel') || 0);
   // The share of the box the study's pane takes; 0 leaves the split to the library.
   var PANE = Math.max(0, Math.min(0.6, Number(params.get('pane') || 0)));
   var BG = params.get('bg') || (THEME === 'dark' ? '#212225' : '#F0F0F3');
@@ -266,7 +271,25 @@
     var chart = widget.activeChart();
     chart.getAllShapes().forEach(function (sh) { try { chart.removeEntity(sh.id); } catch (e) {} });
     var now = Math.floor(Date.now() / 1000);
-    if (drawn.box) { level(chart, now, Number(drawn.box.top), MA, '', 1, true); level(chart, now, Number(drawn.box.bottom), MA, '', 1, true); }
+    if (drawn.box) {
+      // The two levels; and, when the box has a stretch of time, the bars
+      // that set it shaded between them — the opening range as the design
+      // draws it. The levels run on past it: they are what the bars after
+      // the range have to close beyond.
+      level(chart, now, Number(drawn.box.top), MA, '', 1, true); level(chart, now, Number(drawn.box.bottom), MA, '', 1, true);
+      if (drawn.box.from && drawn.box.to) {
+        try {
+          chart.createMultipointShape([{ time: drawn.box.from, price: Number(drawn.box.top) }, { time: drawn.box.to, price: Number(drawn.box.bottom) }], {
+            shape: 'rectangle', lock: true, disableSelection: true, disableSave: true, disableUndo: true,
+            overrides: { color: MA, backgroundColor: MA, fillBackground: true, transparency: 82, linewidth: 1, extendLeft: false, extendRight: false, showLabel: false },
+          });
+          chart.createShape({ time: drawn.box.from }, {
+            shape: 'vertical_line', lock: true, disableSelection: true, disableSave: true, disableUndo: true,
+            overrides: { linecolor: MA, linewidth: 1, linestyle: 2, showTime: false },
+          });
+        } catch (e) { console.warn('tv: range box', e && e.message); }
+      }
+    }
     // The last twenty round trips. Older ones would only pile up on the same bars.
     drawn.trades.slice(0, 20).forEach(function (t) {
       // Rows journaled before prices were kept have nothing to draw.
@@ -355,6 +378,16 @@
         split();
         window.addEventListener('resize', split);
       }).catch(function (e) { console.warn('tv: rsi study', e && e.message); });
+    }
+    if (STUDY === 'donchian' && CHANNEL > 1) {
+      // The channel over the bars: the top in the accent, the bottom
+      // quieter, nothing between them — the bars are what is read, the
+      // lines are what they have to close beyond.
+      chart.createStudy('Donchian Channels', false, false, { length: CHANNEL }, {
+        'upper.color': MA, 'upper.linewidth': 2, 'lower.color': TEXT, 'lower.linewidth': 2,
+        'basis.visible': false, 'basis.display': 0, 'plots background.visible': false, 'plots background.transparency': 100,
+      }).then(function () { post({ type: 'ready' }); }).catch(function (e) { console.warn('tv: donchian study', e && e.message); post({ type: 'ready' }); });
+      return;
     }
     if (!FAST || !SLOW) { post({ type: 'ready' }); return; }
     // The two lines the strategy reads: the fast one in the accent, the

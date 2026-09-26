@@ -1,7 +1,7 @@
 /**
  * The day's analysis, once a day, on the first strategy screen opened: what
  * the crowd on-chain has been doing with the market when Nansen has a read,
- * and which of the three strategies fits the tape today, in one sentence.
+ * and which of the strategies fits the tape today, in one sentence.
  *
  * It informs the tap; it never makes it. Both keys are exactly where they
  * were once the sheet is gone, and nothing about the position changes.
@@ -21,7 +21,7 @@ import { Sheet } from '@/ui/sheet';
 import { Text } from '@/ui/text';
 import { face, useTheme } from '@/theme';
 
-const ROUTES: Record<StrategyId, '/direction' | '/ma-cross' | '/rsi'> = { direction: '/direction', 'ma-cross': '/ma-cross', rsi: '/rsi' };
+const ROUTES: Record<StrategyId, '/direction' | '/ma-cross' | '/rsi' | '/donchian' | '/orb'> = { direction: '/direction', 'ma-cross': '/ma-cross', rsi: '/rsi', donchian: '/donchian', orb: '/orb' };
 
 export function AnalysisSheet({ open, symbol, current, onClose }: { open: boolean; symbol: string; current: StrategyId; onClose: () => void }) {
   return (
@@ -37,19 +37,27 @@ function Analysis({ symbol, current, onClose }: { symbol: string; current: Strat
   const [today, setToday] = useState<Today | null>(null);
 
   // The pick is read off the fifteen-minute chart's own signals: the same
-  // numbers the RSI and MA Cross screens show for that timeframe.
+  // numbers the strategy screens show for that timeframe.
   useEffect(() => {
     let alive = true;
-    Promise.all([api.rsi(symbol, 900).catch(() => null), api.maCross(symbol, 900).catch(() => null)]).then(([r, m]) => {
+    const ago = (at: string | undefined) => (at ? (Date.now() - new Date(at).getTime()) / 60_000 : undefined);
+    Promise.all([
+      api.rsi(symbol, 900).catch(() => null),
+      api.maCross(symbol, 900).catch(() => null),
+      api.donchian(symbol, 900).catch(() => null),
+      api.orb(symbol, 900).catch(() => null),
+    ]).then(([r, m, d, o]) => {
       if (!alive) return;
-      const crossAt = m?.last_cross?.at ? (Date.now() - new Date(m.last_cross.at).getTime()) / 60_000 : undefined;
       setToday(
         strategyOfTheDay({
           day: todayKey(),
           symbol,
           rsi: r?.ready ? Number(r.value) : undefined,
           trend: m?.ready ? m.trend : undefined,
-          lastCrossMinutes: crossAt,
+          lastCrossMinutes: ago(m?.last_cross?.at),
+          lastBreakMinutes: ago(d?.last_break?.at),
+          orbPhase: o?.ready ? o.phase : undefined,
+          nextOpenMinutes: o ? -(ago(o.next_open_at) ?? 0) : undefined,
         }),
       );
     });

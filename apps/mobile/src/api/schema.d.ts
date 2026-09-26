@@ -772,6 +772,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/signals/donchian": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The Turtles signal for a market
+         * @description The Donchian channel: the highest high and lowest low of the last `length` closed bars. A bar closing above every high of the bars before it opens a window up; a close below every low opens one down. Each point carries the channel that bar had to break; the top-level channel is what the bar now forming has to break.
+         */
+        get: {
+            parameters: {
+                query: {
+                    symbol: string;
+                    /** @description The chart's bar size the signal is read on. The channel is the same number of bars on every timeframe, and the window lasts three bars of it. */
+                    period_seconds?: 60 | 300 | 900 | 1800 | 3600;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DonchianSignal"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+                /** @description No signals are running. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/signals/orb": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The Open Range signal for a market
+         * @description The opening range breakout. Three times a day, at the session opens in `opens` (UTC), the first `range_seconds` of bars set a high and a low; the first bar after them to close above the high opens a window up, the first to close below the low opens one down, and the session is done. A breakout later than `watch_seconds` after the open does not count. The range is never shorter than one bar.
+         */
+        get: {
+            parameters: {
+                query: {
+                    symbol: string;
+                    /** @description The chart's bar size the signal is read on. The window lasts three bars of it. */
+                    period_seconds?: 60 | 300 | 900 | 1800 | 3600;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ORBSignal"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+                /** @description No signals are running. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/candles": {
         parameters: {
             query?: never;
@@ -2130,6 +2234,114 @@ export interface components {
                 close: components["schemas"]["Decimal"];
                 fast?: components["schemas"]["Decimal"];
                 slow?: components["schemas"]["Decimal"];
+            }[];
+        };
+        /** @description Present while an entry is offered after a signal. */
+        SignalWindow: {
+            side: components["schemas"]["Side"];
+            /** Format: date-time */
+            opened_at: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        /** @description One close outside a channel or a range. */
+        Breakout: {
+            side: components["schemas"]["Side"];
+            /**
+             * Format: date-time
+             * @description When the bar that broke out closed.
+             */
+            at: string;
+            price: components["schemas"]["Decimal"];
+            /** @description The edge the bar closed beyond. */
+            level: components["schemas"]["Decimal"];
+        };
+        DonchianSignal: {
+            symbol: string;
+            period_seconds: number;
+            /** @description Bars in the channel. */
+            length: number;
+            /** @description False until length closed bars exist. */
+            ready: boolean;
+            /** @description The channel's top as of the last closed bar — what the forming bar has to close above. Absent until ready. */
+            upper?: components["schemas"]["Decimal"];
+            /** @description The channel's bottom as of the last closed bar. Absent until ready. */
+            lower?: components["schemas"]["Decimal"];
+            /** @description Whether the last point is the bar still forming. */
+            forming: boolean;
+            window?: components["schemas"]["SignalWindow"];
+            last_break?: components["schemas"]["Breakout"];
+            points: {
+                /** Format: date-time */
+                at: string;
+                open: components["schemas"]["Decimal"];
+                high: components["schemas"]["Decimal"];
+                low: components["schemas"]["Decimal"];
+                close: components["schemas"]["Decimal"];
+                /** @description The channel this bar had to break. Absent while warming up. */
+                upper?: components["schemas"]["Decimal"];
+                lower?: components["schemas"]["Decimal"];
+            }[];
+        };
+        /** @description One session's opening range and what came of it. */
+        ORBSession: {
+            /**
+             * Format: date-time
+             * @description The session open on the clock.
+             */
+            open_at: string;
+            /**
+             * Format: date-time
+             * @description The open of the range's first bar.
+             */
+            range_from: string;
+            /**
+             * Format: date-time
+             * @description When the range is set.
+             */
+            range_until: string;
+            /**
+             * Format: date-time
+             * @description When a breakout stops counting.
+             */
+            watch_until: string;
+            /** @description Closed bars that set the range so far. */
+            bars: number;
+            /** @description The range's high so far. Absent until a bar closed inside it. */
+            high?: components["schemas"]["Decimal"];
+            low?: components["schemas"]["Decimal"];
+            break?: components["schemas"]["Breakout"];
+        };
+        ORBSignal: {
+            symbol: string;
+            period_seconds: number;
+            /** @description The session opens, HH:MM in UTC. */
+            opens: string[];
+            /** @description How long after the open the range is set */
+            range_seconds: number;
+            /** @description How long after the open a breakout still counts. */
+            watch_seconds: number;
+            /** @description False until a closed bar exists. */
+            ready: boolean;
+            /**
+             * @description Where the current session is: inside the range, waiting for the first close outside it, broken out, or over until the next open.
+             * @enum {string}
+             */
+            phase: "forming" | "watching" | "broken" | "closed";
+            session: components["schemas"]["ORBSession"];
+            /** Format: date-time */
+            next_open_at: string;
+            /** @description Whether the last point is the bar still forming. */
+            forming: boolean;
+            window?: components["schemas"]["SignalWindow"];
+            last_break?: components["schemas"]["Breakout"];
+            points: {
+                /** Format: date-time */
+                at: string;
+                open: components["schemas"]["Decimal"];
+                high: components["schemas"]["Decimal"];
+                low: components["schemas"]["Decimal"];
+                close: components["schemas"]["Decimal"];
             }[];
         };
         /** @description The most recent round trip's outcome, so the screen can say a position was closed while the user was away. */

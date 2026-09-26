@@ -71,7 +71,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
         await patch({ taught: [...stored.taught, strategy] });
       },
       markSwipesSeen: () => patch({ swipesSeen: true }),
-      markReturning: () => patch({ introSeen: true, lessonSeen: true, taught: ['direction', 'ma-cross', 'rsi'] }),
+      markReturning: () => patch({ introSeen: true, lessonSeen: true, taught: ['direction', 'ma-cross', 'rsi', 'donchian', 'orb'] }),
     }),
     [ready, prefs, patch],
   );

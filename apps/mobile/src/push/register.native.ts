@@ -94,7 +94,7 @@ export function followNotifications(): () => void {
   // strategy screen for it is where the result is read.
   const open = (data: Record<string, unknown> | undefined) => {
     const strategy = typeof data?.strategy === 'string' ? data.strategy : '';
-    const route = strategy === 'ma-cross' ? '/ma-cross' : strategy === 'rsi' ? '/rsi' : '/direction';
+    const route = strategy === 'ma-cross' || strategy === 'rsi' || strategy === 'donchian' || strategy === 'orb' ? (`/${strategy}` as const) : '/direction';
     router.push(route);
   };
 

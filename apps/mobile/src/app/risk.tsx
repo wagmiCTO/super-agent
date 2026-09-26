@@ -24,7 +24,7 @@ import { Pressable, ScrollView, View, type ViewStyle } from 'react-native';
 import { useAccount } from '@/account/useAccount';
 import { api, ApiError, describeError, type LimitTier, type RiskReport, type Trade } from '@/api/client';
 import { trim } from '@/components/format';
-import { DEFAULT_SYMBOL, STATE_POLL_MS, STRATEGY_NAMES } from '@/config';
+import { DEFAULT_SYMBOL, STATE_POLL_MS, STRATEGY_NAMES, STRATEGY_SHORT } from '@/config';
 import { RiskGauge, StrategyRing } from '@/risk/gauge';
 import { hoursInPlay } from '@/risk/hours';
 import { riskLevel } from '@/strategy/risk';
@@ -41,8 +41,8 @@ import { useTheme } from '@/theme';
 
 type OpenNow = RiskReport['open'][number];
 
-const ROUTES: Record<string, Href> = { direction: '/direction', 'ma-cross': '/ma-cross', rsi: '/rsi' };
-const STRATEGIES = ['direction', 'ma-cross', 'rsi'] as const;
+const ROUTES: Record<string, Href> = { direction: '/direction', 'ma-cross': '/ma-cross', rsi: '/rsi', donchian: '/donchian', orb: '/orb' };
+const STRATEGIES = ['direction', 'ma-cross', 'rsi', 'donchian', 'orb'] as const;
 
 /** The report, polled; null until the first answer. */
 function useRisk(ready: boolean) {
@@ -237,14 +237,14 @@ function Panel() {
               alignItems: 'center',
               gap: theme.space.s2,
               paddingVertical: theme.space.s3,
-              paddingHorizontal: theme.space.s2,
+              paddingHorizontal: theme.space.s1,
               borderRadius: theme.radius.rLg,
               backgroundColor: theme.color.cardBg,
               borderWidth: theme.color.cardLine === 'transparent' ? 0 : theme.size.bw,
               borderColor: theme.color.cardLine,
             }}
           >
-            <StrategyRing percent={null} delay={i * 220} />
+            <StrategyRing percent={null} size={46} delay={i * 220} />
             <Bone width={54} height={9} />
             <Bone width={40} height={8} />
           </View>
@@ -316,15 +316,15 @@ function Body({
                 alignItems: 'center',
                 gap: theme.space.s2,
                 paddingVertical: theme.space.s3,
-                paddingHorizontal: theme.space.s2,
+                paddingHorizontal: theme.space.s1,
                 borderRadius: theme.radius.rLg,
                 backgroundColor: theme.color.cardBg,
                 borderWidth: theme.color.cardLine === 'transparent' ? 0 : theme.size.bw,
                 borderColor: theme.color.cardLine,
               }}
             >
-              <StrategyRing percent={budget > 0 ? Math.min(100, Math.round((stake / budget) * 100)) : 0} delay={i * 220} />
-              <Text variant="bodyStrong" style={{ fontSize: theme.type.tXs }}>{s.name.replace(' Bounce', '')}</Text>
+              <StrategyRing percent={budget > 0 ? Math.min(100, Math.round((stake / budget) * 100)) : 0} size={46} delay={i * 220} />
+              <Text variant="bodyStrong" numberOfLines={1} style={{ fontSize: theme.type.t2xs }}>{STRATEGY_SHORT[s.id] ?? s.name}</Text>
               <Text variant="small" style={{ fontSize: theme.type.t2xs, textAlign: 'center' }}>
                 {first ? `${Number(first.collateral).toFixed(2)} × ${trim(first.leverage)}x` : 'quiet'}
               </Text>

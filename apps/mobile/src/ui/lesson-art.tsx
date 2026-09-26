@@ -14,7 +14,7 @@
 import { View } from 'react-native';
 import Svg, { Circle, Defs, G, Line, LinearGradient, Path, RadialGradient, Rect, Stop, Text as SvgText } from 'react-native-svg';
 
-import { BARS, SWING_BARS, TREND_BARS, lastCross, rsi, scale, sma, type Bar } from '@/ui/series';
+import { BARS, BREAK_BARS, SESSION_BARS, SWING_BARS, TREND_BARS, donchian, lastCross, rsi, scale, sma, type Bar } from '@/ui/series';
 import { face, useTheme, type Theme } from '@/theme';
 
 const W = 320;
@@ -320,13 +320,139 @@ export function RsiArt() {
 }
 
 /**
+ * The channel over a long range, and the bar that closes out of it. Shown,
+ * it also names the moment that is not one: a wick through the top line
+ * that closed back inside.
+ */
+export function ChannelArt({ shown }: { shown?: boolean }) {
+  const theme = useTheme();
+  const all = BREAK_BARS;
+  const N = 20;
+  const chan = donchian(all, N);
+  const from = 12;
+  const bars = all.slice(from);
+  const TOP = 22;
+  const HEIGHT = 156;
+  const y = scale(bars, TOP, HEIGHT);
+  const step = 300 / bars.length;
+  const x = (i: number) => 10 + step * (i - from + 0.5);
+  // The first close above the channel, and a wick before it that only poked through.
+  const first = all.findIndex((b, i) => i >= from && Number.isFinite(chan[i].upper) && b.c > chan[i].upper);
+  const brk = first < 0 ? all.length - 1 : first;
+  let wick = -1;
+  for (let i = brk - 2; i > from + 1; i--) {
+    if (all[i].h > chan[i].upper && all[i].c <= chan[i].upper) {
+      wick = i;
+      break;
+    }
+  }
+  // The channel exists from the N-th bar on; before that there is nothing to draw.
+  const start = Math.max(from, N);
+  const line = (pick: (c: { upper: number; lower: number }) => number) =>
+    all.map((_, i) => (i >= start ? `${x(i).toFixed(1)} ${y(pick(chan[i])).toFixed(1)}` : null)).filter(Boolean).join(' L ');
+  const cx = x(brk);
+  const cy = y(all[brk].c);
+  const pillX = clamp(cx, 62, 258);
+  return (
+    <Stage testID={shown ? 'art-channel-shown' : 'art-channel-idea'}>
+      <Grid theme={theme} top={TOP} height={HEIGHT} />
+      <Candles bars={bars} top={TOP} height={HEIGHT} faded={!shown} theme={theme} />
+      <Path d={`M ${line((c) => c.upper)}`} fill="none" stroke={theme.color.accent} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d={`M ${line((c) => c.lower)}`} fill="none" stroke={theme.color.dim} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
+      <Note x={x(start)} y={clamp(y(chan[start].upper) - 6, 30, 190)} theme={theme} colour={theme.color.accent} weight={600}>{`highest high · ${N} bars`}</Note>
+      <Note x={x(start)} y={clamp(y(chan[start].lower) + 14, 30, 194)} theme={theme} colour={theme.color.dim} weight={600}>{`lowest low · ${N} bars`}</Note>
+      {shown ? (
+        <>
+          <Mark x={cx} y={cy} ok label="closed above" at={brk - from > bars.length * 0.6 ? 'left' : 'right'} theme={theme} />
+          {wick >= 0 ? <Mark x={x(wick)} y={clamp(y(all[wick].h) - 20, 30, 150)} ok={false} label="just a wick" at="above" theme={theme} /> : null}
+        </>
+      ) : (
+        <>
+          <Circle cx={cx} cy={cy} r={20} fill={theme.color.accent} opacity={0.14} />
+          <Circle cx={cx} cy={cy} r={11} fill="none" stroke={theme.color.accent} strokeWidth={2.5} />
+          <Circle cx={cx} cy={cy} r={4.5} fill={theme.color.accent} />
+          <Line x1={cx} y1={cy - 11} x2={cx} y2={40} stroke={theme.color.accent} strokeWidth={1.5} strokeDasharray="2 3" />
+          <Rect x={pillX - 42} y={16} width={84} height={22} rx={11} fill={theme.color.accent} />
+          <SvgText x={pillX} y={31} fontSize={11} fontFamily={face(theme, 'display', 700)} textAnchor="middle" fill={theme.color.onAccent} letterSpacing={0.6}>
+            BREAKOUT
+          </SvgText>
+        </>
+      )}
+    </Stage>
+  );
+}
+
+/**
+ * A session: the open as a rule down the chart, the opening quarter hour
+ * shaded with its high and low drawn on, and the first bar after it to
+ * close outside. Shown, it also names the wick that did not count.
+ */
+export function RangeArt({ shown }: { shown?: boolean }) {
+  const theme = useTheme();
+  const all = SESSION_BARS;
+  const OPEN = 10;
+  const RANGE = 15;
+  const from = 2;
+  const bars = all.slice(from);
+  const TOP = 30;
+  const HEIGHT = 140;
+  const y = scale(bars, TOP, HEIGHT);
+  const step = 300 / bars.length;
+  const x = (i: number) => 10 + step * (i - from + 0.5);
+  const rng = all.slice(OPEN, OPEN + RANGE);
+  const hi = Math.max(...rng.map((b) => b.h));
+  const lo = Math.min(...rng.map((b) => b.l));
+  const out = all.findIndex((b, i) => i >= OPEN + RANGE && (b.c > hi || b.c < lo));
+  const brk = out < 0 ? all.length - 1 : out;
+  let wick = -1;
+  for (let i = brk - 1; i >= OPEN + RANGE; i--) {
+    if (all[i].h > hi && all[i].c <= hi) {
+      wick = i;
+      break;
+    }
+  }
+  const openX = x(OPEN) - step / 2;
+  const rangeW = step * RANGE;
+  const cx = x(brk);
+  const cy = y(all[brk].c);
+  return (
+    <Stage testID={shown ? 'art-range-shown' : 'art-range-idea'}>
+      <Grid theme={theme} top={TOP} height={HEIGHT} />
+      <Rect x={openX} y={y(hi)} width={rangeW} height={Math.max(2, y(lo) - y(hi))} fill={theme.color.accent} opacity={0.14} />
+      <Line x1={openX} y1={14} x2={openX} y2={186} stroke={theme.color.accent} strokeWidth={1.5} strokeDasharray="3 4" />
+      <Candles bars={bars} top={TOP} height={HEIGHT} faded={!shown} theme={theme} />
+      <Line x1={openX} y1={y(hi)} x2={310} y2={y(hi)} stroke={theme.color.accent} strokeWidth={2} />
+      <Line x1={openX} y1={y(lo)} x2={310} y2={y(lo)} stroke={theme.color.dim} strokeWidth={2} />
+      <Note x={openX + 6} y={22} theme={theme} colour={theme.color.accent} weight={600}>open · 13:30 UTC</Note>
+      <Note x={openX + rangeW / 2} y={clamp(y(lo) + 14, 40, 194)} theme={theme} anchor="middle" colour={theme.color.accent} weight={600}>first 15 min</Note>
+      <Note x={openX + rangeW - 5} y={clamp(y(hi) + 13, 30, 190)} theme={theme} anchor="end" colour={theme.color.accent} weight={600}>range high</Note>
+      <Note x={openX + rangeW - 5} y={clamp(y(lo) - 5, 30, 194)} theme={theme} anchor="end" colour={theme.color.dim} weight={600}>range low</Note>
+      {shown ? (
+        <>
+          <Mark x={cx} y={cy} ok label="first close outside" at="left" theme={theme} />
+          {wick >= 0 ? <Mark x={x(wick)} y={clamp(y(all[wick].h) - 20, 30, 150)} ok={false} label="a wick" at="above" theme={theme} /> : null}
+        </>
+      ) : (
+        <>
+          <Circle cx={cx} cy={cy} r={18} fill={theme.color.accent} opacity={0.14} />
+          <Circle cx={cx} cy={cy} r={10} fill="none" stroke={theme.color.accent} strokeWidth={2.5} />
+          <Circle cx={cx} cy={cy} r={4} fill={theme.color.accent} />
+        </>
+      )}
+    </Stage>
+  );
+}
+
+/**
  * What a tap sets in motion. Direction: the tap on the chart, the trade
  * from there to the timer, the floor under it. A signal strategy: the
- * window the screen lights for a few bars, and the two keys that stay yours.
+ * window the screen lights for a few bars, and the two keys that stay
+ * yours — over the averages, the channel or the range, whichever the
+ * strategy reads.
  */
-export function RunArt({ kind }: { kind: 'direction' | 'signal' }) {
+export function RunArt({ kind }: { kind: 'direction' | 'signal' | 'channel' | 'range' }) {
   const theme = useTheme();
-  if (kind === 'signal') return <SignalRun />;
+  if (kind !== 'direction') return <SignalRun kind={kind} />;
   const bars = BARS.slice(14);
   const TOP = 24;
   const HEIGHT = 118;
@@ -366,36 +492,14 @@ export function RunArt({ kind }: { kind: 'direction' | 'signal' }) {
   );
 }
 
-function SignalRun() {
+function SignalRun({ kind }: { kind: 'signal' | 'channel' | 'range' }) {
   const theme = useTheme();
-  const bars = TREND_BARS;
   const TOP = 20;
   const HEIGHT = 108;
-  const fast = sma(bars, 5);
-  const slow = sma(bars, 13);
-  const y = scale(bars, TOP, HEIGHT);
-  const step = 300 / bars.length;
-  const x = (i: number) => 10 + step * (i + 0.5);
-  const from = 4;
-  const line = (v: number[]) => v.slice(from).map((p, i) => `${x(i + from).toFixed(1)} ${y(p).toFixed(1)}`).join(' L ');
-  const real = Math.max(from + 1, lastCross(fast, slow, from));
-  const bandX = x(real) - step / 2;
-  const bandW = step * 3;
-  const pillX = clamp(x(real) + step, 70, 250);
   return (
     <Stage testID="art-run-signal">
       <Grid theme={theme} top={TOP} height={HEIGHT} rows={3} />
-      <Rect x={bandX} y={12} width={bandW} height={HEIGHT + 20} rx={6} fill="url(#stage-band)" />
-      <Candles bars={bars} top={TOP} height={HEIGHT} faded theme={theme} />
-      <Path d={`M ${line(slow)}`} fill="none" stroke={theme.color.dim} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-      <Path d={`M ${line(fast)}`} fill="none" stroke={theme.color.accent} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
-      <Circle cx={x(real)} cy={y((fast[real] + slow[real]) / 2)} r={5} fill={theme.color.accent} stroke={theme.color.paper} strokeWidth={1.5} />
-      <Rect x={pillX - 46} y={4} width={92} height={22} rx={11} fill={theme.color.accent} />
-      <Circle cx={pillX - 34} cy={15} r={3.5} fill={theme.color.onAccent} />
-      <SvgText x={pillX + 4} y={19} fontSize={11} fontFamily={face(theme, 'display', 700)} textAnchor="middle" fill={theme.color.onAccent} letterSpacing={0.6}>
-        SIGNAL · UP
-      </SvgText>
-      <Note x={bandX + bandW + 6} y={40} theme={theme} colour={theme.color.accent} weight={600}>a few bars</Note>
+      {kind === 'channel' ? <ChannelRun theme={theme} top={TOP} height={HEIGHT} /> : kind === 'range' ? <RangeRun theme={theme} top={TOP} height={HEIGHT} /> : <CrossRun theme={theme} top={TOP} height={HEIGHT} />}
       {/* The keys, as the screen has them: the named side filled, the other still yours. */}
       <Rect x={14} y={144} width={140} height={44} rx={14} fill={theme.color.up} />
       <SvgText x={84} y={164} fontSize={14} fontFamily={face(theme, 'display', 700)} textAnchor="middle" fill={theme.color.onUp}>Up</SvgText>
@@ -404,6 +508,105 @@ function SignalRun() {
       <SvgText x={236} y={164} fontSize={14} fontFamily={face(theme, 'display', 700)} textAnchor="middle" fill={theme.color.down}>Down</SvgText>
       <SvgText x={236} y={178} fontSize={9} fontFamily={face(theme, 'display', 500)} textAnchor="middle" fill={theme.color.down} opacity={0.8}>still yours</SvgText>
     </Stage>
+  );
+}
+
+/** The lit pill and the band of bars the window lasts, over a bar. */
+function WindowBand({ theme, atX, step, height }: { theme: Theme; atX: number; step: number; height: number }) {
+  const bandX = atX - step / 2;
+  const bandW = step * 3;
+  const pillX = clamp(atX + step, 70, 250);
+  // The note sits after the band, or before it when the band is at the edge.
+  const after = bandX + bandW + 6 < 258;
+  return (
+    <>
+      <Rect x={bandX} y={12} width={bandW} height={height + 20} rx={6} fill="url(#stage-band)" />
+      <Rect x={pillX - 46} y={4} width={92} height={22} rx={11} fill={theme.color.accent} />
+      <Circle cx={pillX - 34} cy={15} r={3.5} fill={theme.color.onAccent} />
+      <SvgText x={pillX + 4} y={19} fontSize={11} fontFamily={face(theme, 'display', 700)} textAnchor="middle" fill={theme.color.onAccent} letterSpacing={0.6}>
+        SIGNAL · UP
+      </SvgText>
+      <Note x={after ? bandX + bandW + 6 : bandX - 6} y={40} theme={theme} anchor={after ? 'start' : 'end'} colour={theme.color.accent} weight={600}>a few bars</Note>
+    </>
+  );
+}
+
+/** The averages, and the window on their cross. */
+function CrossRun({ theme, top, height }: { theme: Theme; top: number; height: number }) {
+  const bars = TREND_BARS;
+  const fast = sma(bars, 5);
+  const slow = sma(bars, 13);
+  const y = scale(bars, top, height);
+  const step = 300 / bars.length;
+  const x = (i: number) => 10 + step * (i + 0.5);
+  const from = 4;
+  const line = (v: number[]) => v.slice(from).map((p, i) => `${x(i + from).toFixed(1)} ${y(p).toFixed(1)}`).join(' L ');
+  const real = Math.max(from + 1, lastCross(fast, slow, from));
+  return (
+    <>
+      <WindowBand theme={theme} atX={x(real)} step={step} height={height} />
+      <Candles bars={bars} top={top} height={height} faded theme={theme} />
+      <Path d={`M ${line(slow)}`} fill="none" stroke={theme.color.dim} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d={`M ${line(fast)}`} fill="none" stroke={theme.color.accent} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
+      <Circle cx={x(real)} cy={y((fast[real] + slow[real]) / 2)} r={5} fill={theme.color.accent} stroke={theme.color.paper} strokeWidth={1.5} />
+    </>
+  );
+}
+
+/** The channel stepping up after the first breakout, and the window on the next. */
+function ChannelRun({ theme, top, height }: { theme: Theme; top: number; height: number }) {
+  const all = BREAK_BARS;
+  const chan = donchian(all, 20);
+  const from = 20;
+  const bars = all.slice(from);
+  const y = scale(bars, top, height);
+  const step = 300 / bars.length;
+  const x = (i: number) => 10 + step * (i - from + 0.5);
+  const breaks = all.map((b, i) => i).filter((i) => i >= from && Number.isFinite(chan[i].upper) && all[i].c > chan[i].upper);
+  const again = breaks[Math.min(1, breaks.length - 1)] ?? all.length - 1;
+  const line = (pick: (c: { upper: number; lower: number }) => number) =>
+    all.map((_, i) => (i >= from ? `${x(i).toFixed(1)} ${y(pick(chan[i])).toFixed(1)}` : null)).filter(Boolean).join(' L ');
+  return (
+    <>
+      <WindowBand theme={theme} atX={x(again)} step={step} height={height} />
+      <Candles bars={bars} top={top} height={height} faded theme={theme} />
+      <Path d={`M ${line((c) => c.upper)}`} fill="none" stroke={theme.color.accent} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d={`M ${line((c) => c.lower)}`} fill="none" stroke={theme.color.dim} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+      {breaks.slice(0, 2).map((i) => (
+        <Circle key={i} cx={x(i)} cy={y(all[i].c)} r={5} fill={theme.color.accent} stroke={theme.color.paper} strokeWidth={1.5} />
+      ))}
+      <Note x={x(from + 1)} y={clamp(y(chan[from + 1].upper) - 6, 30, 120)} theme={theme} colour={theme.color.accent} weight={600}>the channel follows</Note>
+    </>
+  );
+}
+
+/** The session's range and the window on the first close out of it. */
+function RangeRun({ theme, top, height }: { theme: Theme; top: number; height: number }) {
+  const all = SESSION_BARS;
+  const OPEN = 10;
+  const RANGE = 15;
+  const from = 6;
+  const bars = all.slice(from);
+  const y = scale(bars, top, height);
+  const step = 300 / bars.length;
+  const x = (i: number) => 10 + step * (i - from + 0.5);
+  const rng = all.slice(OPEN, OPEN + RANGE);
+  const hi = Math.max(...rng.map((b) => b.h));
+  const lo = Math.min(...rng.map((b) => b.l));
+  const out = all.findIndex((b, i) => i >= OPEN + RANGE && (b.c > hi || b.c < lo));
+  const brk = out < 0 ? all.length - 1 : out;
+  const openX = x(OPEN) - step / 2;
+  return (
+    <>
+      <WindowBand theme={theme} atX={x(brk)} step={step} height={height} />
+      <Rect x={openX} y={y(hi)} width={step * RANGE} height={Math.max(2, y(lo) - y(hi))} fill={theme.color.accent} opacity={0.14} />
+      <Line x1={openX} y1={12} x2={openX} y2={height + 32} stroke={theme.color.accent} strokeWidth={1.5} strokeDasharray="3 4" />
+      <Candles bars={bars} top={top} height={height} faded theme={theme} />
+      <Line x1={openX} y1={y(hi)} x2={310} y2={y(hi)} stroke={theme.color.accent} strokeWidth={2} />
+      <Line x1={openX} y1={y(lo)} x2={310} y2={y(lo)} stroke={theme.color.dim} strokeWidth={2} />
+      <Circle cx={x(brk)} cy={y(all[brk].c)} r={5} fill={theme.color.accent} stroke={theme.color.paper} strokeWidth={1.5} />
+      <Note x={openX + 6} y={height + 30} theme={theme} colour={theme.color.accent} weight={600}>open</Note>
+    </>
   );
 }
 

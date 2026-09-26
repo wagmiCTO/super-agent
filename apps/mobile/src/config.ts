@@ -107,7 +107,10 @@ export function horizonSeconds(h: Horizon, now = new Date()): number {
 export const EXCHANGE_KEY_INDEX = 0;
 
 /** The strategies' names as the lobby shows them, by id. */
-export const STRATEGY_NAMES: Record<string, string> = { direction: 'Direction', 'ma-cross': 'MA Cross', rsi: 'RSI Bounce' };
+export const STRATEGY_NAMES: Record<string, string> = { direction: 'Direction', 'ma-cross': 'MA Cross', rsi: 'RSI Bounce', donchian: 'Turtles', orb: 'Open Range' };
+
+/** The same names cut to a chip: a row of filters has room for one word each. */
+export const STRATEGY_SHORT: Record<string, string> = { direction: 'Direction', 'ma-cross': 'MA Cross', rsi: 'RSI', donchian: 'Turtles', orb: 'ORB' };
 
 /**
  * What the lobby's prize banner shows while no pool has paid this wallet

@@ -117,7 +117,7 @@ export function useTrading(symbol: string, strategy: string) {
         } else {
           // The step the whole funnel is built to reach. No amounts: what was
           // traded is the journal's business.
-          track('position_opened', { strategy: strategy as 'direction' | 'ma-cross' | 'rsi', symbol });
+          track('position_opened', { strategy: strategy as 'direction' | 'ma-cross' | 'rsi' | 'donchian' | 'orb', symbol });
         }
         await refresh();
         refreshRiskReport();

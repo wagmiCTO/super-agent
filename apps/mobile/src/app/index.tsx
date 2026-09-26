@@ -31,7 +31,7 @@ import { Text, money } from '@/ui/text';
 import { useBottom, useTop } from '@/ui/inset';
 import { face, useTheme } from '@/theme';
 
-const ROUTES: Record<string, Href> = { direction: '/direction', 'ma-cross': '/ma-cross', rsi: '/rsi' };
+const ROUTES: Record<string, Href> = { direction: '/direction', 'ma-cross': '/ma-cross', rsi: '/rsi', donchian: '/donchian', orb: '/orb' };
 
 /** The week's argument: which strategy made the most for its traders. */
 function factionLine(boards: Board[]): string | null {
@@ -446,5 +446,5 @@ function StrategyCard({ board, href, pool, lead, openPnl, rank }: { board: Board
 
 /** The board ids the platform uses, as the three signs the lobby draws. */
 function glyphOf(id: string): GlyphId {
-  return id === 'ma-cross' || id === 'rsi' ? id : 'direction';
+  return id === 'ma-cross' || id === 'rsi' || id === 'donchian' || id === 'orb' ? id : 'direction';
 }

@@ -17,7 +17,12 @@ export const INTERVALS = ['1', '5', '15', '30', '60'] as const;
 export type Interval = (typeof INTERVALS)[number];
 export const INTERVAL_LABELS: Record<Interval, string> = { '1': '1m', '5': '5m', '15': '15m', '30': '30m', '60': '1h' };
 
-export type Box = { top: string; bottom: string };
+/**
+ * Two levels across the pane; with `from` and `to` (unix seconds) also the
+ * stretch of bars between them, shaded: the opening range as the bars that
+ * set it, and the lines it left behind.
+ */
+export type Box = { top: string; bottom: string; from?: number; to?: number };
 
 /** A round trip to mark on the chart; an open one has no exit. */
 export type ChartTrade = { side: 'long' | 'short'; size: string; entry_price: string; exit_price?: string; pnl?: string; opened_at: string; closed_at?: string };
@@ -39,7 +44,7 @@ export type ChartPosition = {
 /** What the page says back: the last close, and its move since the day opened, in percent. */
 export type ChartTick = { price: string; change: number | null };
 
-/** Where the averages last crossed: the page marks the bar. */
+/** Where the averages last crossed, or the last bar to close out of a channel or a range: the page marks the bar. */
 export type ChartCross = { at: string; side: 'long' | 'short' };
 
 export type ChartMessage =
@@ -65,8 +70,10 @@ export type TVChartProps = {
   averages?: { fast: number; slow: number };
   /** The last cross to mark on the pane. */
   cross?: ChartCross | null;
-  /** An extra study in its own pane: the RSI for the counter-trend screen. */
-  study?: 'rsi';
+  /** An extra study: the RSI in its own pane for the counter-trend screen, or the Donchian channel over the bars for the breakout one. */
+  study?: 'rsi' | 'donchian';
+  /** The channel's length in bars, for the Donchian study. */
+  channel?: number;
   /** The share of the box the study's pane takes, 0..1; the library's own split when absent. */
   studyShare?: number;
   box?: Box | null;
@@ -77,7 +84,7 @@ export type TVChartProps = {
 };
 
 /** Where the chart page lives, with the platform, the market and the colours in the query. */
-export function chartPageUrl({ symbol, theme, colours, averages, study, studyShare }: Pick<TVChartProps, 'symbol' | 'theme' | 'colours' | 'averages' | 'study' | 'studyShare'>): string {
+export function chartPageUrl({ symbol, theme, colours, averages, study, studyShare, channel }: Pick<TVChartProps, 'symbol' | 'theme' | 'colours' | 'averages' | 'study' | 'studyShare' | 'channel'>): string {
   const q = new URLSearchParams({
     api: API_URL,
     symbol,
@@ -93,6 +100,7 @@ export function chartPageUrl({ symbol, theme, colours, averages, study, studySha
     slow: String(averages?.slow ?? 0),
     study: study ?? '',
     pane: studyShare ? String(studyShare) : '',
+    channel: String(channel ?? 0),
   });
   return `${WEB_URL}/tv.html?${q.toString()}`;
 }

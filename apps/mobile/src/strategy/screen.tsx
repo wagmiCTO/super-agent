@@ -1,11 +1,12 @@
 /**
  * Б2 — the strategy screen, as the design has it.
  *
- * One screen for all three strategies, because they differ in exactly two
+ * One screen for all the strategies, because they differ in exactly two
  * places: what the line above the keys says, and whether a side is named for
  * you. Direction asks a question and both keys stay filled — the call is
- * yours. MA Cross and RSI light up for a few bars and name a side; until
- * then the keys are outlines. They never move or resize, so the screen does
+ * yours. The signal strategies — MA Cross, RSI, Turtles, Open Range —
+ * light up for a few bars and name a side; until then the keys are
+ * outlines. They never move or resize, so the screen does
  * not jump under a finger that is already reaching for it.
  *
  * Above the fold: the chart, what the strategy says, the keys, and the one
@@ -583,6 +584,15 @@ function ChartBox({
   const theme = useTheme();
   const [picking, setPicking] = useState(false);
   const averages = id === 'ma-cross' ? signal?.averages ?? { fast: 5, slow: 20, trend: 'flat' as const, lastCross: null } : null;
+  // Turtles: the channel the page draws as a study, and the last close
+  // out of it. Open Range: the session's range as a box from its
+  // first bar to where it was set, and its breakout when it had one — a
+  // break from an earlier session is not this range's.
+  const channel = id === 'donchian' ? signal?.channel ?? { length: 20, upper: null, lower: null, lastBreak: null } : null;
+  const range = id === 'orb' ? signal?.range ?? null : null;
+  const rangeBreak = range?.lastBreak && range.lastBreak.at >= range.openAt ? range.lastBreak : null;
+  const mark = averages?.lastCross ?? channel?.lastBreak ?? rangeBreak ?? null;
+  const box = range && range.high !== null && range.low !== null ? { top: String(range.high), bottom: String(range.low), from: unix(range.from), to: unix(range.until) } : null;
   const { name } = useThemeControls();
   const [line, setLine] = useState(false);
   const [tick, setTick] = useState<ChartTick | null>(null);
@@ -634,9 +644,11 @@ function ChartBox({
           interval={interval}
           trend={position ? (position.side === 'long' ? 'up' : 'down') : 'flat'}
           averages={averages ? { fast: averages.fast, slow: averages.slow } : undefined}
-          cross={averages?.lastCross ?? null}
-          study={id === 'rsi' ? 'rsi' : undefined}
+          cross={mark ? { at: mark.at, side: mark.side } : null}
+          study={id === 'rsi' ? 'rsi' : id === 'donchian' ? 'donchian' : undefined}
           studyShare={id === 'rsi' ? RSI_PANE : undefined}
+          channel={channel?.length}
+          box={box}
           trades={trades}
           position={position ? levelsOf(position) : null}
           onTick={setTick}
@@ -832,6 +844,50 @@ function ChartBox({
             <Text variant="small" style={{ fontSize: theme.type.tXs, lineHeight: theme.type.tXs * 1.3 }}>
               {`MA ${averages.fast} · MA ${averages.slow} · ${INTERVAL_LABELS[interval]} · ${
                 lit && averages.lastCross ? `cross ${hm(averages.lastCross.at)}${left ? ` · ${left} left` : ''}` : `trend ${averages.trend}`
+              }`}
+            </Text>
+          </View>
+        ) : null}
+
+        {/* Bottom-left, Turtles only: the channel the forming bar has
+            to close beyond, or the break and how long its window has left. */}
+        {channel && !picking ? (
+          <View
+            pointerEvents="none"
+            testID="chart-legend"
+            style={{ position: 'absolute', bottom: 36, left: 10, paddingVertical: 3, paddingHorizontal: 8, borderRadius: theme.radius.rSm, ...glass, ...(lit ? { borderColor: theme.color.accent } : null) }}
+          >
+            <Text variant="small" style={{ fontSize: theme.type.tXs, lineHeight: theme.type.tXs * 1.3 }}>
+              {`Channel ${channel.length} · ${INTERVAL_LABELS[interval]} · ${
+                lit && channel.lastBreak
+                  ? `closed ${channel.lastBreak.side === 'long' ? 'above' : 'below'} ${hm(channel.lastBreak.at)}${left ? ` · ${left} left` : ''}`
+                  : channel.upper !== null && channel.lower !== null
+                    ? `${price(channel.lower)} – ${price(channel.upper)}`
+                    : 'warming up'
+              }`}
+            </Text>
+          </View>
+        ) : null}
+
+        {/* Bottom-left, Open Range only: the session and where it is — the
+            range forming, the watch on, the break, or the next open. */}
+        {range && !picking ? (
+          <View
+            pointerEvents="none"
+            testID="chart-legend"
+            style={{ position: 'absolute', bottom: 36, left: 10, paddingVertical: 3, paddingHorizontal: 8, borderRadius: theme.radius.rSm, ...glass, ...(lit ? { borderColor: theme.color.accent } : null) }}
+          >
+            <Text variant="small" style={{ fontSize: theme.type.tXs, lineHeight: theme.type.tXs * 1.3 }}>
+              {`Open ${range.open} · ${INTERVAL_LABELS[interval]} · ${
+                lit && rangeBreak
+                  ? `closed ${rangeBreak.side === 'long' ? 'above' : 'below'} ${hm(rangeBreak.at)}${left ? ` · ${left} left` : ''}`
+                  : range.phase === 'forming'
+                    ? `range forming · until ${hm(range.until)}`
+                    : range.phase === 'watching'
+                      ? `range ${price(range.low)} – ${price(range.high)} · until ${hm(range.watchUntil)}`
+                      : range.phase === 'broken' && rangeBreak
+                        ? `broke ${rangeBreak.side === 'long' ? 'up' : 'down'} ${hm(rangeBreak.at)} · next ${hm(range.nextOpenAt)}`
+                        : `next open ${hm(range.nextOpenAt)}`
               }`}
             </Text>
           </View>
@@ -1282,6 +1338,17 @@ function reason(t: Trade): string {
   if (t.close_reason === 'take_profit') return 'take profit';
   if (t.close_reason === 'manual') return 'closed';
   return 'open';
+}
+
+/** An ISO moment as unix seconds, for the chart page. */
+function unix(iso: string): number {
+  return Math.floor(new Date(iso).getTime() / 1000);
+}
+
+/** A level on the pane's legend: enough decimals to tell it from its neighbour, no more. */
+function price(n: number | null): string {
+  if (n === null || !Number.isFinite(n)) return '—';
+  return n >= 100 ? n.toFixed(2) : n >= 1 ? n.toFixed(4) : n.toPrecision(4);
 }
 
 function hm(iso: string): string {

@@ -14,13 +14,13 @@ import { STRATEGY_NAMES } from '@/config';
 import { useOnboarding } from '@/onboarding/useOnboarding';
 import { Button } from '@/ui/button';
 import { PositionForm, PossibleOutcomes } from '@/trading/position-form';
-import { CrossArt, DirectionIdea, DirectionShown, ReadyArt, RsiArt, RunArt } from '@/ui/lesson-art';
+import { ChannelArt, CrossArt, DirectionIdea, DirectionShown, RangeArt, ReadyArt, RsiArt, RunArt } from '@/ui/lesson-art';
 import { Dots, Screen } from '@/ui/surface';
 import { Text } from '@/ui/text';
 import { useBottom, useTop } from '@/ui/inset';
 import { useTheme } from '@/theme';
 
-type StrategyId = 'direction' | 'ma-cross' | 'rsi';
+type StrategyId = 'direction' | 'ma-cross' | 'rsi' | 'donchian' | 'orb';
 
 type Step = { title: string; body: string; art: 'idea' | 'shown' | 'run' | 'setup' | 'ready' };
 
@@ -46,16 +46,30 @@ const LESSONS: Record<StrategyId, Step[]> = {
     { art: 'setup', title: 'Your standard position', body: 'Same position for every strategy. Set it once, change it any time.' },
     { art: 'ready', title: 'Ready', body: 'You can read the band and you know to wait.' },
   ],
+  donchian: [
+    { art: 'idea', title: 'The highest high in twenty bars', body: 'Draw a line over the highest point of the last twenty bars and one under the lowest. That is the channel. Inside it the market is undecided; a close outside it is a decision.' },
+    { art: 'shown', title: 'A close, not a wick', body: 'The bar has to close above the top line. A spike that pokes through and comes back inside is the market testing the edge, not leaving it.' },
+    { art: 'run', title: 'Trends break out again', body: 'After a breakout the channel moves up to include it, and a real trend breaks out of the new one too. The screen names Up or Down for a few bars; both buttons stay yours.' },
+    { art: 'setup', title: 'Your standard position', body: 'Same position for every strategy. Set it once, change it any time.' },
+    { art: 'ready', title: 'Ready', body: 'You can tell a close from a wick, and you know a trend breaks out more than once.' },
+  ],
+  orb: [
+    { art: 'idea', title: 'Three opens a day', body: 'Crypto never closes, but the world does. The day opens at 00:00 UTC, London at 08:00, New York at 13:30 — the screen shows them in your time. The first quarter hour after each sets the range: its high and its low.' },
+    { art: 'shown', title: 'The first close outside', body: 'After the quarter hour, the first bar to close above the range names Up, the first to close below names Down. One signal a session; four hours later the open is old news and the watch ends.' },
+    { art: 'run', title: 'Know when to look', body: 'The screen says where the session is: the range forming, the watch on, or the time of the next open. You come back for that; the tap is still yours.' },
+    { art: 'setup', title: 'Your standard position', body: 'Same position for every strategy. Set it once, change it any time.' },
+    { art: 'ready', title: 'Ready', body: 'You know the three opens and what a break of the range looks like.' },
+  ],
 };
 
-const ROUTES = { direction: '/direction', 'ma-cross': '/ma-cross', rsi: '/rsi' } as const;
+const ROUTES = { direction: '/direction', 'ma-cross': '/ma-cross', rsi: '/rsi', donchian: '/donchian', orb: '/orb' } as const;
 
 export default function LessonScreen() {
   const theme = useTheme();
   const top = useTop();
   const bottom = useBottom(theme.space.s6);
   const params = useLocalSearchParams<{ strategy?: string }>();
-  const id: StrategyId = params.strategy === 'ma-cross' || params.strategy === 'rsi' ? params.strategy : 'direction';
+  const id: StrategyId = params.strategy === 'ma-cross' || params.strategy === 'rsi' || params.strategy === 'donchian' || params.strategy === 'orb' ? params.strategy : 'direction';
   const steps = LESSONS[id];
   const [at, setAt] = useState(0);
   const step = steps[at];
@@ -130,13 +144,17 @@ export default function LessonScreen() {
 function Art({ id, kind }: { id: StrategyId; kind: Step['art'] }) {
   if (kind === 'setup') return <PositionForm compact />;
   if (kind === 'ready') return <ReadyArt />;
-  if (kind === 'run') return <RunArt kind={id === 'direction' ? 'direction' : 'signal'} />;
+  if (kind === 'run') return <RunArt kind={id === 'direction' ? 'direction' : id === 'donchian' ? 'channel' : id === 'orb' ? 'range' : 'signal'} />;
   if (kind === 'shown') {
     if (id === 'ma-cross') return <CrossArt shown />;
     if (id === 'rsi') return <RsiArt />;
+    if (id === 'donchian') return <ChannelArt shown />;
+    if (id === 'orb') return <RangeArt shown />;
     return <DirectionShown />;
   }
   if (id === 'ma-cross') return <CrossArt />;
   if (id === 'rsi') return <RsiArt />;
+  if (id === 'donchian') return <ChannelArt />;
+  if (id === 'orb') return <RangeArt />;
   return <DirectionIdea />;
 }

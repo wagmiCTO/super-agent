@@ -2,7 +2,8 @@
  * The bars the illustrations are drawn from.
  *
  * The lesson artwork is a real chart, not a drawing of one: a seeded walk of
- * OHLC bars, moving averages computed from the closes, RSI from the formula.
+ * OHLC bars, moving averages computed from the closes, RSI from the formula,
+ * the Donchian channel from the highs and lows.
  * A picture that only looks like a chart teaches the wrong shape, and a reader
  * who later opens the real screen finds nothing they recognise.
  *
@@ -63,6 +64,28 @@ export function rsi(bars: Bar[], period = 14): number[] {
   });
 }
 
+/**
+ * The Donchian channel, one pair per bar: the highest high and lowest low
+ * of the `period` bars before it — what that bar had to close beyond. The
+ * first `period` bars have no channel and get NaN.
+ */
+export function donchian(bars: Bar[], period: number): { upper: number; lower: number }[] {
+  return bars.map((_, i) => {
+    if (i < period) return { upper: NaN, lower: NaN };
+    const window = bars.slice(i - period, i);
+    return { upper: Math.max(...window.map((b) => b.h)), lower: Math.min(...window.map((b) => b.l)) };
+  });
+}
+
+/** The last bar that closed outside its channel, or -1. */
+export function lastBreak(bars: Bar[], channel: { upper: number; lower: number }[], from = 0): number {
+  for (let i = bars.length - 1; i >= from; i--) {
+    const c = channel[i];
+    if (Number.isFinite(c.upper) && (bars[i].c > c.upper || bars[i].c < c.lower)) return i;
+  }
+  return -1;
+}
+
 /** The last bar where the fast average crossed the slow one, or -1. */
 export function lastCross(fast: number[], slow: number[], from = 15): number {
   for (let i = fast.length - 2; i > from; i--) {
@@ -112,6 +135,28 @@ export const COLD_BARS = ohlc(46, 23, -0.78, 1.15);
 export const TREND_BARS = ohlcLegs(11, [
   { n: 20, drift: -0.62, vol: 0.9 },
   { n: 26, drift: 0.78, vol: 1.05 },
+]);
+
+/**
+ * A long, narrow range and then a run out of the top of it: the shape a
+ * channel breakout is about. Forty-six bars, so the twenty-bar channel has
+ * a full window behind it well before the run.
+ */
+export const BREAK_BARS = ohlcLegs(14, [
+  { n: 30, drift: 0.02, vol: 0.55 },
+  { n: 4, drift: 0.9, vol: 0.8 },
+  { n: 12, drift: 0.62, vol: 1 },
+]);
+
+/**
+ * A session: quiet bars before the open, the opening quarter hour that sets
+ * the range, a few bars inside it, and the one that closes out above.
+ */
+export const SESSION_BARS = ohlcLegs(2, [
+  { n: 10, drift: -0.05, vol: 0.6 },
+  { n: 15, drift: 0.04, vol: 0.9 },
+  { n: 6, drift: 0.1, vol: 0.5 },
+  { n: 5, drift: 1.1, vol: 0.9 },
 ]);
 
 /**

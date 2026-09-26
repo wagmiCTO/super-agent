@@ -32,6 +32,8 @@ const FILTERS: { id: string; label: string }[] = [
   { id: 'direction', label: 'Direction' },
   { id: 'ma-cross', label: 'MA Cross' },
   { id: 'rsi', label: 'RSI' },
+  { id: 'donchian', label: 'Turtles' },
+  { id: 'orb', label: 'ORB' },
 ];
 
 type Tab = 'positions' | 'orders';
@@ -63,11 +65,11 @@ export default function HistoryScreen() {
           </View>
         </View>
 
-        <View style={{ flexDirection: 'row', gap: theme.space.s1 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -theme.space.s4 }} contentContainerStyle={{ flexDirection: 'row', gap: theme.space.s1, paddingHorizontal: theme.space.s4 }}>
           {FILTERS.map((f) => (
             <Chip key={f.id} label={f.label} small on={filter === f.id} onPress={() => setFilter(f.id)} testID={`filter-${f.id}`} />
           ))}
-        </View>
+        </ScrollView>
 
         {trades === null ? (
           <Loading problem={problem} />
