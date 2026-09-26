@@ -47,6 +47,13 @@ func TestSignalsSeedThenStream(t *testing.T) {
 	if _, ok := sig.MACross("BTC"); ok {
 		t.Fatal("unknown symbol has a signal")
 	}
+	// The same bars fed the breakout signals on every timeframe.
+	if dc, ok := sig.DonchianAt("MON", time.Minute); !ok || !dc.Ready || dc.LastBreak == nil || dc.LastBreak.Side != venue.Long {
+		t.Fatalf("donchian = %+v ok=%v", dc.LastBreak, ok)
+	}
+	if orb, ok := sig.ORBAt("MON", 5*time.Minute); !ok || !orb.Ready || orb.Session == nil {
+		t.Fatalf("orb ready=%v ok=%v", orb.Ready, ok)
+	}
 }
 
 func waitFor(t *testing.T, cond func() bool) {

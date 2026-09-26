@@ -399,6 +399,70 @@ paths:
               schema: { $ref: "#/components/schemas/RSISignal" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /v1/signals/donchian:
+    get:
+      summary: The Turtles signal for a market
+      description: >-
+        The Donchian channel: the highest high and lowest low of the last
+        `length` closed bars. A bar closing above every high of the bars
+        before it opens a window up; a close below every low opens one
+        down. Each point carries the channel that bar had to break; the
+        top-level channel is what the bar now forming has to break.
+      parameters:
+        - in: query
+          name: symbol
+          required: true
+          schema: { type: string, example: MON }
+        - in: query
+          name: period_seconds
+          required: false
+          schema: { type: integer, enum: [60, 300, 900, 1800, 3600], default: 60 }
+          description: >-
+            The chart's bar size the signal is read on. The channel is the
+            same number of bars on every timeframe, and the window lasts
+            three bars of it.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DonchianSignal" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503":
+          description: No signals are running.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /v1/signals/orb:
+    get:
+      summary: The Open Range signal for a market
+      description: >-
+        The opening range breakout. Three times a day, at the session opens
+        in `opens` (UTC), the first `range_seconds` of bars set a high and a
+        low; the first bar after them to close above the high opens a
+        window up, the first to close below the low opens one down, and
+        the session is done. A breakout later than `watch_seconds` after
+        the open does not count. The range is never shorter than one bar.
+      parameters:
+        - in: query
+          name: symbol
+          required: true
+          schema: { type: string, example: MON }
+        - in: query
+          name: period_seconds
+          required: false
+          schema: { type: integer, enum: [60, 300, 900, 1800, 3600], default: 60 }
+          description: >-
+            The chart's bar size the signal is read on. The window lasts
+            three bars of it.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ORBSignal" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503":
+          description: No signals are running.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
   /v1/candles:
     get:
       summary: OHLCV history for a market, for the chart
@@ -1280,6 +1344,112 @@ components:
               close: { $ref: "#/components/schemas/Decimal" }
               fast: { $ref: "#/components/schemas/Decimal" }
               slow: { $ref: "#/components/schemas/Decimal" }
+
+    SignalWindow:
+      type: object
+      description: Present while an entry is offered after a signal.
+      required: [side, opened_at, expires_at]
+      properties:
+        side: { $ref: "#/components/schemas/Side" }
+        opened_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+
+    Breakout:
+      type: object
+      description: One close outside a channel or a range.
+      required: [side, at, price, level]
+      properties:
+        side: { $ref: "#/components/schemas/Side" }
+        at: { type: string, format: date-time, description: When the bar that broke out closed. }
+        price: { $ref: "#/components/schemas/Decimal" }
+        level:
+          $ref: "#/components/schemas/Decimal"
+          description: The edge the bar closed beyond.
+
+    DonchianSignal:
+      type: object
+      required: [symbol, period_seconds, length, ready, forming, points]
+      properties:
+        symbol: { type: string }
+        period_seconds: { type: integer }
+        length: { type: integer, description: Bars in the channel. }
+        ready: { type: boolean, description: False until length closed bars exist. }
+        upper:
+          $ref: "#/components/schemas/Decimal"
+          description: The channel's top as of the last closed bar — what the forming bar has to close above. Absent until ready.
+        lower:
+          $ref: "#/components/schemas/Decimal"
+          description: The channel's bottom as of the last closed bar. Absent until ready.
+        forming: { type: boolean, description: Whether the last point is the bar still forming. }
+        window: { $ref: "#/components/schemas/SignalWindow" }
+        last_break: { $ref: "#/components/schemas/Breakout" }
+        points:
+          type: array
+          items:
+            type: object
+            required: [at, open, high, low, close]
+            properties:
+              at: { type: string, format: date-time }
+              open: { $ref: "#/components/schemas/Decimal" }
+              high: { $ref: "#/components/schemas/Decimal" }
+              low: { $ref: "#/components/schemas/Decimal" }
+              close: { $ref: "#/components/schemas/Decimal" }
+              upper:
+                $ref: "#/components/schemas/Decimal"
+                description: The channel this bar had to break. Absent while warming up.
+              lower: { $ref: "#/components/schemas/Decimal" }
+
+    ORBSession:
+      type: object
+      description: One session's opening range and what came of it.
+      required: [open_at, range_from, range_until, watch_until, bars]
+      properties:
+        open_at: { type: string, format: date-time, description: The session open on the clock. }
+        range_from: { type: string, format: date-time, description: The open of the range's first bar. }
+        range_until: { type: string, format: date-time, description: When the range is set. }
+        watch_until: { type: string, format: date-time, description: When a breakout stops counting. }
+        bars: { type: integer, description: Closed bars that set the range so far. }
+        high:
+          $ref: "#/components/schemas/Decimal"
+          description: The range's high so far. Absent until a bar closed inside it.
+        low: { $ref: "#/components/schemas/Decimal" }
+        break: { $ref: "#/components/schemas/Breakout" }
+
+    ORBSignal:
+      type: object
+      required: [symbol, period_seconds, opens, range_seconds, watch_seconds, ready, phase, session, next_open_at, forming, points]
+      properties:
+        symbol: { type: string }
+        period_seconds: { type: integer }
+        opens:
+          type: array
+          description: The session opens, HH:MM in UTC.
+          items: { type: string, example: "13:30" }
+        range_seconds: { type: integer, description: How long after the open the range is set, on this timeframe. }
+        watch_seconds: { type: integer, description: How long after the open a breakout still counts. }
+        ready: { type: boolean, description: False until a closed bar exists. }
+        phase:
+          type: string
+          enum: [forming, watching, broken, closed]
+          description: >-
+            Where the current session is: inside the range, waiting for the
+            first close outside it, broken out, or over until the next open.
+        session: { $ref: "#/components/schemas/ORBSession" }
+        next_open_at: { type: string, format: date-time }
+        forming: { type: boolean, description: Whether the last point is the bar still forming. }
+        window: { $ref: "#/components/schemas/SignalWindow" }
+        last_break: { $ref: "#/components/schemas/Breakout" }
+        points:
+          type: array
+          items:
+            type: object
+            required: [at, open, high, low, close]
+            properties:
+              at: { type: string, format: date-time }
+              open: { $ref: "#/components/schemas/Decimal" }
+              high: { $ref: "#/components/schemas/Decimal" }
+              low: { $ref: "#/components/schemas/Decimal" }
+              close: { $ref: "#/components/schemas/Decimal" }
 
     LastClose:
       type: object

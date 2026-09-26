@@ -29,6 +29,8 @@ var Catalog = []Info{
 	{ID: "direction", Name: "Direction", Tagline: "Up or down, an amount, a horizon. The platform closes for you.", Rhythm: "minutes to hours", KeyIndex: 0},
 	{ID: "ma-cross", Name: "MA Cross", Tagline: "Trade the trend: enter when the fast average crosses the slow one.", Rhythm: "a few entries an hour", KeyIndex: 1},
 	{ID: "rsi", Name: "RSI Bounce", Tagline: "Counter the trend: enter when the crowd has overdone it — below 30 up, above 70 down.", Rhythm: "long waits, sharp entries", KeyIndex: 2},
+	{ID: "donchian", Name: "Turtles", Tagline: "Ride the breakout: enter when a bar closes beyond the 20-bar channel, the way the Turtles did.", Rhythm: "a few entries a day", KeyIndex: 3},
+	{ID: "orb", Name: "Open Range", Tagline: "Trade the session's first move: the opening minutes set a range, the first close outside it names the side.", Rhythm: "three sessions a day", KeyIndex: 4},
 }
 
 // Lookup returns the catalog entry for id.

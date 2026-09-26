@@ -182,11 +182,65 @@ func TestLeaderboardCountsRoundTrips(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Boards) != 3 || out.Boards[1].ID != "ma-cross" || out.Boards[1].Trades != 1 || out.Boards[1].Players != 1 {
+	if len(out.Boards) != 5 || out.Boards[1].ID != "ma-cross" || out.Boards[1].Trades != 1 || out.Boards[1].Players != 1 {
 		t.Errorf("boards = %+v", out.Boards)
 	}
 	if out.Boards[0].Trades != 0 {
 		t.Errorf("direction board counted the ma-cross trade: %+v", out.Boards[0])
+	}
+}
+
+// The two breakout signals are served on every timeframe the chart has,
+// from the same feed as the others, and say what they are waiting for.
+func TestBreakoutSignalEndpoints(t *testing.T) {
+	t0 := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+	var candles []venue.Candle
+	for i := 0; i < 40; i++ {
+		c := fixed.FromInt(int64(10 + i%3))
+		candles = append(candles, venue.Candle{Open: t0.Add(time.Duration(i) * time.Minute), Period: time.Minute, O: c, H: c.Add(fixed.FromInt(1)), L: c.Sub(fixed.FromInt(1)), C: c})
+	}
+	fv := &fakeVenue{candles: candles, candleStream: make(chan venue.Candle)}
+	svc, _ := newService(t, fv)
+	signals := NewSignals(fv, nil)
+	signals.seedGap = 0
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go signals.Run(ctx, []string{"MON"})
+	waitFor(t, func() bool { st, ok := signals.DonchianAt("MON", time.Hour); return ok && len(st.Points) > 0 })
+	h := Handler(svc, nil, WithOwnAccount(true), WithSignals(signals))
+
+	get := func(path string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		return rec
+	}
+	rec := get("/v1/signals/donchian?symbol=mon&period_seconds=60")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("donchian: %d %s", rec.Code, rec.Body)
+	}
+	var dc donchianDTO
+	if err := json.Unmarshal(rec.Body.Bytes(), &dc); err != nil {
+		t.Fatal(err)
+	}
+	if dc.Symbol != "MON" || dc.Length != 20 || !dc.Ready || dc.Upper != "13" || dc.Lower != "9" || len(dc.Points) != 40 || dc.Points[39].Upper == "" || dc.Points[0].Upper != "" {
+		t.Fatalf("donchian = %+v", dc)
+	}
+	rec = get("/v1/signals/orb?symbol=MON&period_seconds=300")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("orb: %d %s", rec.Code, rec.Body)
+	}
+	var orb orbDTO
+	if err := json.Unmarshal(rec.Body.Bytes(), &orb); err != nil {
+		t.Fatal(err)
+	}
+	if orb.Symbol != "MON" || orb.PeriodSeconds != 300 || len(orb.Opens) != 3 || orb.Opens[2] != "13:30" || orb.RangeSeconds != 900 || orb.Phase == "" || orb.Session.OpenAt == "" || orb.NextOpenAt == "" {
+		t.Fatalf("orb = %+v", orb)
+	}
+	if rec := get("/v1/signals/orb?symbol=BTC"); rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown market: %d", rec.Code)
+	}
+	if rec := get("/v1/signals/donchian?symbol=MON&period_seconds=7"); rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad period: %d", rec.Code)
 	}
 }
 

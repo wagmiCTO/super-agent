@@ -69,6 +69,8 @@ func Handler(s *Service, log *slog.Logger, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /v1/exchange/network", h.exchangeNetwork)
 	mux.HandleFunc("GET /v1/signals/ma-cross", h.maCross)
 	mux.HandleFunc("GET /v1/signals/rsi", h.rsi)
+	mux.HandleFunc("GET /v1/signals/donchian", h.donchian)
+	mux.HandleFunc("GET /v1/signals/orb", h.orb)
 	mux.HandleFunc("GET /v1/leaderboard", h.leaderboard)
 	mux.HandleFunc("GET /v1/leaderboard/standings", h.standings)
 	mux.HandleFunc("GET /v1/prizes", h.prizes)
@@ -1196,6 +1198,150 @@ func (h *handler) maCross(w http.ResponseWriter, r *http.Request) {
 	}
 	if st.LastCross != nil {
 		out.LastCross = &signalCrossDTO{Side: st.LastCross.Side.String(), At: timeOrEmpty(st.LastCross.At)}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+type breakDTO struct {
+	Side  string `json:"side"`
+	At    string `json:"at"`
+	Price string `json:"price"`
+	Level string `json:"level"`
+}
+
+func breakDTOOf(b *strategy.Break) *breakDTO {
+	if b == nil {
+		return nil
+	}
+	return &breakDTO{Side: b.Side.String(), At: timeOrEmpty(b.At), Price: b.Price.String(), Level: b.Level.String()}
+}
+
+func windowDTOOf(w *strategy.Window) *signalWindowDTO {
+	if w == nil {
+		return nil
+	}
+	return &signalWindowDTO{Side: w.Side.String(), OpenedAt: timeOrEmpty(w.OpenedAt), ExpiresAt: timeOrEmpty(w.ExpiresAt)}
+}
+
+type donchianPointDTO struct {
+	At    string `json:"at"`
+	Open  string `json:"open"`
+	High  string `json:"high"`
+	Low   string `json:"low"`
+	Close string `json:"close"`
+	Upper string `json:"upper,omitempty"`
+	Lower string `json:"lower,omitempty"`
+}
+
+type donchianDTO struct {
+	Symbol        string             `json:"symbol"`
+	PeriodSeconds int                `json:"period_seconds"`
+	Length        int                `json:"length"`
+	Ready         bool               `json:"ready"`
+	Upper         string             `json:"upper,omitempty"`
+	Lower         string             `json:"lower,omitempty"`
+	Forming       bool               `json:"forming"`
+	Window        *signalWindowDTO   `json:"window,omitempty"`
+	LastBreak     *breakDTO          `json:"last_break,omitempty"`
+	Points        []donchianPointDTO `json:"points"`
+}
+
+// donchian serves the channel breakout for a market: the bars with the
+// channel each had to break, the channel the forming bar has to break, and
+// whether an entry is on offer right now.
+func (h *handler) donchian(w http.ResponseWriter, r *http.Request) {
+	if h.signals == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "signals_unavailable", Message: "no signals are running"})
+		return
+	}
+	symbol := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("symbol")))
+	period, ok := signalPeriodOf(w, r)
+	if !ok {
+		return
+	}
+	st, ok := h.signals.DonchianAt(symbol, period)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, errorDTO{Error: "unknown_market", Message: "no signal for this market"})
+		return
+	}
+	out := donchianDTO{
+		Symbol: st.Symbol, PeriodSeconds: int(st.Period / time.Second), Length: st.Length, Ready: st.Ready, Forming: st.Forming,
+		Window: windowDTOOf(st.Window), LastBreak: breakDTOOf(st.LastBreak), Points: make([]donchianPointDTO, 0, len(st.Points)),
+	}
+	if st.Ready {
+		out.Upper, out.Lower = st.Upper.String(), st.Lower.String()
+	}
+	for _, p := range st.Points {
+		d := donchianPointDTO{At: p.At.UTC().Format(time.RFC3339), Open: p.Open.String(), High: p.High.String(), Low: p.Low.String(), Close: p.Close.String()}
+		if !p.Upper.IsZero() {
+			d.Upper, d.Lower = p.Upper.String(), p.Lower.String()
+		}
+		out.Points = append(out.Points, d)
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+type orbSessionDTO struct {
+	OpenAt     string    `json:"open_at"`
+	RangeFrom  string    `json:"range_from"`
+	RangeUntil string    `json:"range_until"`
+	WatchUntil string    `json:"watch_until"`
+	Bars       int       `json:"bars"`
+	High       string    `json:"high,omitempty"`
+	Low        string    `json:"low,omitempty"`
+	Break      *breakDTO `json:"break,omitempty"`
+}
+
+type orbDTO struct {
+	Symbol        string           `json:"symbol"`
+	PeriodSeconds int              `json:"period_seconds"`
+	Opens         []string         `json:"opens"`
+	RangeSeconds  int              `json:"range_seconds"`
+	WatchSeconds  int              `json:"watch_seconds"`
+	Ready         bool             `json:"ready"`
+	Phase         string           `json:"phase"`
+	Session       orbSessionDTO    `json:"session"`
+	NextOpenAt    string           `json:"next_open_at"`
+	Forming       bool             `json:"forming"`
+	Window        *signalWindowDTO `json:"window,omitempty"`
+	LastBreak     *breakDTO        `json:"last_break,omitempty"`
+	Points        []signalPointDTO `json:"points"`
+}
+
+// orb serves the opening range breakout for a market: the session on the
+// clock, its range as far as it is set, and whether an entry is on offer.
+func (h *handler) orb(w http.ResponseWriter, r *http.Request) {
+	if h.signals == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorDTO{Error: "signals_unavailable", Message: "no signals are running"})
+		return
+	}
+	symbol := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("symbol")))
+	period, ok := signalPeriodOf(w, r)
+	if !ok {
+		return
+	}
+	st, ok := h.signals.ORBAt(symbol, period)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, errorDTO{Error: "unknown_market", Message: "no signal for this market"})
+		return
+	}
+	out := orbDTO{
+		Symbol: st.Symbol, PeriodSeconds: int(st.Period / time.Second), Opens: make([]string, 0, len(st.Opens)),
+		RangeSeconds: int(st.Range / time.Second), WatchSeconds: int(st.Watch / time.Second), Ready: st.Ready, Phase: string(st.Phase),
+		NextOpenAt: timeOrEmpty(st.NextOpenAt), Forming: st.Forming, Window: windowDTOOf(st.Window), LastBreak: breakDTOOf(st.LastBreak),
+		Points: make([]signalPointDTO, 0, len(st.Points)),
+	}
+	for _, o := range st.Opens {
+		out.Opens = append(out.Opens, fmt.Sprintf("%02d:%02d", int(o/time.Hour), int(o%time.Hour/time.Minute)))
+	}
+	if s := st.Session; s != nil {
+		out.Session = orbSessionDTO{OpenAt: timeOrEmpty(s.OpenAt), RangeFrom: timeOrEmpty(s.RangeFrom), RangeUntil: timeOrEmpty(s.RangeUntil), WatchUntil: timeOrEmpty(s.WatchUntil), Bars: s.Bars, Break: breakDTOOf(s.Break)}
+		if s.Bars > 0 {
+			out.Session.High, out.Session.Low = s.High.String(), s.Low.String()
+		}
+	}
+	for _, p := range st.Points {
+		out.Points = append(out.Points, signalPointDTO{At: p.At.UTC().Format(time.RFC3339), Open: p.Open.String(), High: p.High.String(), Low: p.Low.String(), Close: p.Close.String()})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

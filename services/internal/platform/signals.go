@@ -47,6 +47,70 @@ type feedKey struct {
 	period time.Duration
 }
 
+// feedSet is every strategy's signal on one market and timeframe. They read
+// the same bars, so they are seeded and fed together.
+type feedSet struct {
+	macross  *strategy.MACross
+	rsi      *strategy.RSI
+	donchian *strategy.Donchian
+	orb      *strategy.ORB
+}
+
+// newFeedSet builds the signals for a market on a timeframe with the
+// platform's defaults, the window and history scaled to the bar size.
+func newFeedSet(symbol string, p time.Duration) (*feedSet, error) {
+	mc := strategy.DefaultMACross(symbol)
+	mc.Period, mc.Window, mc.History = p, windowBars*p, historyBars(p)
+	macross, err := strategy.NewMACross(mc)
+	if err != nil {
+		return nil, err
+	}
+	rc := strategy.DefaultRSI(symbol)
+	rc.Period, rc.Window, rc.History = p, windowBars*p, historyBars(p)
+	rsi, err := strategy.NewRSI(rc)
+	if err != nil {
+		return nil, err
+	}
+	dc := strategy.DefaultDonchian(symbol)
+	dc.Period, dc.Window, dc.History = p, windowBars*p, historyBars(p)
+	donchian, err := strategy.NewDonchian(dc)
+	if err != nil {
+		return nil, err
+	}
+	oc := strategy.DefaultORB(symbol)
+	oc.Period, oc.Window, oc.History = p, windowBars*p, historyBars(p)
+	orb, err := strategy.NewORB(oc)
+	if err != nil {
+		return nil, err
+	}
+	return &feedSet{macross: macross, rsi: rsi, donchian: donchian, orb: orb}, nil
+}
+
+// lookback is how much closed history the set's seed needs: what the chart
+// keeps, or what the opening range needs to know the current session,
+// whichever reaches further back. Each signal trims to its own history.
+func (f *feedSet) lookback(p time.Duration) time.Duration {
+	d := time.Duration(historyBars(p)) * p
+	if orb := strategy.DefaultORB("x"); orb.Lookback()+p > d {
+		return orb.Lookback() + p
+	}
+	return d
+}
+
+func (f *feedSet) seed(bars []venue.Candle, now time.Time) {
+	f.macross.Seed(bars, now)
+	f.rsi.Seed(bars, now)
+	f.donchian.Seed(bars, now)
+	f.orb.Seed(bars, now)
+}
+
+func (f *feedSet) apply(b venue.Candle, now time.Time) {
+	f.macross.Apply(b, now)
+	f.rsi.Apply(b, now)
+	f.donchian.Apply(b, now)
+	f.orb.Apply(b, now)
+}
+
 // Signals keeps the strategies' signals alive on one market-data connection,
 // shared by every wallet: a signal is about the market, not about a user.
 // Each symbol has one minute-bar stream; the larger bars are built from it,
@@ -58,9 +122,8 @@ type Signals struct {
 	log   *slog.Logger
 	now   func() time.Time
 
-	mu      sync.Mutex
-	macross map[feedKey]*strategy.MACross
-	rsis    map[feedKey]*strategy.RSI
+	mu    sync.Mutex
+	feeds map[feedKey]*feedSet
 	// stop ends a symbol's feed; one per symbol that is running.
 	stop map[string]context.CancelFunc
 
@@ -77,7 +140,7 @@ func NewSignals(v venue.Adapter, log *slog.Logger) *Signals {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Signals{venue: v, log: log, now: time.Now, macross: make(map[feedKey]*strategy.MACross), rsis: make(map[feedKey]*strategy.RSI), stop: make(map[string]context.CancelFunc), seedGap: 250 * time.Millisecond}
+	return &Signals{venue: v, log: log, now: time.Now, feeds: make(map[feedKey]*feedSet), stop: make(map[string]context.CancelFunc), seedGap: 250 * time.Millisecond}
 }
 
 // Run feeds the signals for each symbol until ctx ends. It blocks. The
@@ -104,8 +167,7 @@ func (s *Signals) Ensure(ctx context.Context, symbols []string) {
 			cancel()
 			delete(s.stop, sym)
 			for _, p := range SignalPeriods {
-				delete(s.macross, feedKey{sym, p})
-				delete(s.rsis, feedKey{sym, p})
+				delete(s.feeds, feedKey{sym, p})
 			}
 			s.log.Info("signal stopped: market gone", "symbol", sym)
 		}
@@ -118,41 +180,37 @@ func (s *Signals) Ensure(ctx context.Context, symbols []string) {
 		if running {
 			continue
 		}
-		sigs := make(map[time.Duration]*strategy.MACross, len(SignalPeriods))
-		rsis := make(map[time.Duration]*strategy.RSI, len(SignalPeriods))
+		sets := make(map[time.Duration]*feedSet, len(SignalPeriods))
 		ok := true
 		for _, p := range SignalPeriods {
-			mc := strategy.DefaultMACross(sym)
-			mc.Period, mc.Window, mc.History = p, windowBars*p, historyBars(p)
-			sig, err := strategy.NewMACross(mc)
+			set, err := newFeedSet(sym, p)
 			if err != nil {
 				s.log.Error("signal not started", "symbol", sym, "period", p, "err", err)
 				ok = false
 				break
 			}
-			rc := strategy.DefaultRSI(sym)
-			rc.Period, rc.Window, rc.History = p, windowBars*p, historyBars(p)
-			rsi, err := strategy.NewRSI(rc)
-			if err != nil {
-				s.log.Error("signal not started", "symbol", sym, "period", p, "err", err)
-				ok = false
-				break
-			}
-			sigs[p], rsis[p] = sig, rsi
+			sets[p] = set
 		}
 		if !ok {
 			continue
 		}
 		feedCtx, cancel := context.WithCancel(ctx)
 		s.mu.Lock()
-		for p, sig := range sigs {
-			s.macross[feedKey{sym, p}] = sig
-			s.rsis[feedKey{sym, p}] = rsis[p]
+		for p, set := range sets {
+			s.feeds[feedKey{sym, p}] = set
 		}
 		s.stop[sym] = cancel
 		s.mu.Unlock()
-		go s.feed(feedCtx, sym, sigs, rsis)
+		go s.feed(feedCtx, sym, sets)
 	}
+}
+
+// set is the signals for a symbol on a timeframe, if the market is fed.
+func (s *Signals) set(symbol string, period time.Duration) (*feedSet, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, ok := s.feeds[feedKey{strings.ToUpper(strings.TrimSpace(symbol)), period}]
+	return f, ok
 }
 
 // RSI returns the RSI signal's state for a symbol on the minute chart.
@@ -162,13 +220,11 @@ func (s *Signals) RSI(symbol string) (strategy.RSIState, bool) {
 
 // RSIAt returns the RSI signal's state for a symbol on a timeframe.
 func (s *Signals) RSIAt(symbol string, period time.Duration) (strategy.RSIState, bool) {
-	s.mu.Lock()
-	r, ok := s.rsis[feedKey{strings.ToUpper(strings.TrimSpace(symbol)), period}]
-	s.mu.Unlock()
+	f, ok := s.set(symbol, period)
 	if !ok {
 		return strategy.RSIState{}, false
 	}
-	return r.State(s.now()), true
+	return f.rsi.State(s.now()), true
 }
 
 // MACross returns the signal's state for a symbol on the minute chart.
@@ -178,21 +234,37 @@ func (s *Signals) MACross(symbol string) (strategy.MACrossState, bool) {
 
 // MACrossAt returns the signal's state for a symbol on a timeframe.
 func (s *Signals) MACrossAt(symbol string, period time.Duration) (strategy.MACrossState, bool) {
-	s.mu.Lock()
-	sig, ok := s.macross[feedKey{strings.ToUpper(strings.TrimSpace(symbol)), period}]
-	s.mu.Unlock()
+	f, ok := s.set(symbol, period)
 	if !ok {
 		return strategy.MACrossState{}, false
 	}
-	return sig.State(s.now()), true
+	return f.macross.State(s.now()), true
+}
+
+// DonchianAt returns the channel breakout's state for a symbol on a timeframe.
+func (s *Signals) DonchianAt(symbol string, period time.Duration) (strategy.DonchianState, bool) {
+	f, ok := s.set(symbol, period)
+	if !ok {
+		return strategy.DonchianState{}, false
+	}
+	return f.donchian.State(s.now()), true
+}
+
+// ORBAt returns the opening range breakout's state for a symbol on a timeframe.
+func (s *Signals) ORBAt(symbol string, period time.Duration) (strategy.ORBState, bool) {
+	f, ok := s.set(symbol, period)
+	if !ok {
+		return strategy.ORBState{}, false
+	}
+	return f.orb.State(s.now()), true
 }
 
 // signalRetry is the pause before a failed seed or stream is tried again.
 const signalRetry = 5 * time.Second
 
-func (s *Signals) feed(ctx context.Context, symbol string, sigs map[time.Duration]*strategy.MACross, rsis map[time.Duration]*strategy.RSI) {
+func (s *Signals) feed(ctx context.Context, symbol string, sets map[time.Duration]*feedSet) {
 	for ctx.Err() == nil {
-		if err := s.seedAll(ctx, symbol, sigs, rsis); err != nil {
+		if err := s.seedAll(ctx, symbol, sets); err != nil {
 			s.log.Warn("signal seed failed", "symbol", symbol, "err", err)
 			sleepCtx(ctx, signalRetry)
 			continue
@@ -213,12 +285,10 @@ func (s *Signals) feed(ctx context.Context, symbol string, sigs map[time.Duratio
 		}
 		for b := range bars {
 			now := s.now()
-			sigs[time.Minute].Apply(b, now)
-			rsis[time.Minute].Apply(b, now)
+			sets[time.Minute].apply(b, now)
 			for p, bld := range builders {
 				for _, big := range bld.add(b) {
-					sigs[p].Apply(big, now)
-					rsis[p].Apply(big, now)
+					sets[p].apply(big, now)
 				}
 			}
 		}
@@ -232,25 +302,24 @@ func (s *Signals) feed(ctx context.Context, symbol string, sigs map[time.Duratio
 }
 
 // seedAll reads each timeframe's history, paced.
-func (s *Signals) seedAll(ctx context.Context, symbol string, sigs map[time.Duration]*strategy.MACross, rsis map[time.Duration]*strategy.RSI) error {
+func (s *Signals) seedAll(ctx context.Context, symbol string, sets map[time.Duration]*feedSet) error {
 	for _, p := range SignalPeriods {
-		if err := s.seed(ctx, symbol, p, sigs[p], rsis[p]); err != nil {
+		if err := s.seed(ctx, symbol, p, sets[p]); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *Signals) seed(ctx context.Context, symbol string, period time.Duration, sig *strategy.MACross, rsi *strategy.RSI) error {
+func (s *Signals) seed(ctx context.Context, symbol string, period time.Duration, set *feedSet) error {
 	s.pace(ctx)
 	now := s.now()
-	from := now.Add(-time.Duration(historyBars(period)) * period)
+	from := now.Add(-set.lookback(period))
 	bars, err := s.venue.Candles(ctx, symbol, period, from, now)
 	if err != nil {
 		return err
 	}
-	sig.Seed(bars, now)
-	rsi.Seed(bars, now)
+	set.seed(bars, now)
 	s.log.Info("signal seeded", "symbol", symbol, "period", period, "bars", len(bars))
 	return nil
 }

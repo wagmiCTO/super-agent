@@ -71,7 +71,7 @@ func TestRiskReportAndCloseAll(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Strategies) != 3 || !out.Strategies[0].Enabled || out.Strategies[0].ID != "direction" {
+	if len(out.Strategies) != 5 || !out.Strategies[0].Enabled || out.Strategies[0].ID != "direction" {
 		t.Fatalf("strategies = %+v", out.Strategies)
 	}
 	if len(out.Open) != 1 {
