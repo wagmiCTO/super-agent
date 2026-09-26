@@ -9,7 +9,9 @@ Trading a perp on your phone is a screen full of leverage, order types,
 take-profits and timers. TradeAgent turns that into strategy games. Each
 strategy is one framed decision — Direction: up or down, an amount, a
 horizon; MA Cross: take the side the trend just turned to; RSI Bounce: fade
-a crowd that overdid it — and the platform does the rest: policy limits,
+a crowd that overdid it; Turtles: go with a close out of the 20-bar
+channel; Open Range: take the session's first move out of its opening
+quarter hour — and the platform does the rest: policy limits,
 execution at Perpl, and the exit, on time, whether the app is open or not.
 Every strategy has a weekly leaderboard and an on-chain prize pool.
 
@@ -30,8 +32,9 @@ three seconds.
 - **Policy engine**: every order passes notional, leverage, exposure,
   daily-loss and cooldown checks before the venue sees it; refusals come
   back in words with the limit that was hit.
-- **Signals**: MA Cross (5/20 on one-minute bars) and RSI(14) run on the
-  platform's market-data connection; the screen lights up for a few
+- **Signals**: MA Cross (5/20), RSI(14), the 20-bar Donchian channel and
+  the opening range of three daily sessions run on the platform's
+  market-data connection, on every chart timeframe; the screen lights up for a few
   minutes when a signal fires. The signal is a hint; the tap is the user's.
 - **Prizes**: `StrategyPrizePool` on Monad testnet. Every closed round trip
   adds to its strategy's weekly pool; the platform settles the previous

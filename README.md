@@ -3,7 +3,8 @@
 Mobile-first perps trading as strategy games, executed on-chain through
 [Perpl](https://perpl.xyz) on Monad.
 
-A player picks a strategy — Direction, MA Cross, RSI Bounce — and the
+A player picks a strategy — Direction, MA Cross, RSI Bounce, Turtles,
+Open Range — and the
 strategy frames one decision: an amount, a horizon, a tap. The platform
 puts the order through a policy engine, places it at the venue, and owns
 the exit: it closes the position when the horizon ends, whether the phone
