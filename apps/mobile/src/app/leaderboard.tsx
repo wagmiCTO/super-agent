@@ -46,7 +46,7 @@ type Row = { wallet: string; volume: number; pnl: number; trades: number; you: b
 export default function LeaderboardScreen() {
   const theme = useTheme();
   const top = useTop();
-  const [period, setPeriod] = useState<Period>('week');
+  const [period, setPeriod] = useState<Period>('all');
   const [tab, setTab] = useState<Tab>('direction');
   const lb = useLeaderboard(period);
   const account = useAccount();
@@ -74,8 +74,8 @@ export default function LeaderboardScreen() {
           <Text variant="bodyStrong" numberOfLines={1} style={{ fontSize: theme.type.tMd, flexShrink: 1 }} testID="leaderboard-title">Leaderboard</Text>
           <View style={{ flex: 1 }} />
           <View style={{ flexDirection: 'row', gap: theme.space.s1 }}>
-            <Chip label="This week" small on={period === 'week'} onPress={() => setPeriod('week')} testID="period-week" />
             <Chip label="All time" small on={period === 'all'} onPress={() => setPeriod('all')} testID="period-all" />
+            <Chip label="This week" small on={period === 'week'} onPress={() => setPeriod('week')} testID="period-week" />
           </View>
         </View>
 

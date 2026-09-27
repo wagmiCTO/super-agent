@@ -82,16 +82,21 @@ test('the leaderboard shows the on-chain prize pools from the indexer', async ({
   await expect(past).toContainText(/Indexed by Envio/);
   await expect(page.getByTestId('leaderboard-source')).toHaveText(/^Prizes paid by contract 0x[0-9a-f]{4}…[0-9a-f]{4} · week \d+/);
 
+  // The board opens on every trade on record: a week's board is mostly empty
+  // on a Monday, and a newcomer should first see that people trade here.
+  await expect(page.getByTestId('board-pool')).toContainText(/^Since launch/, { timeout: 20_000 });
+
   // The board itself: a tab per strategy and all of them together, this week
   // or every trade on record. A fresh testnet has no closed trades on most
   // boards, so what is asserted is the line that says what is being played
   // for, which is there either way.
+  await page.getByTestId('period-week').click();
   await expect(page.getByTestId('board-pool')).toContainText(/players · ends \w+$|No pool yet/);
   // The combined board counts a wallet once, however many strategies it
   // played — the platform counts them, so the line says players like any
-  // other board.
+  // other board; a week nobody has traded yet counts traders, not players.
   await page.getByTestId('board-all').click();
-  await expect(page.getByTestId('board-pool')).toContainText(/players/);
+  await expect(page.getByTestId('board-pool')).toContainText(/players|0 traders/);
   await page.getByTestId('period-all').click();
   await expect(page.getByTestId('board-pool')).toContainText(/^Since launch/, { timeout: 20_000 });
   await expect(page.getByTestId('board-note')).toContainText('The prize is weekly');
