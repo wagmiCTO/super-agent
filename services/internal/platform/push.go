@@ -88,7 +88,7 @@ func (p *Push) Closed(t Trade) {
 			return
 		}
 		title, body := closedWords(t)
-		data := map[string]string{"kind": "closed", "symbol": t.Symbol, "strategy": t.Strategy}
+		data := map[string]string{"kind": "closed", "symbol": t.Symbol, "strategy": t.Strategy, "reason": t.Reason}
 		if ref := t.Ref; ref != [32]byte{} {
 			data["trade"] = fmt.Sprintf("%x", ref)
 		}
@@ -96,11 +96,20 @@ func (p *Push) Closed(t Trade) {
 	}()
 }
 
-// closedWords names the market and asks for a look. What the trade made is
-// deliberately absent: the result screen reports a trade, a lock screen
-// cannot, and a number without its fees and its reason misleads.
+// closedWords names the market and what closed it. A stop or a target that
+// fired is news in itself — the trader set it and is waiting to hear — so the
+// title says which. What the trade made stays off the lock screen: the result
+// screen reports a trade with its fees, and a bare number misleads.
 func closedWords(t Trade) (string, string) {
 	symbol := strings.ToUpper(t.Symbol)
+	switch CloseReason(t.Reason) {
+	case CloseStop:
+		return symbol + " hit your stop", "The stop closed the position. Open it to see the result."
+	case CloseTakeProfit:
+		return symbol + " hit your target", "The take-profit closed the position. Open it to see the result."
+	case CloseHorizon:
+		return symbol + " is done", "Time is up and the position is closed. Open it to see how it went."
+	}
 	title := symbol + " is done"
 	// The wording turns on the time of day only so that a trader who takes
 	// several a day is not read the same sentence every time.

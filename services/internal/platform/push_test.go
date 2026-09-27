@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/wagmiCTO/super-agent/services/internal/fixed"
 )
 
 type devicesStub struct {
@@ -91,6 +93,34 @@ func TestDeviceNotRegisteredIsForgotten(t *testing.T) {
 			t.Fatalf("token not forgotten: %v", d.forgotten)
 		case <-time.After(20 * time.Millisecond):
 		}
+	}
+}
+
+// A stop or a target that fired is named in the title, because the trader
+// set it and is waiting for it; the amount still stays off the lock screen.
+func TestClosedWordsNameWhatClosedIt(t *testing.T) {
+	tests := []struct {
+		reason CloseReason
+		title  string
+	}{
+		{CloseStop, "BTC hit your stop"},
+		{CloseTakeProfit, "BTC hit your target"},
+		{CloseHorizon, "BTC is done"},
+		{CloseManual, "BTC is done"},
+		{"", "BTC is done"},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.reason), func(t *testing.T) {
+			title, body := closedWords(Trade{Symbol: "btc", Reason: string(tt.reason), PnL: fixed.MustParse("-12.4"), ClosedAt: time.Unix(4, 0)})
+			if title != tt.title {
+				t.Errorf("title: want %q, got %q", tt.title, title)
+			}
+			for _, leak := range []string{"AUSD", "12.4", "−"} {
+				if contains(title+body, leak) {
+					t.Errorf("gives the amount away: %q / %q", title, body)
+				}
+			}
+		})
 	}
 }
 
