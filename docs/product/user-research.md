@@ -1,6 +1,6 @@
 # What people did with it
 
-*Last true: 2026-09-24. Five sessions run.*
+*Last true: 2026-09-28. Six sessions run.*
 
 ## Method
 
@@ -40,8 +40,9 @@ them were.
 | 3 | 2026-09-24 | yes | remote | yes |
 | 4 | 2026-09-24 | yes | remote | yes |
 | 5 | 2026-09-24 | no, furthest from trading of the five | remote | yes |
+| 6 | 2026-09-28 | yes, scalps | own phone, written notes after several days of use | yes |
 
-All five ran remotely: people opened the app on their own phone and sent back
+All six ran remotely: people opened the app on their own phone and sent back
 what they thought as they went. The five questions were not put to them as a
 script; what is recorded is what they did and what they said about it.
 
@@ -53,7 +54,7 @@ is noise; the second occurrence makes it a defect.
 
 | Observation | People | Decision |
 |---|---|---|
-| **The first run is fast and lands.** Intro, passkey, account, first position — walked without help. One person understood what the product was and that the strategies aimed at his own trading problem without being told | **4** | Nothing to change. This is the strongest thing we have and it goes in front of everything else |
+| **The first run is fast and lands.** Intro, passkey, account, first position — walked without help. One person understood what the product was and that the strategies aimed at his own trading problem without being told. The sixth named the same thing unprompted: every button works without friction, and a trade is one tap with nothing to sign | **5** | Nothing to change. This is the strongest thing we have and it goes in front of everything else |
 | **The risk screen is hard to read, and it is in the wrong place.** One asked for the danger zone to be raised onto the first screen; another, the furthest from trading, called the screen complicated | **2** | **Change it.** Raise the danger zone, and cut the language back to what someone who has never read a risk dashboard can follow |
 | **The prize pool is not understood.** One liked the leaderboard tab and still could not follow the on-chain pool; the other found both hard | **2** | **Change it.** Note the shape of this: the board is fine, the payout mechanism is not. Explain where the money comes from in one line, at the point where it is shown |
 | A passkey held in a password manager without PRF support locks the person out of the product completely | 1 | **Not waiting for a second.** This is not a preference, it is a door that does not open. The error text now says what happened; the limitation itself is real and is stated in the submission |
@@ -61,17 +62,23 @@ is noise; the second occurrence makes it a defect.
 | Red in the lobby statistics reads as alarming rather than informative | 1 | Waiting on a second occurrence |
 | The bottom of the screen is a list of links where icons were expected — "it doesn't look mobile" | 1 | Waiting on a second occurrence, though it is cheap and it speaks to whether the thing feels like an app |
 | Signing in on a second visit was impossible: the account was remembered but locked, and the header's `SIGN IN` was not a button | 1 | **Fixed the same day.** A path that cannot be walked is a defect and does not wait for a second report |
-| Nothing tells you when a position closed | 1 | **Still one voice.** It did not come up again across four more sessions, so by our own rule it waits — even though it is the finding we find most interesting |
+| Nothing tells you when a position closed; the sixth asked for alerts and notifications on trades that are still open | **2** | A push on every close went into the native app before the second voice arrived. The second voice asks for more than a close: news while the trade is still running. What was built is the narrower half: a stop or a take-profit that fires now says so in the title, instead of a generic "is done" |
 | The 15-minute horizon read as the right length | 1 | Keep the default |
+| Dark mode, called "very important" | 1 | **Built without waiting.** A choice on the account screen, light by default; the same screens with the lights down, checked for contrast on every one |
+| More drawing and indicator tools on the chart, to judge a trade without relying on the app's hint | 1 | Waiting on a second occurrence |
+| A short feed of what is happening to the asset this week, to back a strategy with fundamentals | 1 | Waiting on a second occurrence; the Nansen card is the nearest thing that exists |
+| Follow the week's top winners: see how they tap, and get an alert when they open a trade | 1 | Waiting on a second occurrence. It pulls against the framing in [`icp.md`](icp.md), which argues for framing a person's own decision rather than copying someone else's |
+| Faster in and out, for someone scalping for quick profits | 1 | Waiting on a second occurrence |
+| The referral share of fees, and trading alongside friends, read as a reason to bring people in | 1 | Nothing to change |
 
 ## Numbers for the record
 
 | Measure | Value |
 |---|---|
-| Sessions run | 5 |
-| Reached a result without a hint | 4 of 5 |
-| Blocked before reaching the product at all | 1 of 5 (passkey manager without PRF) |
-| Said what the app was, unprompted | 1 of 5 volunteered it; the others were not asked |
+| Sessions run | 6 |
+| Reached a result without a hint | 5 of 6 |
+| Blocked before reaching the product at all | 1 of 6 (passkey manager without PRF) |
+| Said what the app was, unprompted | 1 of 6 volunteered it; the others were not asked |
 
 ## What this changes
 
@@ -103,6 +110,13 @@ to know before building more of it.
 
 And the finding we liked most did not survive its own rule. Nothing tells a
 trader that a position closed while their phone was in their pocket; one person
-asked for it, and across four further sessions nobody raised it again. It stays
-on one voice and it stays unbuilt, because a rule that only applies when it
-agrees with us is not a rule.
+asked for it, and across four further sessions nobody raised it again. It stayed
+on one voice through four sessions — and it was built anyway, as a push on
+every close, before the sixth session asked for alerts on trades in progress.
+The table says so rather than pretending the rule held.
+
+The sixth session was the first written after days of use rather than one
+first run, and it moved the requests from explaining the product to extending
+it: dark mode, chart tools, a news feed, following the winners. Dark mode was
+built on the strength of how it was asked for; the rest are one voice each and
+wait for a second.
