@@ -88,7 +88,7 @@ function AccountRow({ account, keysVersion }: { account: ReturnType<typeof useAc
           <ThemedText type="small">Create one with a passkey — no seed phrase</ThemedText>
         )}
         {error ? (
-          <ThemedText type="small" style={{ color: '#991b1b' }} testID="account-error">
+          <ThemedText type="small" style={{ color: theme.danger }} testID="account-error">
             {error}
           </ThemedText>
         ) : null}
@@ -138,7 +138,7 @@ function ExchangeKeyCard({ keys, onChange }: { keys: KeyFamily; onChange: () => 
         withdraw; revoke it on the exchange any time.
       </ThemedText>
       {k.error ? (
-        <ThemedText type="small" style={{ color: '#991b1b' }} testID="exchange-key-error">
+        <ThemedText type="small" style={{ color: theme.danger }} testID="exchange-key-error">
           {k.error}
         </ThemedText>
       ) : null}
@@ -188,7 +188,7 @@ function ActivationCard({ wallet, status, onActivated }: { wallet: Wallet; statu
         </ThemedText>
       ) : null}
       {a.error ? (
-        <ThemedText type="small" style={{ color: '#991b1b' }} testID="activation-error">
+        <ThemedText type="small" style={{ color: theme.danger }} testID="activation-error">
           {a.error}
         </ThemedText>
       ) : null}

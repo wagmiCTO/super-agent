@@ -42,6 +42,7 @@ const GRAY = block(':root');
 const THEMES = {
   paper: resolve({ ...GRAY, ...block('html\\[data-theme="paper"\\]') }),
   terminal: resolve({ ...GRAY, ...block('html\\[data-theme="terminal"\\]') }),
+  night: resolve({ ...GRAY, ...block('html\\[data-theme="night"\\]') }),
 };
 
 // ------------------------------------------------------------------ shaping
@@ -88,6 +89,9 @@ const FACES = {
   },
 };
 
+// Night is Paper with the lights down: the same faces.
+FACES.night = FACES.paper;
+
 // expo-google-fonts lays each face out as <weightDir>/<Family_Weight>.ttf.
 const PKG = { SpaceGrotesk: 'space-grotesk', SpaceMono: 'space-mono', Archivo: 'archivo', JetBrainsMono: 'jetbrains-mono' };
 const fontRequire = (family) => {
@@ -117,7 +121,7 @@ const shape = (name) => {
   };
 };
 
-const shaped = { paper: shape('paper'), terminal: shape('terminal') };
+const shaped = { paper: shape('paper'), terminal: shape('terminal'), night: shape('night') };
 
 // ------------------------------------------------------------------- emit
 
@@ -141,12 +145,12 @@ const body = `/**
  *    too, so these never share a token.
  */
 
-/** Every family the two skins need; load them all before rendering. */
+/** Every family the skins need; load them all before rendering. */
 export const FONT_FACES = {
 ${FONT_LIST}
 } as const;
 
-export type ThemeName = 'paper' | 'terminal';
+export type ThemeName = 'paper' | 'terminal' | 'night';
 
 export type ThemeColor = ${union(COLOR)};
 type RadiusKey = ${union(RADIUS)};
@@ -175,10 +179,14 @@ export type Theme = {
 export const Themes: Record<ThemeName, Theme> = {
   paper: ${j(shaped.paper, 2)},
   terminal: ${j(shaped.terminal, 2)},
+  night: ${j(shaped.night, 2)},
 };
 
 /** Paper ships first; Terminal exists so hardcoded values fail loudly. */
 export const DEFAULT_THEME: ThemeName = 'paper';
+
+/** Whether a skin draws light on dark: the status bar and the chart follow it. */
+export const DARK_THEMES: readonly ThemeName[] = ['terminal', 'night'];
 
 /**
  * React Native picks a face by family name, not by \`fontWeight\`: on Android a
@@ -193,4 +201,4 @@ mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(OUT, body);
 
 const n = Object.keys(shaped.paper.color).length;
-console.log(`theme.ts written — 2 skins, ${n} colours + ${RADIUS.length + SPACE.length + TYPE.length + SIZE.length} metrics each`);
+console.log(`theme.ts written — 3 skins, ${n} colours + ${RADIUS.length + SPACE.length + TYPE.length + SIZE.length} metrics each`);

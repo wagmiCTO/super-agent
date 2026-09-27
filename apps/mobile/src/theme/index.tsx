@@ -4,20 +4,27 @@
  * Values live in `constants/theme.ts`, generated from the prototype. This adds
  * the runtime: which skin is active, how to read it, and how to switch it.
  *
- * Two skins ship in the build on purpose. Paper is the default; Terminal is
- * how hardcoded values get caught — anything that does not come from a token
- * stays put when the skin changes, and that is immediately visible.
+ * Three skins ship in the build. Paper is the default and Night is Paper
+ * with the lights down — the two a person picks between on the account
+ * screen, remembered on the device. Terminal is how hardcoded values get
+ * caught: anything that does not come from a token stays put when the skin
+ * changes, and that is immediately visible.
  */
 
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import { StyleSheet } from 'react-native';
 
-import { DEFAULT_THEME, Themes, face, type Theme, type ThemeName } from '@/constants/theme';
+import { DARK_THEMES, DEFAULT_THEME, Themes, face, type Theme, type ThemeName } from '@/constants/theme';
+import { saveThemeChoice } from '@/theme/store';
 
 type ThemeContextValue = {
   theme: Theme;
   name: ThemeName;
+  /** Light on dark: the status bar and the chart follow it. */
+  dark: boolean;
   setTheme: (name: ThemeName) => void;
+  /** A person's choice between Paper and Night, kept for the next launch. */
+  chooseTheme: (name: 'paper' | 'night') => void;
   toggleTheme: () => void;
 };
 
@@ -26,9 +33,13 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 export function ThemeProvider({ children, initial = DEFAULT_THEME }: { children: ReactNode; initial?: ThemeName }) {
   const [name, setName] = useState<ThemeName>(initial);
   const toggleTheme = useCallback(() => setName((n) => (n === 'paper' ? 'terminal' : 'paper')), []);
+  const chooseTheme = useCallback((next: 'paper' | 'night') => {
+    setName(next);
+    void saveThemeChoice(next);
+  }, []);
   const value = useMemo<ThemeContextValue>(
-    () => ({ theme: Themes[name], name, setTheme: setName, toggleTheme }),
-    [name, toggleTheme],
+    () => ({ theme: Themes[name], name, dark: DARK_THEMES.includes(name), setTheme: setName, chooseTheme, toggleTheme }),
+    [name, chooseTheme, toggleTheme],
   );
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

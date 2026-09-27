@@ -115,6 +115,41 @@
     --btn-h: 56px; --btn-weight: 700; --ud-h: 82px; --track: 0.05em;
     --elev-lift: 0 2px 6px rgba(14,16,15,0.07), 0 14px 34px rgba(14,16,15,0.08);
   }
+  /* Night: Paper's shapes, faces and spacing on a dark page — the same app
+     with the lights down, not a third personality. The brand and the market
+     colours keep their hue and are lifted just enough to read as text on the
+     dark page; cards are told apart by a hairline, because a shadow on black
+     is invisible. */
+  html[data-theme="night"] {
+    --ground: #0B0A0C; --paper: #131215; --raised: #1A191D; --soft: #1D1C21;
+    --line: #3A3841; --hair: #2A2830;
+    --ink: #F4F2EE; --body: #D9D5CF; --text2: #C2BDB6; --muted: #A29C95; --dim: #7C7770;
+    --onInk: #131215;
+    --accent: #836EF9; --onAccent: #FFFFFF;
+    --fill: #836EF9; --onFill: #FFFFFF;
+    --up: #20A574; --onUp: #FFFFFF; --down: #E45A4B; --onDown: #FFFFFF;
+    --danger: #E45A4B; --danger-soft: #3B1C19; --onDanger: #FFFFFF;
+    --risk-calm: #20A574; --risk-warm: #E0A23A; --risk-hot: #E45A4B;
+    --scrim: rgba(0,0,0,0.62); --glass: rgba(19,18,21,0.90);
+    --glow: rgba(131,110,249,0.34); --chip: rgba(44,42,50,0.96); --onChip: #F4F2EE;
+    --shadow-phone: rgba(0,0,0,0.60); --shadow-menu: rgba(0,0,0,0.50);
+    --ring: rgba(131,110,249,0.42); --ring-0: rgba(131,110,249,0);
+    --chart-line: #F4F2EE; --chart-grid: #26252B; --chart-axis: #3A3841;
+    --chart-up: #20A574; --chart-down: #E45A4B; --chart-zone: rgba(131,110,249,0.14);
+    --chart-band: #1A191D;
+    --chart-line2: #7C7770; --onAccentDim: #D6CCFF; --btn-line: #3A3841;
+    --font-display: 'Space Grotesk', system-ui, sans-serif;
+    --font-num: 'Space Mono', ui-monospace, monospace;
+    --r-xs: 4px; --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-xl: 22px;
+    --s1: 5px; --s2: 10px; --s3: 14px; --s4: 18px; --s5: 22px; --s6: 28px;
+    --t-2xs: 11px; --t-xs: 12px; --t-sm: 14px; --t-md: 16px; --t-lg: 18px;
+    --t-xl: 22px; --t-2xl: 29px; --t-3xl: 34px; --t-hero: 46px; --t-mega: 60px;
+    --h1-weight: 700; --h1-track: -0.025em; --bw: 1px;
+    --elev: none;
+    --card-bg: #1C1B20; --card-line: #2A2830;
+    --btn-h: 56px; --btn-weight: 700; --ud-h: 82px; --track: 0.05em;
+    --elev-lift: none;
+  }
   html, body { height: 100%; }
   body { margin: 0; background: var(--ground); color: var(--ink); font-family: var(--font-display); -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
   #stage { min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: var(--s6) var(--s4); box-sizing: border-box; }
@@ -223,7 +258,7 @@
 </style>
 
 <div id="stage"><div id="phone"><div id="screen"></div><div id="overlay"></div></div></div>
-<div id="tools"><div class="th on" data-a="theme" data-v="gray">Gray</div><div class="th" data-a="theme" data-v="terminal">Terminal</div><div class="th" data-a="theme" data-v="paper">Paper</div><div data-a="reset">Restart</div></div>
+<div id="tools"><div class="th on" data-a="theme" data-v="gray">Gray</div><div class="th" data-a="theme" data-v="terminal">Terminal</div><div class="th" data-a="theme" data-v="paper">Paper</div><div class="th" data-a="theme" data-v="night">Night</div><div data-a="reset">Restart</div></div>
 <div id="note"></div>
 
 <script>

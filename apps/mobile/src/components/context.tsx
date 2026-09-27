@@ -32,16 +32,13 @@ export function useMarketContext(symbol: string): MarketContext | null | 'unavai
   return card;
 }
 
-const UP = '#16a34a';
-const DOWN = '#dc2626';
-
 export function ContextCard({ symbol }: { symbol: string }) {
   const theme = useTheme();
   const card = useMarketContext(symbol);
   if (!card || card === 'unavailable') return null;
   const change = Number(card.change_24h_pct);
-  const changeColor = change > 0 ? UP : change < 0 ? DOWN : theme.text;
-  const leanColor = card.lean === 'buyers' ? UP : card.lean === 'sellers' ? DOWN : theme.textSecondary;
+  const changeColor = change > 0 ? theme.up : change < 0 ? theme.down : theme.text;
+  const leanColor = card.lean === 'buyers' ? theme.up : card.lean === 'sellers' ? theme.down : theme.textSecondary;
   const buyers = card.top_buyers.slice(0, 2);
   const sellers = card.top_sellers.slice(0, 2);
   return (

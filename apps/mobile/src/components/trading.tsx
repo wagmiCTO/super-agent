@@ -53,7 +53,7 @@ export function PositionCard({
   const closesIn = useCountdown(position?.closes_at ?? null);
   if (position) {
     const pnl = Number(position.unrealized_pnl);
-    const color = pnl > 0 ? '#16a34a' : pnl < 0 ? '#dc2626' : theme.text;
+    const color = pnl > 0 ? theme.up : pnl < 0 ? theme.down : theme.text;
     return (
       <View style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
         <ThemedText type="small" themeColor="textSecondary">
@@ -180,8 +180,8 @@ export function NoticeBox({ notice }: { notice: Notice | null }) {
   const theme = useTheme();
   if (!notice) return null;
   return (
-    <View testID="notice" style={[styles.notice, { backgroundColor: notice.kind === 'error' ? '#fee2e2' : theme.backgroundElement }]}>
-      <ThemedText type="small" style={notice.kind === 'error' ? { color: '#991b1b' } : undefined}>
+    <View testID="notice" style={[styles.notice, { backgroundColor: notice.kind === 'error' ? theme.dangerSoft : theme.backgroundElement }]}>
+      <ThemedText type="small" style={notice.kind === 'error' ? { color: theme.danger } : undefined}>
         {notice.text}
       </ThemedText>
     </View>
@@ -233,7 +233,7 @@ function PositionRow({ trade: t }: { trade: Trade }) {
   const theme = useTheme();
   const open = !t.closed_at;
   const pnl = Number(t.pnl ?? 0);
-  const color = open ? theme.textSecondary : pnl > 0 ? '#16a34a' : pnl < 0 ? '#dc2626' : theme.text;
+  const color = open ? theme.textSecondary : pnl > 0 ? theme.up : pnl < 0 ? theme.down : theme.text;
   return (
     <View style={styles.header} testID="history-position">
       <View style={{ flex: 1 }}>

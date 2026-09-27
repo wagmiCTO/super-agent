@@ -593,7 +593,7 @@ function ChartBox({
   const rangeBreak = range?.lastBreak && range.lastBreak.at >= range.openAt ? range.lastBreak : null;
   const mark = averages?.lastCross ?? channel?.lastBreak ?? rangeBreak ?? null;
   const box = range && range.high !== null && range.low !== null ? { top: String(range.high), bottom: String(range.low), from: unix(range.from), to: unix(range.until) } : null;
-  const { name } = useThemeControls();
+  const { dark } = useThemeControls();
   const [line, setLine] = useState(false);
   const [tick, setTick] = useState<ChartTick | null>(null);
   const left = useCountdown(signal?.expiresAt ?? null);
@@ -630,7 +630,7 @@ function ChartBox({
       >
         <TVChart
           symbol={symbol}
-          theme={name === 'terminal' ? 'dark' : 'light'}
+          theme={dark ? 'dark' : 'light'}
           colours={{
             background: theme.color.soft,
             up: theme.color.chartUp,

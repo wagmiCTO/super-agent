@@ -172,7 +172,7 @@ export default function DepositScreen() {
                   <ThemedText type="small" themeColor="textSecondary">
                     select to copy · valid until {new Date(quote.deadline).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </ThemedText>
-                  <ThemedText type="small" style={{ color: done ? (status?.status === 'SUCCESS' ? '#16a34a' : '#dc2626') : theme.textSecondary }} testID="deposit-status">
+                  <ThemedText type="small" style={{ color: done ? (status?.status === 'SUCCESS' ? theme.up : theme.danger) : theme.textSecondary }} testID="deposit-status">
                     {status ? STATUS_TEXT[status.status] ?? status.status : 'Waiting for your transfer…'}
                   </ThemedText>
                 </View>

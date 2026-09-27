@@ -13,31 +13,37 @@
  * Nothing new should import it.
  */
 
-import { Themes } from '@/constants/theme';
+import { Themes, type Theme } from '@/constants/theme';
 import { Platform } from 'react-native';
 
-const paper = Themes.paper.color;
-const terminal = Themes.terminal.color;
+/**
+ * The old names, answered by the active skin. They used to follow the
+ * phone's own light/dark setting, which put these screens in the dark while
+ * the rest of the app stayed on paper; now they follow the app's choice.
+ */
+export function legacyColors(theme: Theme) {
+  const c = theme.color;
+  return {
+    text: c.ink,
+    background: c.ground,
+    backgroundElement: c.soft,
+    backgroundSelected: c.hair,
+    textSecondary: c.muted,
+    // What the old screens hardcoded: market direction, errors, the link.
+    up: c.up,
+    down: c.down,
+    danger: c.danger,
+    dangerSoft: c.dangerSoft,
+    fill: c.fill,
+    onFill: c.onFill,
+    accent: c.accent,
+  };
+}
 
-/** The old light/dark pair, answered by the two skins we actually ship. */
-export const Colors = {
-  light: {
-    text: paper.ink,
-    background: paper.ground,
-    backgroundElement: paper.soft,
-    backgroundSelected: paper.hair,
-    textSecondary: paper.muted,
-  },
-  dark: {
-    text: terminal.ink,
-    background: terminal.ground,
-    backgroundElement: terminal.soft,
-    backgroundSelected: terminal.hair,
-    textSecondary: terminal.muted,
-  },
-} as const;
+export type ThemeColor = keyof ReturnType<typeof legacyColors>;
 
-export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
+/** The light pair, for the few places that read colours outside a component. */
+export const Colors = { light: legacyColors(Themes.paper) } as const;
 
 /** The old numeric scale, answered by Paper's spacing. */
 export const Spacing = {

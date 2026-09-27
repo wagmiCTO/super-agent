@@ -2,8 +2,8 @@
  * Account — the wallet, the money in it, and the way out.
  *
  * As the design has it: the address, what the exchange calls it, what it
- * holds, which network it is on, the way to the invite, and at the bottom
- * the only destructive thing on the screen.
+ * holds, which network it is on, light or dark, the way to the invite, and at
+ * the bottom the only destructive thing on the screen.
  *
  * Adding and withdrawing money are missing on purpose while the app is on
  * testnet. The practice balance comes from the venue when the account
@@ -29,10 +29,11 @@ import { back } from '@/ui/stub';
 import { Badge, Card, Chip, Row, Screen } from '@/ui/surface';
 import { Text } from '@/ui/text';
 import { useTop } from '@/ui/inset';
-import { useTheme } from '@/theme';
+import { useTheme, useThemeControls } from '@/theme';
 
 export default function AccountScreen() {
   const theme = useTheme();
+  const { name: skin, chooseTheme } = useThemeControls();
   const top = useTop();
   const account = useAccount();
   const { prefs } = useOnboarding();
@@ -119,6 +120,20 @@ export default function AccountScreen() {
           <Text variant="small" style={{ fontSize: theme.type.t2xs }}>
             Mainnet · your own money, its own account and balance. Not open yet.
           </Text>
+        </Card>
+
+        {/* Light is the default; dark is Paper with the lights down, kept on
+            this device for the next launch. */}
+        <Card style={{ gap: theme.space.s2 }} testID="appearance-card">
+          <Text variant="small" style={{ fontSize: theme.type.t2xs }}>Appearance</Text>
+          <View style={{ flexDirection: 'row', gap: theme.space.s2 }}>
+            <View style={{ flex: 1 }}>
+              <Chip label="Light" on={skin !== 'night'} center onPress={() => chooseTheme('paper')} testID="theme-light" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Chip label="Dark" on={skin === 'night'} center onPress={() => chooseTheme('night')} testID="theme-dark" />
+            </View>
+          </View>
         </Card>
 
         {/* A row with a chevron reads as a label with a mark after it. This

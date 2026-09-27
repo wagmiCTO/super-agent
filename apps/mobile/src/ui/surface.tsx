@@ -186,7 +186,9 @@ export function Toggle({ on, onPress, testID }: { on: boolean; onPress?: () => v
         alignItems: on ? 'flex-end' : 'flex-start',
       }}
     >
-      <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: theme.color.paper }} />
+      {/* The knob is what sits on the accent, on or off: on a dark page a
+          knob the colour of the page disappears into the track. */}
+      <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: theme.color.onAccent }} />
     </Pressable>
   );
 }

@@ -15,7 +15,7 @@
  *    too, so these never share a token.
  */
 
-/** Every family the two skins need; load them all before rendering. */
+/** Every family the skins need; load them all before rendering. */
 export const FONT_FACES = {
   Archivo_400Regular: require('@expo-google-fonts/archivo/400Regular/Archivo_400Regular.ttf'),
   Archivo_500Medium: require('@expo-google-fonts/archivo/500Medium/Archivo_500Medium.ttf'),
@@ -32,7 +32,7 @@ export const FONT_FACES = {
   SpaceMono_700Bold: require('@expo-google-fonts/space-mono/700Bold/SpaceMono_700Bold.ttf'),
 } as const;
 
-export type ThemeName = 'paper' | 'terminal';
+export type ThemeName = 'paper' | 'terminal' | 'night';
 
 export type ThemeColor = 'ground' | 'paper' | 'raised' | 'soft' | 'line' | 'hair' | 'ink' | 'body' | 'text2' | 'muted' | 'dim' | 'onInk' | 'accent' | 'onAccent' | 'fill' | 'onFill' | 'up' | 'onUp' | 'down' | 'onDown' | 'danger' | 'onDanger' | 'dangerSoft' | 'scrim' | 'glass' | 'glow' | 'chip' | 'onChip' | 'shadowPhone' | 'shadowMenu' | 'ring' | 'ring0' | 'chartLine' | 'chartLine2' | 'chartGrid' | 'chartAxis' | 'chartUp' | 'chartDown' | 'chartZone' | 'chartBand' | 'btnLine' | 'cardBg' | 'cardLine' | 'onAccentDim' | 'riskCalm' | 'riskWarm' | 'riskHot';
 type RadiusKey = 'rXs' | 'rSm' | 'rMd' | 'rLg' | 'rXl';
@@ -273,10 +273,120 @@ export const Themes: Record<ThemeName, Theme> = {
       }
     }
   },
+  night: {
+    "color": {
+      "ground": "#0B0A0C",
+      "paper": "#131215",
+      "raised": "#1A191D",
+      "soft": "#1D1C21",
+      "line": "#3A3841",
+      "hair": "#2A2830",
+      "ink": "#F4F2EE",
+      "body": "#D9D5CF",
+      "text2": "#C2BDB6",
+      "muted": "#A29C95",
+      "dim": "#7C7770",
+      "onInk": "#131215",
+      "accent": "#836EF9",
+      "onAccent": "#FFFFFF",
+      "fill": "#836EF9",
+      "onFill": "#FFFFFF",
+      "up": "#20A574",
+      "onUp": "#FFFFFF",
+      "down": "#E45A4B",
+      "onDown": "#FFFFFF",
+      "danger": "#E45A4B",
+      "onDanger": "#FFFFFF",
+      "dangerSoft": "#3B1C19",
+      "scrim": "rgba(0,0,0,0.62)",
+      "glass": "rgba(19,18,21,0.90)",
+      "glow": "rgba(131,110,249,0.34)",
+      "chip": "rgba(44,42,50,0.96)",
+      "onChip": "#F4F2EE",
+      "shadowPhone": "rgba(0,0,0,0.60)",
+      "shadowMenu": "rgba(0,0,0,0.50)",
+      "ring": "rgba(131,110,249,0.42)",
+      "ring0": "rgba(131,110,249,0)",
+      "chartLine": "#F4F2EE",
+      "chartLine2": "#7C7770",
+      "chartGrid": "#26252B",
+      "chartAxis": "#3A3841",
+      "chartUp": "#20A574",
+      "chartDown": "#E45A4B",
+      "chartZone": "rgba(131,110,249,0.14)",
+      "chartBand": "#1A191D",
+      "btnLine": "#3A3841",
+      "cardBg": "#1C1B20",
+      "cardLine": "#2A2830",
+      "onAccentDim": "#D6CCFF",
+      "riskCalm": "#20A574",
+      "riskWarm": "#E0A23A",
+      "riskHot": "#E45A4B"
+    },
+    "radius": {
+      "rXs": 4,
+      "rSm": 8,
+      "rMd": 12,
+      "rLg": 16,
+      "rXl": 22
+    },
+    "space": {
+      "s1": 5,
+      "s2": 10,
+      "s3": 14,
+      "s4": 18,
+      "s5": 22,
+      "s6": 28
+    },
+    "type": {
+      "t2xs": 11,
+      "tXs": 12,
+      "tSm": 14,
+      "tMd": 16,
+      "tLg": 18,
+      "tXl": 22,
+      "t2xl": 29,
+      "t3xl": 34,
+      "tHero": 46,
+      "tMega": 60
+    },
+    "size": {
+      "btnH": 56,
+      "udH": 82,
+      "bw": 1
+    },
+    "heading": {
+      "weight": 700,
+      "tracking": -0.025
+    },
+    "tracking": 0.05,
+    "elevated": false,
+    "shadow": {
+      "card": "",
+      "lift": ""
+    },
+    "faces": {
+      "display": {
+        "400": "SpaceGrotesk_400Regular",
+        "500": "SpaceGrotesk_500Medium",
+        "600": "SpaceGrotesk_600SemiBold",
+        "700": "SpaceGrotesk_700Bold"
+      },
+      "num": {
+        "400": "SpaceMono_400Regular",
+        "500": "SpaceMono_400Regular",
+        "600": "SpaceMono_700Bold",
+        "700": "SpaceMono_700Bold"
+      }
+    }
+  },
 };
 
 /** Paper ships first; Terminal exists so hardcoded values fail loudly. */
 export const DEFAULT_THEME: ThemeName = 'paper';
+
+/** Whether a skin draws light on dark: the status bar and the chart follow it. */
+export const DARK_THEMES: readonly ThemeName[] = ['terminal', 'night'];
 
 /**
  * React Native picks a face by family name, not by `fontWeight`: on Android a
