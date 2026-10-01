@@ -1,9 +1,11 @@
 /**
- * A7 — the strategy, in five steps.
+ * A7 — the strategy, in three steps: the idea, what happens after the tap,
+ * the position every tap opens.
  *
- * Nothing here is a test. The step that used to ask "spot it" now shows it:
- * the chart names the moment it means and the moment it does not, and Next is
- * always live. A teaching screen that holds the reader hostage is not teaching.
+ * Nothing here is a test and Next is always live. It was five steps; a tester
+ * stopped in the lobby because of how much there was to read before the first
+ * tap, so the chart that showed the moment and the "ready" badge are gone, and
+ * the rule they carried sits in the idea's own words.
  */
 
 import { router, useLocalSearchParams } from 'expo-router';
@@ -14,7 +16,7 @@ import { STRATEGY_NAMES } from '@/config';
 import { useOnboarding } from '@/onboarding/useOnboarding';
 import { Button } from '@/ui/button';
 import { PositionForm, PossibleOutcomes } from '@/trading/position-form';
-import { ChannelArt, CrossArt, DirectionIdea, DirectionShown, RangeArt, ReadyArt, RsiArt, RunArt } from '@/ui/lesson-art';
+import { ChannelArt, CrossArt, DirectionIdea, RangeArt, RsiArt, RunArt } from '@/ui/lesson-art';
 import { Dots, Screen } from '@/ui/surface';
 import { Text } from '@/ui/text';
 import { useBottom, useTop } from '@/ui/inset';
@@ -22,43 +24,33 @@ import { useTheme } from '@/theme';
 
 type StrategyId = 'direction' | 'ma-cross' | 'rsi' | 'donchian' | 'orb';
 
-type Step = { title: string; body: string; art: 'idea' | 'shown' | 'run' | 'setup' | 'ready' };
+type Step = { title: string; body: string; art: 'idea' | 'run' | 'setup' };
 
 const LESSONS: Record<StrategyId, Step[]> = {
   direction: [
     { art: 'idea', title: 'Fifteen minutes. One call.', body: 'Bitcoin is at one price now. In fifteen minutes it will be higher or lower. You say which. That is the whole game.' },
-    { art: 'shown', title: 'Where you tap', body: 'The price keeps turning on the same line. The turn is the tap; the middle of a move is not.' },
-    { art: 'run', title: 'We take it from here', body: 'You tap. Within a second the trade is open at the exchange with your money. The system watches it every second while you do anything else.' },
+    { art: 'run', title: 'We take it from here', body: 'You tap Up or Down. Within a second the trade is open at the exchange with your money, a stop guards it, and the system watches it every second while you do anything else.' },
     { art: 'setup', title: 'Your standard position', body: 'Every tap opens this position. Set it once, change it any time.' },
-    { art: 'ready', title: 'Ready', body: 'You know when to tap, what happens, and what it can cost.' },
   ],
   'ma-cross': [
-    { art: 'idea', title: 'Two lines. One moment.', body: 'A fast line follows the price closely, a slow line lags. When the fast one crosses above the slow one, the trend has just turned up.' },
-    { art: 'shown', title: 'What a cross looks like', body: 'The fast line has to actually cross the slow one. Lines running close together only look busy.' },
+    { art: 'idea', title: 'Two lines. One moment.', body: 'A fast line follows the price closely, a slow line lags. When the fast one actually crosses above the slow one, the trend has just turned up. Lines running close together only look busy.' },
     { art: 'run', title: 'The signal names a side', body: 'For a few minutes after a cross the screen shows the signal: Up or Down. Both buttons stay yours; the next cross comes in a few hours.' },
     { art: 'setup', title: 'Your standard position', body: 'Same position for every strategy. Set it once, change it any time.' },
-    { art: 'ready', title: 'Ready', body: 'You can read a cross and you know a window lasts minutes.' },
   ],
   rsi: [
-    { art: 'idea', title: 'The crowd overdoes it', body: 'A thermometer from 0 to 100 shows how hard everyone has been buying or selling. Under 30, sellers overdid it and the price tends to bounce up.' },
-    { art: 'shown', title: 'Cold means up', body: 'Under 30 the sellers overdid it, so the signal names Up. Over 70 it is the other way round.' },
+    { art: 'idea', title: 'The crowd overdoes it', body: 'A thermometer from 0 to 100 shows how hard everyone has been buying or selling. Under 30, sellers overdid it and the price tends to bounce up, so the signal names Up. Over 70 it is the other way round.' },
     { art: 'run', title: 'Rare and sharp', body: 'Zones come once or twice a day. The screen shows the signal for a few minutes; both buttons stay yours.' },
     { art: 'setup', title: 'Your standard position', body: 'Same position for every strategy. Set it once, change it any time.' },
-    { art: 'ready', title: 'Ready', body: 'You can read the band and you know to wait.' },
   ],
   donchian: [
-    { art: 'idea', title: 'The highest high in twenty bars', body: 'Draw a line over the highest point of the last twenty bars and one under the lowest. That is the channel. Inside it the market is undecided; a close outside it is a decision.' },
-    { art: 'shown', title: 'A close, not a wick', body: 'The bar has to close above the top line. A spike that pokes through and comes back inside is the market testing the edge, not leaving it.' },
+    { art: 'idea', title: 'The highest high in twenty bars', body: 'A line over the highest point of the last twenty bars and one under the lowest: that is the channel. Inside it the market is undecided. A bar that closes outside it is a decision; a wick that pokes through and comes back is not.' },
     { art: 'run', title: 'Trends break out again', body: 'After a breakout the channel moves up to include it, and a real trend breaks out of the new one too. The screen names Up or Down for a few bars; both buttons stay yours.' },
     { art: 'setup', title: 'Your standard position', body: 'Same position for every strategy. Set it once, change it any time.' },
-    { art: 'ready', title: 'Ready', body: 'You can tell a close from a wick, and you know a trend breaks out more than once.' },
   ],
   orb: [
-    { art: 'idea', title: 'Three opens a day', body: 'Crypto never closes, but the world does. The day opens at 00:00 UTC, London at 08:00, New York at 13:30 — the screen shows them in your time. The first quarter hour after each sets the range: its high and its low.' },
-    { art: 'shown', title: 'The first close outside', body: 'After the quarter hour, the first bar to close above the range names Up, the first to close below names Down. One signal a session; four hours later the open is old news and the watch ends.' },
-    { art: 'run', title: 'Know when to look', body: 'The screen says where the session is: the range forming, the watch on, or the time of the next open. You come back for that; the tap is still yours.' },
+    { art: 'idea', title: 'Three opens a day', body: 'Crypto never closes, but the world does. The day opens at 00:00 UTC, London at 08:00, New York at 13:30 — shown in your time. The first quarter hour after each sets the range: its high and its low. The first bar to close outside it names Up or Down.' },
+    { art: 'run', title: 'Know when to look', body: 'One signal a session; four hours later the open is old news and the watch ends. The screen says where the session is: the range forming, the watch on, or the time of the next open. The tap is still yours.' },
     { art: 'setup', title: 'Your standard position', body: 'Same position for every strategy. Set it once, change it any time.' },
-    { art: 'ready', title: 'Ready', body: 'You know the three opens and what a break of the range looks like.' },
   ],
 };
 
@@ -109,7 +101,7 @@ export default function LessonScreen() {
   const next = (
     <Button
       testID="lesson-next"
-      title={setup ? 'Save and continue' : last ? 'Make your first tap' : 'Next'}
+      title={last ? 'Make your first tap' : 'Next'}
       onPress={() => (last ? leave() : setAt(at + 1))}
     />
   );
@@ -143,15 +135,7 @@ export default function LessonScreen() {
 
 function Art({ id, kind }: { id: StrategyId; kind: Step['art'] }) {
   if (kind === 'setup') return <PositionForm compact />;
-  if (kind === 'ready') return <ReadyArt />;
   if (kind === 'run') return <RunArt kind={id === 'direction' ? 'direction' : id === 'donchian' ? 'channel' : id === 'orb' ? 'range' : 'signal'} />;
-  if (kind === 'shown') {
-    if (id === 'ma-cross') return <CrossArt shown />;
-    if (id === 'rsi') return <RsiArt />;
-    if (id === 'donchian') return <ChannelArt shown />;
-    if (id === 'orb') return <RangeArt shown />;
-    return <DirectionShown />;
-  }
   if (id === 'ma-cross') return <CrossArt />;
   if (id === 'rsi') return <RsiArt />;
   if (id === 'donchian') return <ChannelArt />;

@@ -49,11 +49,7 @@ test('a first visit runs from the promo to the first tap', async ({ page, contex
   await page.goto('/');
 
   // A3 — three slides, each with its own artwork.
-  await expect(page.getByText('Be the smartest one in the market')).toBeVisible();
-  await page.getByTestId('intro-next').click();
-  await expect(page.getByText('Your trading copilot')).toBeVisible();
-  await page.getByTestId('intro-next').click();
-  await expect(page.getByText('This is where you get good')).toBeVisible();
+  await expect(page.getByText('Up or down. Fifteen minutes.')).toBeVisible();
   await page.getByTestId('intro-next').click();
 
   // A4 — the account is a passkey.
@@ -71,8 +67,8 @@ test('a first visit runs from the promo to the first tap', async ({ page, contex
   await page.getByTestId('strategy-direction').click({ force: true });
 
   await expect(page.getByText('Fifteen minutes. One call.')).toBeVisible({ timeout: 30_000 });
-  for (let step = 0; step < 4; step++) await page.getByTestId('lesson-next').click();
-  await expect(page.getByText('Ready')).toBeVisible();
+  for (let step = 0; step < 2; step++) await page.getByTestId('lesson-next').click();
+  await expect(page.getByText('Your standard position')).toBeVisible();
   await page.getByTestId('lesson-next').click();
 
   await expect(page.getByTestId('key-up').last()).toBeVisible({ timeout: 30_000 });
@@ -89,7 +85,7 @@ test('every step of the first visit can be skipped', async ({ page, context }) =
   // instead of replaying the promo.
   await page.reload();
   await expect(page.getByText('Your account is a passkey')).toBeVisible();
-  await expect(page.getByText('Be the smartest one in the market')).toHaveCount(0);
+  await expect(page.getByText('Up or down. Fifteen minutes.')).toHaveCount(0);
 
   await page.getByTestId('passkey-create').click();
   await openExchangeAccount(page);
@@ -115,7 +111,7 @@ test('the first visit runs with no platform reachable', async ({ page, context }
   await page.route('**/localhost:8080/**', (route) => route.abort());
 
   await page.goto('/');
-  await expect(page.getByText('Be the smartest one in the market')).toBeVisible({ timeout: 40_000 });
+  await expect(page.getByText('Up or down. Fifteen minutes.')).toBeVisible({ timeout: 40_000 });
 
   await page.getByTestId('intro-skip').click();
   await page.getByTestId('passkey-create').click();
@@ -148,7 +144,7 @@ test('a device that already holds an account skips the promo', async ({ page, co
   await page.evaluate(() => window.localStorage.removeItem('tradeagent.onboarding'));
   await page.goto('/');
 
-  await expect(page.getByText('Be the smartest one in the market')).toHaveCount(0);
+  await expect(page.getByText('Up or down. Fifteen minutes.')).toHaveCount(0);
 });
 
 test('signing in with an existing passkey puts the first visit behind you', async ({ page, context }) => {
@@ -164,7 +160,7 @@ test('signing in with an existing passkey puts the first visit behind you', asyn
 
   await page.evaluate(() => window.localStorage.clear());
   await page.goto('/');
-  await expect(page.getByText('Be the smartest one in the market')).toBeVisible();
+  await expect(page.getByText('Up or down. Fifteen minutes.')).toBeVisible();
   await page.getByTestId('intro-skip').click();
 
   await page.getByTestId('passkey-signin').click();

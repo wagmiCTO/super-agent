@@ -1,50 +1,29 @@
 /**
- * A3 — three slides, then the passkey.
+ * A3 — one screen, then the passkey.
  *
- * Skip is as prominent as Next on purpose: nothing here is a gate, and a
- * reader who already knows what the app is should not have to tap through an
- * argument for it.
+ * It used to be three slides of argument. A tester got through them and called
+ * the whole thing marketing, so now it says what the app is, how long a trade
+ * takes and what the money is, and the only button leaves.
  */
 
 import { router } from 'expo-router';
-import { useState } from 'react';
 import { View } from 'react-native';
 
 import { useOnboarding } from '@/onboarding/useOnboarding';
 import { Button } from '@/ui/button';
-import { CopilotScene, CrowdScene, DisciplineScene } from '@/ui/illustration';
+import { CopilotScene } from '@/ui/illustration';
 import { Mark } from '@/ui/mark';
 import { APP_NAME } from '@/config';
-import { Badge, Dots, Screen } from '@/ui/surface';
+import { Badge, Screen } from '@/ui/surface';
 import { Text } from '@/ui/text';
 import { useBottom, useTop } from '@/ui/inset';
 import { useTheme } from '@/theme';
-
-const SLIDES = [
-  {
-    title: 'Be the smartest one in the market',
-    body: 'Join the 0.01% who trade with AI and real strategies. Everyone else is at the casino.',
-    Scene: CrowdScene,
-  },
-  {
-    title: 'Your trading copilot',
-    body: 'Not a wealth button. A tool that makes you a sharper trader: strategies to follow, then your own to build, skills that compound.',
-    Scene: CopilotScene,
-  },
-  {
-    title: 'This is where you get good',
-    body: 'A plan on every trade, a stop, a daily budget. A streak to protect, a board to climb. Discipline you can feel in a week.',
-    Scene: DisciplineScene,
-  },
-] as const;
 
 export default function IntroScreen() {
   const theme = useTheme();
   const top = useTop();
   const bottom = useBottom(theme.space.s6);
   const { markIntroSeen } = useOnboarding();
-  const [at, setAt] = useState(0);
-  const slide = SLIDES[at];
 
   const leave = async () => {
     await markIntroSeen();
@@ -62,22 +41,18 @@ export default function IntroScreen() {
           <Text variant="small" testID="intro-skip" onPress={leave}>Skip</Text>
         </View>
 
-        <slide.Scene />
-
-        <Dots count={SLIDES.length} at={at} />
+        <CopilotScene />
 
         <View style={{ gap: theme.space.s3 }}>
-          <Text variant="h1">{slide.title}</Text>
-          <Text variant="body">{slide.body}</Text>
+          <Text variant="h1">Up or down. Fifteen minutes.</Text>
+          <Text variant="body">
+            Tap which way Bitcoin goes. A stop guards the trade, and fifteen minutes later you see the result. Practice money — nothing to lose.
+          </Text>
         </View>
 
         <View style={{ flex: 1 }} />
 
-        <Button
-          testID="intro-next"
-          title={at < SLIDES.length - 1 ? 'Next' : "Let's go"}
-          onPress={() => (at < SLIDES.length - 1 ? setAt(at + 1) : leave())}
-        />
+        <Button testID="intro-next" title="Let's go" onPress={leave} />
       </View>
     </Screen>
   );
