@@ -1,6 +1,6 @@
 # What people did with it
 
-*Last true: 2026-09-28. Six sessions run.*
+*Last true: 2026-10-02. Seven sessions run.*
 
 ## Method
 
@@ -41,10 +41,13 @@ them were.
 | 4 | 2026-09-24 | yes | remote | yes |
 | 5 | 2026-09-24 | no, furthest from trading of the five | remote | yes |
 | 6 | 2026-09-28 | yes, scalps | own phone, written notes after several days of use | yes |
+| 7 | 2026-10-02 | not stated; studies competing apps | own phone, voice notes during the first run, plus a screen recording | **no — stopped in the lobby after the account opened** |
 
-All six ran remotely: people opened the app on their own phone and sent back
+All seven ran remotely: people opened the app on their own phone and sent back
 what they thought as they went. The five questions were not put to them as a
-script; what is recorded is what they did and what they said about it.
+script; what is recorded is what they did and what they said about it. The
+seventh is the first to leave a recording of the run, so where the notes and
+the recording disagree, the recording wins.
 
 ## Findings
 
@@ -54,10 +57,14 @@ is noise; the second occurrence makes it a defect.
 
 | Observation | People | Decision |
 |---|---|---|
-| **The first run is fast and lands.** Intro, passkey, account, first position — walked without help. One person understood what the product was and that the strategies aimed at his own trading problem without being told. The sixth named the same thing unprompted: every button works without friction, and a trade is one tap with nothing to sign | **5** | Nothing to change. This is the strongest thing we have and it goes in front of everything else |
+| **The first run is fast and lands.** Intro, passkey, account, first position — walked without help. One person understood what the product was and that the strategies aimed at his own trading problem without being told. The sixth named the same thing unprompted: every button works without friction, and a trade is one tap with nothing to sign | **5** | Nothing to change. This is the strongest thing we have and it goes in front of everything else. The seventh is the first voice against it — see the next row — and the two do not cancel: the mechanics walk, the words in the way do not |
+| **Too much to read before the first tap.** The seventh got through the intro, the passkey and the account, then stopped in the lobby: five strategy cards, each with a lesson to read first, and "a pile of information" that did not match the promise of making a trader's life easier. His ask: one strategy, the simplest, no choice at the start, arrows for what to do, and reach the trading screen without reading | 1 | Waiting on a second occurrence for the structure. It pulls against session 4, who understood the five strategies at once and saw his own problem in them. The cheap part does not need to wait: the intro's copy reads as marketing to someone who hates marketing, and the lesson can be shorter than five steps |
+| **Words nobody outside crypto knows.** "AUSD — what does the A mean?" and "MON for gas — what gas?" on the account-opening screen | 1 | **Change it without waiting.** Jargon on a screen that promises "nothing to sign" is a defect in the promise, not a preference. Say "practice dollars" and "network fee", or drop the gas line when there is enough |
+| **The account-opening progress reads as theatre.** "Fake progress bars, 'we are opening everything now', when it all takes a second." Ours is real — three transactions at the venue, about a minute — but the screen does not prove it | 1 | Waiting on a second occurrence for the shape of the screen; one option is to show the real transaction and its time so the wait is visibly not an animation |
+| **Could not find where to deposit.** "Where do I tap to put money in?" — the only entry is *Add funds* on the account screen, two taps from the lobby, and the lobby does not say the balance is practice money | 1 | Waiting on a second occurrence. Note what it says: a person who stopped at the lobby still wanted to put money in |
 | **The risk screen is hard to read, and it is in the wrong place.** One asked for the danger zone to be raised onto the first screen; another, the furthest from trading, called the screen complicated | **2** | **Change it.** Raise the danger zone, and cut the language back to what someone who has never read a risk dashboard can follow |
 | **The prize pool is not understood.** One liked the leaderboard tab and still could not follow the on-chain pool; the other found both hard | **2** | **Change it.** Note the shape of this: the board is fine, the payout mechanism is not. Explain where the money comes from in one line, at the point where it is shown |
-| A passkey held in a password manager without PRF support locks the person out of the product completely | 1 | **Not waiting for a second.** This is not a preference, it is a door that does not open. The error text now says what happened; the limitation itself is real and is stated in the submission |
+| A passkey held in a password manager without PRF support locks the person out of the product completely | **2** | **Not waiting for a second.** This is not a preference, it is a door that does not open. The error text now says what happened; the limitation itself is real and is stated in the submission. The second person hit the same wall (Bitwarden), read the error, moved the passkey to Apple Passwords and got in — the text did its job, and the wall is still there |
 | The chart does not render on one mobile device | 1 | Bug. Fixed on its own merits, not by the two-person rule |
 | Red in the lobby statistics reads as alarming rather than informative | 1 | Waiting on a second occurrence |
 | The bottom of the screen is a list of links where icons were expected — "it doesn't look mobile" | 1 | Waiting on a second occurrence, though it is cheap and it speaks to whether the thing feels like an app |
@@ -75,10 +82,11 @@ is noise; the second occurrence makes it a defect.
 
 | Measure | Value |
 |---|---|
-| Sessions run | 6 |
-| Reached a result without a hint | 5 of 6 |
-| Blocked before reaching the product at all | 1 of 6 (passkey manager without PRF) |
-| Said what the app was, unprompted | 1 of 6 volunteered it; the others were not asked |
+| Sessions run | 7 |
+| Reached a result without a hint | 5 of 7 |
+| Blocked before reaching the product at all | 1 of 7 (passkey manager without PRF); a second hit the same wall and got past it on the error text |
+| Stopped after the account opened, before a trade | 1 of 7 |
+| Said what the app was, unprompted | 2 of 7 volunteered it — the seventh as "you guess up or down and in 15 minutes you are either up or down"; the others were not asked |
 
 ## What this changes
 
@@ -120,3 +128,29 @@ first run, and it moved the requests from explaining the product to extending
 it: dark mode, chart tools, a news feed, following the winners. Dark mode was
 built on the strength of how it was asked for; the rest are one voice each and
 wait for a second.
+
+The seventh session is the first that did not reach a trade, and the first
+with a recording. Five people before had called the first run fast; this one
+got through the same three screens and then stopped in the lobby, not because
+anything was broken but because there was too much to read before the first
+tap. He said the product and the words did not match: the promise is to make a
+trader's life easier, and what he met was five strategies, a lesson each, and
+copy he called marketing. He also said, without being asked, what the thing
+was: guess up or down, and in fifteen minutes you are either up or down. The
+mechanics landed; the wrapping got in the way. That is the same shape as the
+risk-screen and prize-pool findings — the core works, the machinery around it
+does not — now reaching one screen earlier.
+
+Two things from this session do not wait. The account-opening screen says
+"AUSD" and "for gas" to a person who asked what the A means and what gas is;
+that is jargon on a screen whose whole point is that there is nothing to sign.
+And the password-manager wall has its second person: this one read the error,
+moved the passkey to the phone's own store and got in, so the text written
+after session 2 did what it was for.
+
+The structural ask — one strategy, no choice at the start, no reading — stays
+on one voice. It pulls directly against session 4, who saw his own trading
+problem in the five strategies at once. Both are traders' first runs, and
+they want opposite lobbies. The recording will show how long the seventh spent
+on each screen; that number decides whether the lobby is the problem or the
+lesson is.
