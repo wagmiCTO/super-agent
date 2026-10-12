@@ -1,6 +1,6 @@
 # Traction
 
-*Last true: 2026-09-25. Rows that carry a number were read that day; a row
+*Last true: 2026-09-28. Rows that carry a number were read that day; a row
 that is still blank names where its number comes from, so filling it is a
 query and not a judgement call.*
 
@@ -9,13 +9,18 @@ filled and settled on Perpl — but the money is play money. A number on this
 page says something about whether people use the product, and nothing about
 whether they made a living from it.
 
+The journal also holds 28 rows written by hand on 16 September to give the
+demo screens a history: twelve on one wallet and two wallets that exist only
+there. They were never orders at the venue. Every number on this page leaves
+them out.
+
 ## Usage
 
 | Measure | Value | Source |
 |---|---|---|
-| Wallets that opened at least one position | 15 | platform trade journal |
-| Closed trades | 181 | platform trade journal |
-| Volume, AUSD | 16,457.27 | platform trade journal |
+| Wallets that opened at least one position | 14 | platform trade journal |
+| Closed trades | 161 | platform trade journal |
+| Volume, AUSD | 15,900.34 | platform trade journal |
 | Wallets with ≥3 closed trades in a week | — | platform trade journal, grouped by week |
 | Returned the next day / the next week | — | platform trade journal, first-seen vs later |
 
@@ -26,21 +31,24 @@ whether people turn them off and trade the way they always did.
 
 | Ended by | Share | Source |
 |---|---|---|
-| Stop | — | platform trade journal |
-| Target | — | platform trade journal |
-| Horizon timer | — | platform trade journal |
-| Closed by hand | — | platform trade journal |
+| Stop | 6% (10) | platform trade journal |
+| Target | 0% | platform trade journal |
+| Horizon timer | 56% (90) | platform trade journal |
+| Closed by hand | 36% (58) | platform trade journal |
+| Not recorded | 2% (3) | platform trade journal |
 
 ## Result by strategy
 
 | Strategy | Trades | Wallets | Volume, AUSD | Net result, AUSD | Source |
 |---|---|---|---|---|---|
-| Direction | 128 | 15 | 10,900.21 | −45.79 | platform trade journal |
-| MA Cross | 35 | 8 | 3,630.27 | −0.25 | platform trade journal |
-| RSI Bounce | 18 | 4 | 1,926.78 | −0.55 | platform trade journal |
+| Direction | 113 | 13 | 10,318.22 | −49.74 | platform trade journal |
+| MA Cross | 31 | 8 | 3,458.27 | −5.14 | platform trade journal |
+| RSI Bounce | 15 | 4 | 1,741.74 | −2.29 | platform trade journal |
+| Turtles | 2 | 1 | 382.11 | −3.22 | platform trade journal |
+| Open Range | 0 | 0 | 0 | 0 | platform trade journal |
 
-Traders are net down on Direction and roughly flat on the two signal
-strategies. On 181 trades that is not evidence of either; it is here because
+Traders are net down on every strategy, most of it on Direction. On 161
+trades that is not evidence of either; it is here because
 leaving it out would make the page a sales sheet.
 
 ## Prize pools
@@ -54,7 +62,7 @@ trade journal; winners claim from the contract themselves. The mechanism is
 | Weeks settled | 1 (week of 14 Sep) | settlement receipts |
 | Funded and settled, AUSD | 1.398321, four winners able to claim | `StrategyPrizePool` on Monad testnet |
 | Contract address | `0x1cC7f88b21E0158e70323aad98Dea4dC20b380aC` | deployment record |
-| Indexer | https://indexer.dev.hyperindex.xyz/45c9bd0/v1/graphql | Envio |
+| Indexer | https://indexer.dev.hyperindex.xyz/d848917/v1/graphql | Envio |
 
 Anything in this section is checkable by a stranger without asking us, which
 is the point of settling it on chain.
