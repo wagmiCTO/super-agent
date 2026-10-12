@@ -22,14 +22,14 @@ three seconds.
 ## How it works
 
 - **Account**: a passkey. Its PRF output derives a wallet (the exchange
-  account's owner), a request-signing key, and one Ed25519 exchange API
-  key per strategy. The wallet never leaves the device; each strategy's
-  key is enrolled at Perpl with the platform's builder code and trades
-  under its own limits. One passkey, many keys (ADR 0005).
-- **Execution**: Perpl on Monad, through the venue's API with an enrolled
-  key and builder code. The platform holds strategy keys sealed at rest;
-  they cannot withdraw.
-- **Policy engine**: every order passes notional, leverage, exposure,
+  account's owner), a request-signing key, and an Ed25519 exchange API
+  key, each in its own namespace. The wallet never leaves the device; it
+  enrols the exchange key once at Perpl with the platform's builder code,
+  and every strategy trades through that key (ADR 0005, amended by ADR 0007).
+- **Execution**: Perpl on Monad, through the venue's API with the enrolled
+  key and builder code. The platform holds the key sealed at rest; it
+  cannot withdraw.
+- **Policy engine**: every order passes notional, leverage, open-position,
   daily-loss and cooldown checks before the venue sees it; refusals come
   back in words with the limit that was hit.
 - **Signals**: MA Cross (5/20), RSI(14), the 20-bar Donchian channel and
@@ -82,9 +82,10 @@ three seconds.
 
 - Testnet only. Perpl's testnet is where the exchange account, the fills
   and the prizes are.
-- Strategy keys share one exchange account, so two strategies on the same
-  market share a position at the venue; limits are per strategy, positions
-  are not.
+- All strategies share one exchange account and one API key, so two
+  strategies on the same market share a position at the venue; the loss
+  budget and the cooldown are per wallet, only the position-size cap is per
+  strategy.
 - Aurora delivers to Monad mainnet and currently asks for at least $1,000
   per deposit; the demo shows the flow, not a testnet top-up.
 - Nansen's free plan meters credits; the card refreshes every few hours.
