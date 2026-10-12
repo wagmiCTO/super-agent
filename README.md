@@ -127,3 +127,8 @@ Placing an order needs an enrolled API key with the `trade` scope, an
 exchange account funded with the venue's minimum collateral, and
 `allowOrderForwarding(true)` from the account's wallet — without the last
 one, orders are acknowledged and then fail with reason 34.
+
+## License
+
+All rights reserved. The source is published to be read and evaluated, not
+to be used, copied or deployed; see [LICENSE](LICENSE).

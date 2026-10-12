@@ -1,6 +1,7 @@
 {
   "name": "tradeagent-mobile",
   "main": "expo-router/entry",
+  "license": "UNLICENSED",
   "version": "1.0.0",
   "dependencies": {
     "@category-labs/mera": "^0.2.0",
