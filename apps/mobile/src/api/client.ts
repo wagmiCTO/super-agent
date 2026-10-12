@@ -244,7 +244,7 @@ export const api = {
   depositOptions: () => request<DepositOptions>('/v1/deposit/options'),
   depositQuote: (body: { origin_asset: string; amount: string; dry?: boolean }) =>
     request<DepositQuote>('/v1/deposit/quote', { method: 'POST', body: JSON.stringify(body) }),
-  prizeHistory: () => request<PrizeHistory>('/v1/prizes/history?limit=24'),
+  prizeHistory: () => request<PrizeHistory>('/v1/prizes/history?limit=100'),
   risk: () => request<RiskReport>('/v1/risk'),
   /** This wallet's invite: its code, its friends and what they earned it. */
   referral: () => request<Referral>('/v1/referral'),
