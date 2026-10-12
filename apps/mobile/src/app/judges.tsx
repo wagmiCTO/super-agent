@@ -132,7 +132,7 @@ export default function JudgesScreen() {
           <Text
             variant="small"
             testID="judges-indexer"
-            onPress={() => void Linking.openURL('https://indexer.dev.hyperindex.xyz/45c9bd0/v1/graphql')}
+            onPress={() => void Linking.openURL('https://indexer.dev.hyperindex.xyz/d848917/v1/graphql')}
             style={{ color: theme.color.accent }}
           >
             Envio indexer — pools, winners, claims ↗
